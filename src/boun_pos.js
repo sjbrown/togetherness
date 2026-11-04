@@ -14,14 +14,14 @@
  * no transform, and read the same way.
  *
  * Boundary structure:
- *   <g id data-id data-module name data-bounpos-type="boundary" transform>
+ *   <g id data-id data-module data-tt-matches data-bounpos-type="boundary" transform>
  *     <path d/>
- *     <text x y>name</text>
+ *     <text x y>data-tt-matches</text>
  *
  * Position-set structure:
- *   <g id data-id data-module name data-bounpos-type="pos-set" transform data-snap-radius data-gen-type data-gen-x-spacing data-gen-y-spacing>
+ *   <g id data-id data-module data-tt-matches data-bounpos-type="pos-set" transform data-snap-radius data-gen-type data-gen-x-spacing data-gen-y-spacing>
  *     <path d/>   ← extent rect
- *     <text x y>name</text>
+ *     <text x y>data-tt-matches</text>
  *     <circle cx cy r/>   … N snap points
  *
  * ID formats:
@@ -30,6 +30,7 @@
  */
 
 import { computeResizeCornerRect } from './geometry.js';
+import { selectorMatchesToy } from './toys.js';
 import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
 
@@ -46,12 +47,12 @@ function randomSlug(len = 3) {
 
 export function newBoundaryId() {
   const slug = randomSlug();
-  return { id: `tt-b-v1-${slug}`, name: 'toy' };
+  return { id: `tt-b-v1-${slug}`, matches: '.toy' };
 }
 
 export function newPositionSetId() {
   const slug = randomSlug();
-  return { id: `tt-ps-v1-${slug}`, name: 'toy' };
+  return { id: `tt-ps-v1-${slug}`, matches: '.toy' };
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
@@ -319,18 +320,18 @@ function setTextContent(textEl, newText) {
 
 // The <g>, <path> and <text> shared by both element types, in local
 // coordinates with the label at the top-right corner.
-function buildGroup(bounPosType, { id, name, x, y, w, h }) {
+function buildGroup(bounPosType, { id, matches, x, y, w, h }) {
   const g = svgEl('g', {
     id,
     'data-id':           id,
     'data-module':       'boun_pos',
-    name,
+    'data-tt-matches':   matches,
     'data-bounpos-type': bounPosType,
     transform:           translateAttr(x, y),
   });
   g.appendChild(svgEl('path', { d: rectToPath(0, 0, w, h) }));
   const text = svgEl('text', { x: w, y: -5 });
-  text.appendChild(document.createTextNode(name));
+  text.appendChild(document.createTextNode(matches));
   g.appendChild(text);
   return g;
 }
@@ -343,7 +344,7 @@ function buildGroup(bounPosType, { id, name, x, y, w, h }) {
 //   bounPosType  — the data-bounpos-type value on the element ('boundary'|'pos-set')
 //   label        — human label for the schema / layer panel
 //   iconUrl      — path to the tool icon SVG (fetched by ui.js iconFor())
-//   newId()      — returns { id, name } for a fresh element
+//   newId()      — returns { id, matches } for a fresh element
 //   genType      — 'square'|'hex'|null (null for boundaries)
 //   schema       — ttStateSchema shape: { label, values, types }
 //   create(layerEl, params) — build the element and append it to the layer
@@ -359,10 +360,10 @@ export const BOUNPOS_TYPES = {
     genType:     null,
     schema: {
       label:  'Boundary',
-      values: { type: 'boundary', name: '' },
+      values: { type: 'boundary', 'data-tt-matches': '' },
       types: {
         type: { show: [] },
-        name: { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
       },
     },
     create(layerEl, params) {
@@ -380,10 +381,10 @@ export const BOUNPOS_TYPES = {
     genType:     'square',
     schema: {
       label:  'Square Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 2, spacing: 80, xSpacing: 80, ySpacing: 80 },
+      values: { type: 'pos-set', 'data-tt-matches': '', snapRadius: 2, spacing: 80, xSpacing: 80, ySpacing: 80 },
       types: {
         type:       { show: [] },
-        name:       { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] },
         xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
@@ -403,10 +404,10 @@ export const BOUNPOS_TYPES = {
     genType:     'hex',
     schema: {
       label:  'Point Top Hex Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 2, xSpacing: 70, ySpacing: 60 },
+      values: { type: 'pos-set', 'data-tt-matches': '', snapRadius: 2, xSpacing: 70, ySpacing: 60 },
       types: {
         type:       { show: [] },
-        name:       { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
         ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
@@ -425,10 +426,10 @@ export const BOUNPOS_TYPES = {
     genType:     'flat-hex',
     schema: {
       label:  'Flat Top Hex Grid',
-      values: { type: 'pos-set', name: '', snapRadius: 2, xSpacing: 60, ySpacing: 70 },
+      values: { type: 'pos-set', 'data-tt-matches': '', snapRadius: 2, xSpacing: 60, ySpacing: 70 },
       types: {
         type:       { show: [] },
-        name:       { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
         ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
@@ -442,8 +443,8 @@ export const BOUNPOS_TYPES = {
 
 // Helper used by all pos-set variants.
 function _createPositionSet(layerEl,
-  { id, name, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles }) {
-  const g = buildGroup('pos-set', { id, name, x, y, w, h });
+  { id, matches, snapRadius, genType, xSpacing, ySpacing, x, y, w, h, circles }) {
+  const g = buildGroup('pos-set', { id, matches, x, y, w, h });
   g.setAttribute('data-snap-radius',   String(Math.round(snapRadius)));
   g.setAttribute('data-gen-type',      genType);
   g.setAttribute('data-gen-x-spacing', String(Math.round(xSpacing)));
@@ -533,9 +534,9 @@ export function layerData(layerEl) {
   const results = [];
   for (const node of layerEl?.children ?? []) {
     const id   = node.getAttribute('id');
-    const name = node.getAttribute('name') ?? id;
-    const kind = node.getAttribute('data-bounpos-type') ?? 'boundary';
-    results.push({ id, label: name, fill: 'none', kind });
+    const label = node.getAttribute('data-tt-matches') ?? id;
+    const kind  = node.getAttribute('data-bounpos-type') ?? 'boundary';
+    results.push({ id, label, fill: 'none', kind });
   }
   return results;
 }
@@ -611,7 +612,7 @@ export function getTtStateSchema(svgElOrType) {
   }
 
   const bounPosType = svgElOrType.getAttribute('data-bounpos-type') ?? 'boundary';
-  const name        = svgElOrType.getAttribute('name') ?? '';
+  const matches     = svgElOrType.getAttribute('data-tt-matches') ?? '';
 
   if (bounPosType === 'pos-set') {
     const genType = svgElOrType.getAttribute('data-gen-type') ?? 'square';
@@ -630,7 +631,7 @@ export function getTtStateSchema(svgElOrType) {
     return {
       label: schema.label,
       type: 'pos-set',
-      name,
+      'data-tt-matches': matches,
       xSpacing,
       ySpacing,
       snapRadius,
@@ -638,7 +639,7 @@ export function getTtStateSchema(svgElOrType) {
     };
   }
 
-  return { label: schema.label, type: 'boundary', name, types: schema.types };
+  return { label: schema.label, type: 'boundary', 'data-tt-matches': matches, types: schema.types };
 }
 
 
@@ -652,12 +653,12 @@ export function getTtState(el) {
   if (!el) return null;
   const id          = el.getAttribute('id');
   const bounPosType = el.getAttribute('data-bounpos-type') ?? 'boundary';
-  const name        = el.getAttribute('name') ?? id;
+  const matches     = el.getAttribute('data-tt-matches') ?? '';
   const path        = childByTag(el, 'path');
   const { x, y, w, h } = path
     ? worldRectOf(el, path)
     : { x: 0, y: 0, w: 100, h: 100 };
-  const state = { id, bounPosType, name, x, y, w, h };
+  const state = { id, bounPosType, 'data-tt-matches': matches, x, y, w, h };
 
   if (bounPosType === 'pos-set') {
     const genType = el.getAttribute('data-gen-type') ?? 'square';
@@ -688,7 +689,7 @@ function createBounPos(state, layerEl) {
 
     _createPositionSet(layerEl, {
       id:         state.id,
-      name:       state.name,
+      matches:    state['data-tt-matches'],
       snapRadius: snapRadiusStateToRadius(state.snapRadius ?? 10, state.genType, xSpacing, ySpacing),
       genType:    state.genType,
       xSpacing,
@@ -702,7 +703,7 @@ function createBounPos(state, layerEl) {
   } else {
     BOUNPOS_TYPES.boundary.create(layerEl, {
       id:     state.id,
-      name:   state.name,
+      matches: state['data-tt-matches'],
       x:      state.x,
       y:      state.y,
       w:      state.w,
@@ -744,17 +745,18 @@ export function editBounPos(state, layerEl) {
 
 /**
  * Canonical LayerAPI edit signature: edit(el, editData). Only keys present
- * in editData are written: a label rename changes the name attribute and the
+ * in editData are written: a matches change sets data-tt-matches and the
  * <text>'s text node, a grid-parameter change regenerates the circles.
  */
 export function editEl(el, editData) {
   if (!el) return;
   const type = el.getAttribute('data-bounpos-type') ?? 'boundary';
 
-  if (editData.name !== undefined) {
-    el.setAttribute('name', String(editData.name));
+  if (editData['data-tt-matches'] !== undefined) {
+    const matches = String(editData['data-tt-matches']);
+    el.setAttribute('data-tt-matches', matches);
     const text = childByTag(el, 'text');
-    if (text) setTextContent(text, String(editData.name));
+    if (text) setTextContent(text, matches);
   }
 
   if (type === 'pos-set' && (
@@ -854,18 +856,17 @@ export function previewResize(ghostEl, x, y, width, height) {
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 /**
- * Scan layerEl for boundaries whose name ∈ toyClasses.
+ * Scan layerEl for boundaries whose data-tt-matches selects toyEl.
  * Applies the start-inside filter: returns null if no matched boundary
  * contains the anchor point (toy moves freely when outside all its boundaries).
  * Rects are in world coordinates.
  */
-export function computeBoundaryRects(layerEl, toyClasses, anchor) {
-  if (!toyClasses || toyClasses.size === 0) return null;
+export function computeBoundaryRects(layerEl, toyEl, anchor) {
+  if (!toyEl) return null;
   const rects = [];
   for (const node of layerEl?.children ?? []) {
     if ((node.getAttribute('data-bounpos-type') ?? 'boundary') === 'pos-set') continue;
-    const name = node.getAttribute('name');
-    if (!name || !toyClasses.has(name)) continue;
+    if (!selectorMatchesToy(node.getAttribute('data-tt-matches'), toyEl)) continue;
     const path = childByTag(node, 'path');
     if (!path) continue;
     if (!path.getAttribute('d')) continue;
@@ -884,14 +885,14 @@ export function getSnapPoints(layerEl) {
   const points = [];
   for (const node of layerEl?.children ?? []) {
     if (node.getAttribute('data-bounpos-type') !== 'pos-set') continue;
-    const name = node.getAttribute('name');
+    const matches = node.getAttribute('data-tt-matches');
     const snapRadius = Number(node.getAttribute('data-snap-radius') ?? 30);
     const { tx, ty } = translationOf(node);
     for (const child of node.children) {
       if (child.localName !== 'circle') continue;
       const cx = Number(child.getAttribute('cx') ?? 0) + tx;
       const cy = Number(child.getAttribute('cy') ?? 0) + ty;
-      points.push({ cx, cy, name, snapRadius });
+      points.push({ cx, cy, matches, snapRadius });
     }
   }
   return points;

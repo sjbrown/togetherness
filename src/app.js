@@ -588,12 +588,16 @@ function findNearestSnap(x, y, snapPoints) {
 }
 
 function filterSnapPoints(domEl, snapPoints) {
+  const isToy       = moduleForElement(domEl) === 'toys';
   const toyClasses  = getToyClasses(domEl);
   const matchesSelf = function(snapPoint) {
     return domEl.getAttribute('data-id') === (snapPoint.ownerId)
   }
+  // Boundary and pos-set points carry a data-tt-matches selector (possibly
+  // null); toy tt_positions points carry a class name instead.
   const matchesName = function(snapPoint) {
-    return toyClasses.has(snapPoint.name)
+    if (snapPoint.matches !== undefined) return isToy && Toys.selectorMatchesToy(snapPoint.matches, domEl);
+    return toyClasses.has(snapPoint.name);
   }
   const anchorPoints = []
   for (const topToyEl of _svgEl.querySelectorAll('#toys-layer > [data-id]')) {
@@ -1084,23 +1088,23 @@ const App = {
   commitBounPos: ({ toolName, x, y, w, h }) => {
     const def = BounPos.BOUNPOS_TYPES[toolName];
     if (!def) return;
-    const { id, name } = def.newId();
+    const { id, matches } = def.newId();
     let params;
     if (def.genType === null) {
-      params = { id, name, x, y, w, h };
+      params = { id, matches, x, y, w, h };
     } else {
       const toolParams   = App.getToolParams(toolName);
       const createParams = BounPos.toolParamsToCreateParams(def.genType, toolParams, {x, y, w, h});
       if (createParams.circles.length === 0) return;
       params = {
-        id, name, snapRadius: createParams.snapRadius, genType: def.genType,
+        id, matches, snapRadius: createParams.snapRadius, genType: def.genType,
         xSpacing: createParams.xSpacing, ySpacing: createParams.ySpacing,
         x, y, w, h,
         circles: createParams.circles,
       };
     }
     _Layers.boun_pos.add(toolName, params);
-    App.addLog(`added ${def.label} ${name}`, 'local');
+    App.addLog(`added ${def.label} ${matches}`, 'local');
     App.select(id);
   },
 
@@ -1322,9 +1326,8 @@ const App = {
     const anchor = App.getAnchor(domEl);
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
-    const toyClasses  = getToyClasses(domEl);
     const bounPosEl   = layerElOf('boun_pos');
-    const boundsRects = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, anchor) : null;
+    const boundsRects = isToy ? BounPos.computeBoundaryRects(bounPosEl, domEl, anchor) : null;
     const boundsSnap  = BounPos.getSnapPoints(bounPosEl);
     const toySnap     = Toys.getSnapPoints(toysLayerEl);
     const snapPoints  = filterSnapPoints(domEl, [...boundsSnap, ...toySnap]);
@@ -1815,9 +1818,8 @@ const App = {
     const leaderEl  = elements.find(e => e.id === leaderId) ?? elements[0];
     const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
-    const toyClasses   = getToyClasses(anchorDom);
     const bounPosEl    = layerElOf('boun_pos');
-    const boundsRects  = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
+    const boundsRects  = isToy ? BounPos.computeBoundaryRects(bounPosEl, anchorDom, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
     const snapPoints   = BounPos.getSnapPoints(bounPosEl);
 
     _multiDragState = {

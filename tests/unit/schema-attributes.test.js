@@ -93,7 +93,7 @@ describe('the boundaries layer DOM carries exactly the attributes its writers se
     return { ydoc, layerEl, L };
   }
 
-  const GROUP_ATTRS = ['id', 'data-id', 'data-module', 'name', 'data-bounpos-type', 'transform'];
+  const GROUP_ATTRS = ['id', 'data-id', 'data-module', 'data-tt-matches', 'data-bounpos-type', 'transform'];
   const POS_SET_ATTRS = [...GROUP_ATTRS, 'data-snap-radius', 'data-gen-type', 'data-gen-x-spacing', 'data-gen-y-spacing'];
 
   // Every element below the group, recursively: tag plus attribute names.
@@ -104,7 +104,7 @@ describe('the boundaries layer DOM carries exactly the attributes its writers se
   });
 
   function seed(L) {
-    L.add('boundary', { id: 'b1', name: 'Hand', x: 0, y: 0, w: 200, h: 100 });
+    L.add('boundary', { id: 'b1', matches: '.Hand', x: 0, y: 0, w: 200, h: 100 });
     for (const [toolName, id, toolParams] of [
       ['pos-grid-sq',  'sq',  { spacing: 80, snapRadius: 2 }],
       ['pos-grid-hex', 'hex', { xSpacing: 60, ySpacing: 60, snapRadius: 2 }],
@@ -112,7 +112,7 @@ describe('the boundaries layer DOM carries exactly the attributes its writers se
       const def = BOUNPOS_TYPES[toolName];
       const p = toolParamsToCreateParams(def.genType, toolParams, { x: 0, y: 0, w: 200, h: 200 });
       L.add(toolName, {
-        id, name: id, snapRadius: p.snapRadius, genType: def.genType,
+        id, matches: '.toy', snapRadius: p.snapRadius, genType: def.genType,
         xSpacing: p.xSpacing, ySpacing: p.ySpacing, x: 0, y: 0, w: 200, h: 200, circles: p.circles,
       });
     }

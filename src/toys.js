@@ -897,10 +897,20 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
 export function acceptsToy(contentsGroup, toyEl) {
   const selector = contentsGroup.getAttribute('data-tt-matches')
   if (!selector) return true
+  return selectorMatchesToy(selector, toyEl)
+}
+
+/**
+ * Whether a CSS selector matches toyEl's wrapper or its own inner <svg>. An
+ * empty selector matches nothing, so callers decide what "no selector" means.
+ * A selector that doesn't parse matches nothing, and says so.
+ */
+export function selectorMatchesToy(selector, toyEl) {
+  if (!selector) return false
   try {
     return toyEl.matches(selector) || !!toyEl.querySelector(':scope > svg')?.matches(selector)
   } catch (err) {
-    console.warn(`[toys] tt_contents data-tt-matches="${selector}" is not a valid selector`)
+    console.warn(`[toys] data-tt-matches="${selector}" is not a valid selector`)
     return false
   }
 }

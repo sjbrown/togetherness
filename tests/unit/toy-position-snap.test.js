@@ -774,7 +774,7 @@ describe('boun_pos snap points after a move', () => {
     L.render(layerEl)
     const circles = gridFillExtent(0, 0, 200, 200, 'square', 100, 100)
     L.add('pos-grid-sq', {
-      id: 'ps1', name: 'chip', snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
+      id: 'ps1', matches: '.chip', snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
       x: 0, y: 0, w: 200, h: 200, circles,
     })
     return { L, layerEl }
@@ -794,10 +794,12 @@ describe('boun_pos snap points after a move', () => {
 
   test('boundary rects follow a move too', () => {
     const { L, layerEl } = setup()
-    L.add('boundary', { id: 'b1', name: 'chip', x: 0, y: 0, w: 100, h: 100 })
+    L.add('boundary', { id: 'b1', matches: '.chip', x: 0, y: 0, w: 100, h: 100 })
     L.applyMoveCommit(L.find('b1'), 700, 700)
-    expect(computeBoundaryRects(layerEl, new Set(['chip']), { x: 750, y: 750 }))
+    const chip = document.createElementNS(SVG_NS, 'g')
+    chip.setAttribute('class', 'chip')
+    expect(computeBoundaryRects(layerEl, chip, { x: 750, y: 750 }))
       .toEqual([{ x: 700, y: 700, w: 100, h: 100 }])
-    expect(computeBoundaryRects(layerEl, new Set(['chip']), { x: 50, y: 50 })).toBeNull()
+    expect(computeBoundaryRects(layerEl, chip, { x: 50, y: 50 })).toBeNull()
   })
 })

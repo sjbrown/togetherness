@@ -60,7 +60,7 @@ afterEach(() => { vi.unstubAllGlobals() })
 function addPosSet(L, toolName, genType, id, x, y, w, h, toolParams) {
   const p = toolParamsToCreateParams(genType, toolParams, { x, y, w, h })
   L.add(toolName, {
-    id, name: id, snapRadius: p.snapRadius, genType,
+    id, matches: '.' + id, snapRadius: p.snapRadius, genType,
     xSpacing: p.xSpacing, ySpacing: p.ySpacing, x, y, w, h, circles: p.circles,
   })
 }
@@ -135,17 +135,17 @@ const LAYERS = [
     // add (boundary, square and hex position sets), move, resize, rename,
     // grid-parameter edits, applyTtState, then move and delete as batches
     script({ L }) {
-      L.add('boundary', { id: 'b1', name: 'forest', x: 20, y: 30, w: 200, h: 100 })
+      L.add('boundary', { id: 'b1', matches: '.forest', x: 20, y: 30, w: 200, h: 100 })
       addPosSet(L, 'pos-grid-sq',  'square', 'sq', 0, 0, 300, 300, { spacing: 100, snapRadius: 2 })
       addPosSet(L, 'pos-grid-hex', 'hex',    'hx', 400, 0, 300, 300, { xSpacing: 70, ySpacing: 60, snapRadius: 2 })
-      L.add('boundary', { id: 'b2', name: 'cave', x: 500, y: 500, w: 100, h: 100 })
+      L.add('boundary', { id: 'b2', matches: '.cave', x: 500, y: 500, w: 100, h: 100 })
 
       L.applyMoveCommit(L.find('b1'), 40, 50)
       L.applyResize(L.find('sq'), 10, 10, 240, 180)
-      L.edit(L.find('b1'), { name: 'meadow' })
+      L.edit(L.find('b1'), { 'data-tt-matches': '.meadow' })
       L.edit(L.find('sq'), { xSpacing: 60, ySpacing: 90 })
       L.edit(L.find('hx'), { snapRadius: 4 })
-      L.applyTtState({ id: 'hx', bounPosType: 'pos-set', name: 'hexes', x: 420, y: 20 })
+      L.applyTtState({ id: 'hx', bounPosType: 'pos-set', 'data-tt-matches': '.hexes', x: 420, y: 20 })
 
       L.moveMany([{ id: 'b1', x: 0, y: 0 }, { id: 'hx', x: 600, y: 10 }])
       L.deleteMany(['b2', 'sq'])
