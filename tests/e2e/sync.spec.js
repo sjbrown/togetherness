@@ -423,6 +423,15 @@ test.describe('two-peer sync', () => {
       }
     });
 
+    // The credentials service answers only the origins it lists, and the
+    // browser logs a CORS error for any other, so keep the test off the network.
+    await page.route('**/tt-turn-credentials.*/**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ iceServers: [{ urls: ['stun:stun.cloudflare.com:3478'] }], ttl: 0, relay: false }),
+    }));
+
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 

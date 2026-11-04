@@ -231,7 +231,7 @@ describe('addToy', () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     await expect(
-      addToy(ydoc, layerEl, { id: 'x', toyType: 'player_marker', x: 0, y: 0 })
+      addToy(ydoc, layerEl, { id: 'x', toyType: 'meeple', x: 0, y: 0 })
     ).rejects.toThrow(/failed to load/)
     expect(layerEl.children.length).toBe(0)
   })
@@ -241,8 +241,8 @@ describe('deleteEl', () => {
   test('removes the toy <g> from the layer', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
-    await addToy(ydoc, layerEl, { id: 't2', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 0, y: 0 })
+    await addToy(ydoc, layerEl, { id: 't2', toyType: 'meeple', x: 0, y: 0 })
 
     expect(deleteEl(layerEl, 't1')).toBe(true)
     expect(layerEl.children.length).toBe(1)
@@ -259,7 +259,7 @@ describe('layerData / scripts stay out of the toy\'s own DOM', () => {
   test('scripts are never in a placed toy\'s own DOM \u2014 hoisted to the document instead', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 0, y: 0 })
 
     // Not in the mirrored DOM used for on-screen rendering...
     expect(toyEl.querySelector('script')).toBeNull()
@@ -272,7 +272,7 @@ describe('scoped lookup ($)', () => {
   test('rewrites a bare #id to the toy-instance-namespaced id and finds it', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 0, y: 0 })
 
     const found = toyEl.$('#token_front')
     expect(found).not.toBeNull()
@@ -282,7 +282,7 @@ describe('scoped lookup ($)', () => {
   test('rewrites every #token in a compound selector, leaving classes alone', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 0, y: 0 })
 
     const found = toyEl.$('#label #ts')
     expect(found).not.toBeNull()
@@ -292,7 +292,7 @@ describe('scoped lookup ($)', () => {
   test('returns null when the rewritten id has no match, same as querySelector', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 0, y: 0 })
 
     expect(toyEl.$('#does_not_exist')).toBeNull()
   })
@@ -300,8 +300,8 @@ describe('scoped lookup ($)', () => {
   test('two instances of the same type resolve to their own ids, not the other\u2019s', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const elA = await addToy(ydoc, layerEl, { id: 'a', toyType: 'player_marker', x: 0, y: 0 })
-    const elB = await addToy(ydoc, layerEl, { id: 'b', toyType: 'player_marker', x: 0, y: 0 })
+    const elA = await addToy(ydoc, layerEl, { id: 'a', toyType: 'meeple', x: 0, y: 0 })
+    const elB = await addToy(ydoc, layerEl, { id: 'b', toyType: 'meeple', x: 0, y: 0 })
 
     expect(elA.$('#token_front').getAttribute('id')).toBe('a__token_front')
     expect(elB.$('#token_front').getAttribute('id')).toBe('b__token_front')
@@ -310,7 +310,7 @@ describe('scoped lookup ($)', () => {
   test('.$() is only on the toy root; a nested element reaches it via closest()', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 0, y: 0 })
 
     const nested = toyEl.querySelector('#t1__ts')
     expect(nested.$).toBeUndefined()
@@ -336,7 +336,7 @@ describe('getGeom (toys)', () => {
   test('returns numeric bbox centered on the placement point', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 100, y: 200 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 100, y: 200 })
     const geo = getGeom(toyEl)
     expect(geo).toEqual({ x: 100 - TOY_WIDTH / 2, y: 200 - TOY_HEIGHT / 2, width: TOY_WIDTH, height: TOY_HEIGHT })
     expect(typeof geo.x).toBe('number')
@@ -346,7 +346,7 @@ describe('getGeom (toys)', () => {
   test('returns the exact embedded svg bounds', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 50, y: 80 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 50, y: 80 })
     const geo = getGeom(toyEl)
     expect(geo.x).toBe(50 - TOY_WIDTH / 2)
     expect(geo.y).toBe(80 - TOY_HEIGHT / 2)
@@ -363,7 +363,7 @@ describe('getGeom (toys)', () => {
   test('returns correct geometry after the embedded svg is repositioned', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 100, y: 100 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 100, y: 100 })
 
     // simulate a drag: mutate the embedded svg's x and y directly
     const svg = toyEl.querySelector('svg')
@@ -378,8 +378,8 @@ describe('getGeom (toys)', () => {
   test('geometry from two instances does not bleed between them', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyA = await addToy(ydoc, layerEl, { id: 'a', toyType: 'player_marker', x: 100, y: 100 })
-    const toyB = await addToy(ydoc, layerEl, { id: 'b', toyType: 'player_marker', x: 400, y: 400 })
+    const toyA = await addToy(ydoc, layerEl, { id: 'a', toyType: 'meeple', x: 100, y: 100 })
+    const toyB = await addToy(ydoc, layerEl, { id: 'b', toyType: 'meeple', x: 400, y: 400 })
 
     const geoA = getGeom(toyA)
     const geoB = getGeom(toyB)
@@ -583,7 +583,7 @@ describe('movement', () => {
   test('committing a move updates the embedded svg position', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't', toyType: 'meeple', x: 100, y: 100 })
     expect(toyEl.querySelector('svg').getAttribute('x')).toBe(String(100 - TOY_WIDTH / 2))
 
     commitMove(toyEl, 200, 250)
@@ -595,7 +595,7 @@ describe('movement', () => {
   test('getGeom reflects the moved position', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't', toyType: 'player_marker', x: 100, y: 100 })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't', toyType: 'meeple', x: 100, y: 100 })
     commitMove(toyEl, 300, 0)
     const geo = getGeom(toyEl)
     expect(geo).toEqual({ x: 300, y: 0, width: TOY_WIDTH, height: TOY_HEIGHT })
@@ -636,7 +636,7 @@ describe('applyColor (via addToy)', () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const toyEl = await addToy(ydoc, layerEl, {
-      id: 't1', toyType: 'player_marker', x: 100, y: 100,
+      id: 't1', toyType: 'meeple', x: 100, y: 100,
       color: 'hsl(0, 100%, 50%)',
     })
     const m = toyEl.querySelector('feColorMatrix').getAttribute('values').trim().split(/\s+/).map(Number)
@@ -648,8 +648,8 @@ describe('applyColor (via addToy)', () => {
   test('two players get different feColorMatrix values', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toy1 = await addToy(ydoc, layerEl, { id: 'p1', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(0, 100%, 50%)' })
-    const toy2 = await addToy(ydoc, layerEl, { id: 'p2', toyType: 'player_marker', x: 0, y: 0, color: 'hsl(240, 100%, 50%)' })
+    const toy1 = await addToy(ydoc, layerEl, { id: 'p1', toyType: 'meeple', x: 0, y: 0, color: 'hsl(0, 100%, 50%)' })
+    const toy2 = await addToy(ydoc, layerEl, { id: 'p2', toyType: 'meeple', x: 0, y: 0, color: 'hsl(240, 100%, 50%)' })
 
     const m1 = toy1.querySelector('feColorMatrix').getAttribute('values').trim().split(/\s+/).map(Number)
     const m2 = toy2.querySelector('feColorMatrix').getAttribute('values').trim().split(/\s+/).map(Number)
@@ -660,7 +660,7 @@ describe('applyColor (via addToy)', () => {
   test('placement without a color leaves default matrix values', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
-    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'player_marker', x: 0, y: 0, color: undefined })
+    const toyEl = await addToy(ydoc, layerEl, { id: 't1', toyType: 'meeple', x: 0, y: 0, color: undefined })
     // default from the TOY_SVG fixture: '1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 1 0'
     expect(toyEl.querySelector('feColorMatrix').getAttribute('values')).toContain('1 0 0 0 0')
   })

@@ -28,6 +28,7 @@ import * as OpHead                                from './op_head.js';
 import * as OpCheckpoint                          from './op_checkpoint.js';
 import * as OpPrune                               from './op_prune.js';
 import * as OpLayer                               from './op_layer.js';
+import * as OpHistory                             from './op_history.js';
 import { opLayers, getOpLayer }                   from './op_layers.js';
 import * as User                                  from './user.js';
 import * as Trace                                 from './trace.js';
@@ -244,7 +245,6 @@ function _writePivot(id, mtype, startRect, fromPivot, toPivot, deg) {
   const el    = _Layers[mtype]?.find(id);
   _Layers[mtype]?.applyPivot(el, toPivot.fx, toPivot.fy,
                              startRect.x + shift.dx, startRect.y + shift.dy);
-  addHistory(`pivot ${id} → (${toPivot.fx}, ${toPivot.fy})`, { elType: mtype });
 }
 
 // Canvas-space (px, py) expressed in id's own UNROTATED space. Handles are
@@ -274,6 +274,7 @@ const SOFT_LOCK_TICK_MS = 250;
 // topological sort over everything it is given; a table with thousands of
 // operations should not pay for the whole log on every panel refresh.
 const MAX_DEBUG_OPS = 250;
+const MAX_HISTORY_ROWS = 50;
 
 // Minimum gap between claim-refresh broadcasts during a single drag
 // gesture (App.move). Well under REQUEST_WINDOW_MS (3s), so a long drag
@@ -303,11 +304,8 @@ function _singleSelectedId() {
   return ids.length === 1 ? ids[0] : null;
 }
 let _activeTool   = 'select';
+let _previewCache = { key: null, states: null }; // getOpPreview's last result
 let _offline      = false;
-let _historyLog   = [];      // { label } — human-readable, newest first
-let _undoLog      = [];      // { label } — actions undone, newest first;
-                              // shown near the Redo button, separate from
-                              // _historyLog per the panel's own layout.
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
 // Awareness state: drag: { elId, dx, dy }
@@ -680,11 +678,11 @@ function handleBranchConflict(layer, tips) {
     { authorId: App.user.id, joinSequence });
 
   if (!decision.authoredSplitter) {
-    addHistory('branch resolved (adopted shared history)', { elType: layer.name });
+    App.addLog('branch resolved (adopted shared history)', 'remote');
     return;
   }
 
-  addHistory("branch conflict — preserving your divergent work in a new table", { elType: layer.name });
+  App.addLog('branch conflict — preserving your divergent work in a new table', 'remote');
   // No LCA means the sides share no history: this peer was offline past the prune age.
   forkIntoNewTable(layer, decision.orderedIds, decision.seed, { offline: decision.lca == null });
 }
@@ -765,15 +763,17 @@ function handleOrphanedLocalTips(layer, layerEl, deletedIds) {
   Trace.op('orphaned', `local tips were pruned away; adopted ${out.tips.join(', ')}`,
     { layer: layer.name, authored: out.authored, tips: out.tips }, 'warn');
   if (!out.fork) {
-    addHistory('shared history moved on while you were away (adopted)', { elType: layer.name });
+    App.addLog('shared history moved on while you were away (adopted)', 'remote');
     return;
   }
-  addHistory("you were offline while others pruned history — preserving your work in a new table", { elType: layer.name });
+  App.addLog('you were offline while others pruned history — preserving your work in a new table', 'remote');
   forkIntoNewTable(layer, out.fork.orderedIds, out.fork.seed, { offline: true });
 }
 
 function onOpsChanged(layer, evt, transaction) {
-  if (transaction?.local) return;
+  // A local gesture sets its head after the op lands, so the panel is
+  // refreshed once the gesture has returned.
+  if (transaction?.local) { queueMicrotask(() => UI.refreshFromDoc()); return; }
   const layerEl = layerElOf(layer);
   if (!layerEl) return;
 
@@ -796,7 +796,6 @@ function onOpsChanged(layer, evt, transaction) {
       const named = revertLine(layer, op);
       const msg = named ? named.line : `remote: ${op.gesture}`;
       App.addLog(msg, 'remote');
-      addHistory(msg, { elType: layer.name });
       if (named?.owner === App.user.id) UI.toast(named.line);
     }
     const out = OpLayer.receiveLayerOp(_ydoc, layer, layerEl, opId, _tableId,
@@ -867,8 +866,6 @@ function moduleForElement(el) {
 const App = {
   // ── Queries (ui.js, overlay.js read these) ─────────────────────────────────
   getActiveLayer:  () => _activeLayer,
-  getHistory:      () => _historyLog.slice(0, 20),
-  getUndoHistory:  () => _undoLog.slice(0, 20),
   getLayers:       () => _layerMeta.map(l => ({
     ...l,
     visible: _layerVisibility[l.id] ?? true,
@@ -1071,7 +1068,6 @@ const App = {
     const deleted = op ? ids.length : 0;
 
     if (deleted > 0) {
-      addHistory(`deleted ${deleted} objects`);
       App.addLog(`deleted ${deleted} objects`, 'local');
     }
     _clearClaims();
@@ -1082,9 +1078,6 @@ const App = {
   commitDrawing: (attrs) => {
     const id = newDrawingId();
     _Layers.drawing.add({ ...attrs, id });
-    addHistory(`added ${attrs.type ?? 'rect'} ${id}`, {
-      fill: attrs.fill, elType: attrs.type,
-    });
     App.addLog(`added ${attrs.type} ${id}`, 'local');
   },
 
@@ -1107,7 +1100,6 @@ const App = {
       };
     }
     _Layers.boun_pos.add(toolName, params);
-    addHistory(`added ${def.label} ${name}`, { elType: 'boun_pos' });
     App.addLog(`added ${def.label} ${name}`, 'local');
     App.select(id);
   },
@@ -1120,7 +1112,6 @@ const App = {
     _layerVisibility[id] = visible;
     UI.saveLayerState();
     applyLayerVisibility();
-    UI.refreshFromDoc();
   },
 
   // Returns a sorted, deduplicated array of every CSS class name found on any
@@ -1191,7 +1182,6 @@ const App = {
     if (!layerEl) return;
     try {
       Toys.invokeMenuAction(_ydoc, layerEl, svgEl, namespace, key, undefined, App.user.id, _tableId, params);
-      addHistory(`${key} ${id}`, { elType: 'toys' });
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
       App.addLog(`toy action failed: ${err.message}`, 'del');
@@ -1205,7 +1195,6 @@ const App = {
     if (!layerEl || svgEls.some(svgEl => !svgEl)) return;
     try {
       Toys.invokeMenuActionOn(_ydoc, layerEl, svgEls, namespace, key, undefined, App.user.id, _tableId);
-      addHistory(`${key} × ${ids.length}`, { elType: 'toys' });
     } catch (err) {
       UI.toast(`Action failed: ${err.message}`, 'warn');
       App.addLog(`toy action failed: ${err.message}`, 'del');
@@ -1225,7 +1214,6 @@ const App = {
     const L = _Layers[mtype];
     if (L) L.edit(L.find(id), editData);
     // Refresh the Edit panel body to show the updated values.
-    UI.refreshFromDoc();
     // endGhost's render() paints current DOM state, so it must run
     // after the real change lands
     Overlay.endGhost(id);
@@ -1261,7 +1249,6 @@ const App = {
     // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
     _Layers.toys.add({ id, toyType: def.toyType, x, y, color }).then(async () => {
-      addHistory(`placed ${def.label} ${id}`, { elType: 'toy' });
       App.addLog(`placed ${def.label} ${id}`, 'local');
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
@@ -1287,7 +1274,6 @@ const App = {
     const yEl = L.find(id);
     if (!yEl) return false;
     L.delete(id);
-    addHistory(`deleted ${mtype}:${id}`);
     App.addLog(`deleted ${id}`, 'local');
     if (_desired[id]?.holding) {
       _unclaim([id]);
@@ -1315,7 +1301,6 @@ const App = {
     }
     const src = _Layers.drawing.find(id);
     if (!src || !_Layers.drawing.duplicate(src, newDrawingId())) return;
-    addHistory(`duplicated ${id}`, { elType: 'drawing' });
     App.addLog(`duplicated ${id}`, 'local');
   },
 
@@ -1473,10 +1458,6 @@ const App = {
       // A toy landing inside a container leaves selection
       _clearClaims();
 
-      addHistory(`moved ${id} into a container`, {
-        fill: domEl?.getAttribute('fill'),
-        elType: mtype,
-      });
       return;
     }
 
@@ -1486,10 +1467,6 @@ const App = {
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
     // the selection ring from whatever the DOM currently shows.
     Overlay.endDragPlaceholder(id);
-    addHistory(`moved ${id} → (${rx}, ${ry})`, {
-      fill: domEl?.getAttribute('fill'),
-      elType: mtype,
-    });
   },
 
   cancelMove: () => {
@@ -1697,7 +1674,6 @@ const App = {
     // whatever the DOM currently shows, so it has to run after the real
     // size lands, not before.
     Overlay.endResizeGhost(id);
-    addHistory(`resized ${id}`, { elType: mtype });
   },
 
   cancelResize: () => {
@@ -1762,7 +1738,6 @@ const App = {
     _Layers[mtype]?.applyRotate(el, deg);
     // Ghost ends after the commit — same reasoning as commitResize.
     Overlay.endResizeGhost(id);
-    addHistory(`rotated ${id} → ${deg}°`, { elType: mtype });
   },
 
   cancelRotate: () => {
@@ -1941,7 +1916,6 @@ const App = {
     // Ghosts end after the commit
     for (const el of elements) Overlay.endDragPlaceholder(el.id);
 
-    addHistory(`moved ${elements.length} objects`);
     App.addLog(`moved ${elements.length} objects`, 'local');
     _multiDragState = null;
   },
@@ -2015,53 +1989,79 @@ const App = {
     });
   },
   undo: () => App.undoFor(App.user.id),
-  // Undo ownerId's latest action (this peer's, when ownerId is me). Layers
-  // are chosen between by the target's ts, the owner's own clock.
+  // Undo ownerId's newest live action (this peer's, when ownerId is me),
+  // whichever layer it is in, by the owner's own clock. Best effort: if that
+  // one cannot go cleanly the toast says why, and nothing older is tried.
   undoFor: (ownerId) => {
     // A moved/resized/deleted shape's selRing is meaningless once the
     // gesture that put it there is undone
     _clearClaims();
-    const me = App.user.id;
-    const candidates = [];
-    for (const layer of opLayers()) {
-      const layerEl = layerElOf(layer);
-      if (!layerEl) continue;
-      const op = OpLayer.undoCandidate(_ydoc, layer, _tableId, me, { owner: ownerId, layerEl });
-      if (!op) continue;
-      candidates.push({ ts: op.ts, run: () => {
-        const done = OpLayer.undoGesture(_ydoc, layer, layerEl, _tableId, me, { owner: ownerId });
-        if (!done) return false;
-        const named = revertLine(layer, done);
-        if (named) addHistory(named.line);
-        else addUndoHistory(`undid: ${describeGesture(done.gesture)}`);
-        UI.toast('Undone');
-        return true;
-      } });
-    }
-    if (!runLatestFirst(candidates)) UI.toast('Nothing to undo', 'warn');
+    const row = newestAcrossLayers(layer => OpLayer.newestLiveRow(_ydoc, layer, _tableId, App.user.id,
+      { owner: ownerId, joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.ts);
+    if (!row) return UI.toast('Nothing to undo', 'warn');
+    stepOp('undo', row.layer, row.id);
   },
+  // Redo the newest thing this peer undid, by when it was undone.
   redo: () => {
     _clearClaims();
-    const me = App.user.id;
-    const candidates = [];
-    for (const layer of opLayers()) {
-      const layerEl = layerElOf(layer);
-      if (!layerEl) continue;
-      const op = OpLayer.redoCandidate(_ydoc, layer, _tableId, me, { layerEl });
-      if (!op) continue;
-      candidates.push({ ts: op.ts, run: () => {
-        const done = OpLayer.redoGesture(_ydoc, layer, layerEl, _tableId, me);
-        if (!done) return false;
-        const named = revertLine(layer, done);
-        addHistory(named ? named.line : `redid: ${describeGesture(done.gesture)}`);
-        UI.toast('Redone');
-        return true;
-      } });
-    }
-    if (!runLatestFirst(candidates)) UI.toast('Nothing to redo', 'warn');
+    const row = newestAcrossLayers(layer => OpLayer.newestUndoneRow(_ydoc, layer, _tableId, App.user.id,
+      { joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.undoneAt);
+    if (!row) return UI.toast('Nothing to redo', 'warn');
+    stepOp('redo', row.layer, row.id);
   },
-  canUndo: () => opLayers().some(layer => OpLayer.canUndo(_ydoc, layer, _tableId, App.user.id, { layerEl: layerElOf(layer) })),
-  canRedo: () => opLayers().some(layer => OpLayer.canRedo(_ydoc, layer, _tableId, App.user.id, { layerEl: layerElOf(layer) })),
+  // The history panel's rows, every layer's newest first. Authors are full
+  // profiles so ui.js can draw their avatar without reaching into awareness.
+  getOpHistory: () => {
+    const joinSequence = tablesAPI.getJoinSequenceArray(_ydoc);
+    return opLayers()
+      .flatMap(layer => {
+        const layerEl = layerElOf(layer);
+        if (!layerEl) return [];
+        return OpLayer.historyOf(_ydoc, layer, _tableId, App.user.id, { joinSequence, limit: MAX_HISTORY_ROWS })
+          .map(row => ({
+            opId:     row.id,
+            layer:    layer.name,
+            gesture:  row.gesture,
+            subject:  OpHistory.subjectOf(row.op, layerEl),
+            ts:       row.ts,
+            author:   authorProfile(row.authorId),
+            undoneBy: row.undoneBy == null ? null : authorProfile(row.undoneBy),
+            active:   row.active,
+            // What the row is held back by: later live work, or earlier undone work.
+            blocked:  row.blockedBy.length ? 'later' : row.waitingOn.length ? 'earlier' : null,
+            canUndo:  row.canUndo,
+            canRedo:  row.canRedo,
+          }));
+      })
+      .sort((a, b) => (b.ts - a.ts) || (a.opId < b.opId ? 1 : -1))
+      .slice(0, MAX_HISTORY_ROWS);
+  },
+  // The row's subject as the layer had it before and after the op, as
+  // detached elements (null where it did not exist), or null if the op no
+  // longer applies. The panel re-renders on every change while a row is
+  // open, so the last result is kept: it depends only on the op and its
+  // ancestry, which never change. Each call gets its own copies, since the
+  // panel takes them apart.
+  getOpPreview: (layerName, opId) => {
+    const key = `${layerName}:${opId}`;
+    if (_previewCache.key !== key) {
+      const layer   = getOpLayer(layerName);
+      const layerEl = layerElOf(layer);
+      const ops     = OpDag.getOps(_ydoc, layer);
+      const op      = OpDag.getOp(ops, opId);
+      if (!op || !layerEl) return null;
+      const states = OpHistory.previewStates(op, layerEl, {
+        ops, content: OpDag.getContent(_ydoc, layer), joinSequence: tablesAPI.getJoinSequenceArray(_ydoc),
+      });
+      // A miss is not kept: an op can arrive before the parents it needs.
+      if (!states) return null;
+      _previewCache = { key, states };
+    }
+    const { before, after } = _previewCache.states;
+    return { before: before?.cloneNode(true) ?? null, after: after?.cloneNode(true) ?? null };
+  },
+  undoOp: (layerName, opId) => stepOp('undo', layerName, opId),
+  redoOp: (layerName, opId) => stepOp('redo', layerName, opId),
   exportSVG: () => {
     const clone = Storage.buildExportSvg(_svgEl, _ydoc);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -2119,8 +2119,6 @@ const App = {
     };
     input.click();
   },
-
-  addHistory,
 
   // Application narration. `type` is one of 'local' | 'remote' | 'del' | ''.
   // Recorded rather than rendered: #eventLog no longer exists, and a ring
@@ -2237,6 +2235,13 @@ const App = {
     };
   },
 
+  getNetStatus: () => ({
+    ..._netStatus,
+    offline:  _offline,
+    ice:      ExternalServices.describeIceServers(),
+    peersIce: ExternalServices.getIcePeers(),
+  }),
+
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getBackground:   () => ({
     url:    _yMeta.get('bg_url')    ?? '',
@@ -2253,14 +2258,6 @@ const App = {
 };
 
 // ── History log ───────────────────────────────────────────────────────────────
-
-// Run the candidates highest-ts first until one applies. The ts is the
-// author's own wall clock: it picks which of this author's actions is the
-// most recent across layers, and decides nothing else. A candidate that can't
-// apply (its target vanished) falls through to the next-latest.
-function runLatestFirst(candidates) {
-  return candidates.sort((a, b) => b.ts - a.ts).some(c => c.run());
-}
 
 // A display name for a user id: the Peers panel's name for a connected
 // peer, else a short id.
@@ -2283,6 +2280,44 @@ function revertLine(layer, op) {
   return { line, owner: root.authorId };
 }
 
+// Who an op's author is, for drawing their avatar: this peer, a connected
+// peer, or a placeholder for someone who has left.
+function authorProfile(id) {
+  if (id === App.user.id) return App.user;
+  return App.getPeers().find(p => p.id === id)
+    ?? { id, name: String(id).slice(0, 6), color: '#6b6b6b', gradient: null };
+}
+
+// Undo or redo the chosen op from a history row, or say why not.
+function stepOp(kind, layerName, opId) {
+  _clearClaims();
+  const layer   = getOpLayer(layerName);
+  const layerEl = layerElOf(layer);
+  const run     = kind === 'undo' ? OpLayer.undoOp : OpLayer.redoOp;
+  const done    = layerEl && run(_ydoc, layer, layerEl, _tableId, App.user.id, opId,
+    { joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) });
+  if (done) UI.toast(kind === 'undo' ? 'Undone' : 'Redone');
+  else UI.toast(whyNot(layer, opId), 'warn');
+  return !!done;
+}
+
+function whyNot(layer, opId) {
+  const row = OpLayer.historyOf(_ydoc, layer, _tableId, App.user.id, { only: opId })[0];
+  if (row?.blockedBy.length) return 'Undo recent work on this element first.';
+  if (row?.waitingOn.length) return 'Redo earlier work on this element first.';
+  return 'That change can no longer be applied.';
+}
+
+// The row with the highest key among what each layer offers, with its layer's
+// name on it. Ties fall to the op id so peers agree.
+function newestAcrossLayers(rowOf, keyOf) {
+  const rows = opLayers().flatMap(layer => {
+    const row = rowOf(layer);
+    return row ? [{ ...row, layer: layer.name }] : [];
+  });
+  return rows.sort((a, b) => (keyOf(b) - keyOf(a)) || (a.id < b.id ? 1 : -1))[0] ?? null;
+}
+
 // A fresh id for a drawing shape.
 function newDrawingId() {
   return App.user.id + '_' + Math.random().toString(36).slice(2, 7);
@@ -2298,22 +2333,6 @@ function describeGesture(gesture) {
   if (gesture === 'move-batch')   return 'move';
   return gesture; // move, resize, place, delete, reparent, edit, ...
 }
-
-function addHistory(label, meta = {}) {
-  _historyLog.unshift({ label, ts: Date.now(), fill: meta.fill, elType: meta.elType });
-  if (_historyLog.length > 40) _historyLog.pop();
-  UI.refreshFromDoc();
-}
-
-// A separate log for undo actions, shown near the Redo button rather than
-// in the main gesture history — an undo isn't itself a gesture the user
-// asked the document to remember, it's the tool reversing one.
-function addUndoHistory(label) {
-  _undoLog.unshift({ label, ts: Date.now() });
-  if (_undoLog.length > 40) _undoLog.pop();
-  UI.refreshFromDoc();
-}
-
 
 function onMetaChanged() {
   renderBackgroundLayer();

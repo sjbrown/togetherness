@@ -4,9 +4,9 @@
  * Undo/redo spans three op layers — toys, drawing and boundaries — and each
  * press acts on whichever holds the author's most recent action, by ts.
  *
- * Redo has no wired UI button yet (see ui.js) — called directly via
- * window.App.redo(), the same way several existing specs already call
- * window.App.* methods that aren't fully wired to clickable UI.
+ * The history panel's buttons act on one chosen row (history-panel.spec.js),
+ * so the newest-first Undo and Redo are pressed through window.App.undo() and
+ * window.App.redo(), the actions behind Ctrl/⌘Z.
  *
  * Run via:  bin/test_e2e.sandbox.sh tests/e2e/undo-redo.spec.js
  */
@@ -16,6 +16,9 @@ import { openAsCreator, openCreatorAndJoiner, waitForPeerCount } from './helpers
 
 const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 const SIGNALING_URL = process.env.SIGNALING_URL || 'ws://localhost:4444';
+
+const pressUndo = (page) => page.evaluate(() => window.App.undo());
+const pressRedo = (page) => page.evaluate(() => window.App.redo());
 
 test.describe('undo / redo', () => {
   test('undoing a toy move restores its position; redo brings the move back', async () => {
@@ -126,7 +129,7 @@ test.describe('undo / redo', () => {
     await browser.close();
   });
 
-  test('interleaved toy, drawing and boundary actions: the real Undo button reverses them newest first, Redo walks forward', async () => {
+  test('interleaved toy, drawing and boundary actions: Undo reverses them newest first, Redo walks forward', async () => {
     const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
     const ctx  = await browser.newContext();
     const page = await ctx.newPage();
@@ -171,10 +174,6 @@ test.describe('undo / redo', () => {
     await drawRect(300, 300);
     expect(await counts()).toEqual({ toys: 2, rects: 2, bounds: 1 });
 
-    await page.evaluate(() => window.UI.openSheet('history'));
-    await page.waitForTimeout(200);
-    const undoBtn = page.locator('.action-btn', { hasText: 'Undo last action' });
-    const redoBtn = page.locator('.action-btn', { hasText: 'Redo last undone action' });
 
     const undoSteps = [
       { toys: 2, rects: 1, bounds: 1 },   // draw2
@@ -184,7 +183,7 @@ test.describe('undo / redo', () => {
       { toys: 0, rects: 0, bounds: 0 },   // toy1
     ];
     for (const expected of undoSteps) {
-      await undoBtn.click();
+      await pressUndo(page);
       await expect.poll(counts, { timeout: 3000 }).toEqual(expected);
     }
 
@@ -196,7 +195,7 @@ test.describe('undo / redo', () => {
       { toys: 2, rects: 2, bounds: 1 },   // draw2
     ];
     for (const expected of redoSteps) {
-      await redoBtn.click();
+      await pressRedo(page);
       await expect.poll(counts, { timeout: 3000 }).toEqual(expected);
     }
 
@@ -244,8 +243,8 @@ test.describe('undo / redo', () => {
   });
 });
 
-test.describe('repeated undo walks back through multiple gestures, and the real Redo button now works', () => {
-  test('three moves, three real Undo button clicks reach the original position', async () => {
+test.describe('repeated undo walks back through multiple gestures, and Redo walks forward', () => {
+  test('three moves, three Undo presses reach the original position', async () => {
     const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
     const ctx  = await browser.newContext();
     const page = await ctx.newPage();
@@ -277,25 +276,20 @@ test.describe('repeated undo walks back through multiple gestures, and the real 
     const xAt = async () => Number(await page.locator('[data-toy-type] > svg').getAttribute('x'));
     const xAfter400 = await xAt();
 
-    await page.evaluate(() => window.UI.openSheet('history'));
-    await page.waitForTimeout(200);
-    const undoBtn = page.locator('.action-btn', { hasText: 'Undo last action' });
-
-    // Regression test for the actual bug report: three real clicks on the
-    // real button must reach three DIFFERENT positions, not toggle
-    // between the last two.
-    await undoBtn.click();
+    // Regression test for the actual bug report: three presses must reach
+    // three DIFFERENT positions, not toggle between the last two.
+    await pressUndo(page);
     await page.waitForTimeout(200);
     const xAfterUndo1 = await xAt();
     expect(xAfterUndo1).not.toBe(xAfter400);
 
-    await undoBtn.click();
+    await pressUndo(page);
     await page.waitForTimeout(200);
     const xAfterUndo2 = await xAt();
     expect(xAfterUndo2).not.toBe(xAfterUndo1);
     expect(xAfterUndo2).not.toBe(xAfter400);
 
-    await undoBtn.click();
+    await pressUndo(page);
     await page.waitForTimeout(200);
     const xAfterUndo3 = await xAt();
     expect(xAfterUndo3).not.toBe(xAfterUndo2);
@@ -304,7 +298,7 @@ test.describe('repeated undo walks back through multiple gestures, and the real 
     await browser.close();
   });
 
-  test('the real Redo button, clicked for the first time in this app’s history, actually works', async () => {
+  test('Redo after Undo restores the moved position', async () => {
     const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
     const ctx  = await browser.newContext();
     const page = await ctx.newPage();
@@ -329,24 +323,11 @@ test.describe('repeated undo walks back through multiple gestures, and the real 
     const xAt = async () => Number(await page.locator('[data-toy-type] > svg').getAttribute('x'));
     const xMoved = await xAt();
 
-    await page.evaluate(() => window.UI.openSheet('history'));
-    await page.waitForTimeout(200);
-
-    // Before this fix the Redo button had no onclick at all — a static,
-    // permanently-disabled-looking placeholder.
-    const redoBtnBefore = page.locator('.action-btn', { hasText: 'Redo last undone action' });
-    expect(await redoBtnBefore.getAttribute('onclick')).toBeNull(); // nothing undone yet
-
-    await page.locator('.action-btn', { hasText: 'Undo last action' }).click();
+    await pressUndo(page);
     await page.waitForTimeout(200);
     expect(await xAt()).not.toBe(xMoved);
 
-    await page.evaluate(() => window.UI.openSheet('history'));
-    await page.waitForTimeout(200);
-    const redoBtnAfter = page.locator('.action-btn', { hasText: 'Redo last undone action' });
-    expect(await redoBtnAfter.getAttribute('onclick')).toBe('App.redo()');
-
-    await redoBtnAfter.click();
+    await pressRedo(page);
     await page.waitForTimeout(200);
     expect(await xAt()).toBe(xMoved);
 
@@ -390,21 +371,63 @@ test.describe('undoing another author’s action', () => {
     await expect(rectB).toHaveAttribute('x', '300', { timeout: 5000 });
     await expect(pageA.locator(`#drawing-layer rect[data-id="${id}"]`)).toHaveAttribute('x', '300', { timeout: 5000 });
 
-    // Both history panels name both people.
-    const nameA = await pageA.evaluate(() => window.App.user.name);
+    // Both history panels show A's move as undone, with B's avatar (name in its tooltip).
     const nameB = await pageB.evaluate(() => window.App.user.name);
     for (const page of [pageA, pageB]) {
-      await expect.poll(() => page.evaluate(() => window.App.getHistory().map(h => h.label)))
-        .toContainEqual(expect.stringMatching(new RegExp(`${nameB}.*undid.*${nameA}`)));
+      await page.evaluate(() => window.UI.openSheet('history'));
+      await expect(page.locator('.hist-op.undone .hist-op-sub svg title')).toHaveText(nameB, { timeout: 5000 });
     }
 
-    // A's real Undo button reverses A's earlier move, not the undone one again.
-    await pageA.evaluate(() => window.UI.openSheet('history'));
-    await pageA.waitForTimeout(200);
-    await pageA.locator('.action-btn', { hasText: 'Undo last action' }).click();
+    // A's own Undo reverses A's earlier move, not the undone one again.
+    await pressUndo(pageA);
 
     await expect(rectB).toHaveAttribute('x', '100', { timeout: 5000 });
     await expect(pageA.locator(`#drawing-layer rect[data-id="${id}"]`)).toHaveAttribute('x', '100');
+
+    await browser.close();
+  });
+});
+
+test.describe('Undo gives up rather than overwrite a peer', () => {
+  test('A’s Undo is refused while B’s later move of the same shape stands, and goes through once B undoes it', async () => {
+    const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+    const pageA = await (await browser.newContext()).newPage();
+    const pageB = await (await browser.newContext()).newPage();
+
+    await openCreatorAndJoiner(pageA, pageB, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
+    await waitForPeerCount(pageA, 1);
+    await waitForPeerCount(pageB, 1);
+
+    await pageA.evaluate(() => window.App.commitDrawing({
+      type: 'rect', x: 100, y: 100, width: 80, height: 80,
+      fill: '#5a7ea8', stroke: 'none', 'stroke-width': 1.5, 'corner-r': 0,
+    }));
+    await expect(pageB.locator('#drawing-layer rect')).toHaveCount(1, { timeout: 5000 });
+    const id = await pageA.locator('#drawing-layer rect').getAttribute('data-id');
+    const rectA = pageA.locator(`#drawing-layer rect[data-id="${id}"]`);
+    const rectB = pageB.locator(`#drawing-layer rect[data-id="${id}"]`);
+    const moveTo = (page, x, y) => page.evaluate(([id, x, y]) => {
+      window.App.startDrag(id);
+      window.App.commitMove(id, x, y);
+    }, [id, x, y]);
+
+    await moveTo(pageA, 300, 250);
+    await expect(rectB).toHaveAttribute('x', '300', { timeout: 5000 });
+    await moveTo(pageB, 500, 450);
+    await expect(rectA).toHaveAttribute('x', '500', { timeout: 5000 });
+
+    // A's newest move is covered by B's, so Undo says so and changes nothing.
+    await pressUndo(pageA);
+    await expect(pageA.locator('#toasts')).toContainText('Undo recent work on this element first.');
+    await expect(rectA).toHaveAttribute('x', '500');
+    await expect(rectB).toHaveAttribute('x', '500');
+
+    // Once B undoes theirs, A's goes through.
+    await pressUndo(pageB);
+    await expect(rectA).toHaveAttribute('x', '300', { timeout: 5000 });
+    await pressUndo(pageA);
+    await expect(rectA).toHaveAttribute('x', '100', { timeout: 5000 });
+    await expect(rectB).toHaveAttribute('x', '100', { timeout: 5000 });
 
     await browser.close();
   });

@@ -80,8 +80,8 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals() })
 
 async function placeAndActivate(ydoc, layerEl, id) {
-  await addToy(ydoc, layerEl, { id, toyType: 'player_marker', x: 0, y: 0 })
-  await activateToyScripts(ydoc, 'player_marker') // await real completion, not just "started"
+  await addToy(ydoc, layerEl, { id, toyType: 'dice_d6', x: 0, y: 0 })
+  await activateToyScripts(ydoc, 'dice_d6') // await real completion, not just "started"
   return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 

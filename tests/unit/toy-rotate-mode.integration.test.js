@@ -60,7 +60,7 @@ const ROTATABLE_TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 </svg>`
 
 // A second stand-in with NEITHER tt-mode-resize NOR tt_able_rotate — most
-// toys (dice, player markers, ...) — to prove the class gate actually
+// toys (dice, meeples, ...) — to prove the class gate actually
 // withholds 'sel-rotate' rather than it always being on.
 const PLAIN_TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" class="dice_d6" id="dice_d6">

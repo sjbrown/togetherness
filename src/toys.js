@@ -1338,16 +1338,6 @@ export function getTtState(toyEl) {
 
 export const TOOLS = [
   {
-    name:    'marker',
-    toyType: 'player_marker',
-    file: 'player_marker.svg',
-    label: 'Player Marker',
-    iconUrl: 'toy/player_marker.svg',
-    layer:   'toys',
-    defaults: { label: '', size: 24 },
-    options: [],
-  },
-  {
     name:    'd6',
     toyType: 'dice_d6',
     file: 'dice_d6.svg',
@@ -1463,16 +1453,15 @@ export const TOOLS = [
   },
 ];
 export const TOY_TYPES = {
-  player_marker: TOOLS[0],
-  dice_d6: TOOLS[1],
-  meeple: TOOLS[2],
-  chip: TOOLS[3],
-  bag: TOOLS[4],
-  supply: TOOLS[5],
-  tray_sum: TOOLS[6],
-  token_glass: TOOLS[7],
-  single_poker_card: TOOLS[8],
-  poker_deck: TOOLS[9],
+  dice_d6: TOOLS[0],
+  meeple: TOOLS[1],
+  chip: TOOLS[2],
+  bag: TOOLS[3],
+  supply: TOOLS[4],
+  tray_sum: TOOLS[5],
+  token_glass: TOOLS[6],
+  single_poker_card: TOOLS[7],
+  poker_deck: TOOLS[8],
   poker_card_pile: {
     name:    'poker_card_pile',
     toyType: 'poker_card_pile',
@@ -2066,6 +2055,22 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
     toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
   }, { gesture: 'place', ...opts })
   activateToyScripts(ydoc, attrs.toyType)
+  return toyEl
+}
+
+/**
+ * Place a toy and run its initialize as part of the gesture already open,
+ * so a menu action that spawns a toy is one operation. Nothing here may
+ * await: the envelope closes at the first await. So it needs the template
+ * and scripts already loaded, and returns null when they are not, leaving
+ * the caller to fall back to placeToy.
+ */
+export function placeToyInGesture(ydoc, layerEl, attrs, initArgs) {
+  if (!isInsideEnvelope()) throw new Error('[toys] placeToyInGesture needs an open gesture')
+  const svgText = _svgTextCache.get(attrs.toyType)
+  if (!svgText || !isToyTypeActivated(attrs.toyType)) return null
+  const toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
+  runInitializers(toyEl, attrs.toyType, initArgs)
   return toyEl
 }
 

@@ -181,16 +181,27 @@ own branch while players continue on the shared one is valid.
 
 The browser's native `MutationRecord` cannot be transmitted. It holds live
 node references, and its `addedNodes`/`removedNodes` are detached from the
-tree by the time anyone serializes them.
+tree.
 
-A wire form is needed.  Taking inspiration from MutationRecord makes things
+But taking inspiration for the wire form from MutationRecord makes things
 easy to reason about.
 
-**The wire form is a transcription, not an interpretation.** One
-`WireMutation` per `MutationRecord`, same three types, same fields, same
-order. We do *not* infer `MoveNode` from a remove-then-add pair. We do not
-coalesce two `setAttribute`s on the same node. We do not lift anything
-into a semantic vocabulary. The op log does not know what a die is.
+**An operation's mutations take the layer from the gesture's pre-state
+to its post-state.** Applied in order to the pre-state they give the
+post-state; when inverted (§7), they give the
+pre-state back. That is the whole contract. It does not say whether the
+mutations are a step-by-step transcription of what the handler did or the
+diff between the layer before and after the gesture. Either is valid,
+and an operation may be distilled or unoptimized so long as the contract holds.
+
+The wire form sticks to a DOM vocabulary, not a semantic
+vocabulary. It does not know what a die is. It does not create a special
+verb like `move:x1,y1:x2,y2`.
+
+Today's implementation: the diff. Before a gesture runs,
+a snapshot is taken of the layer: a copy, and a map from every node to its copy.
+Afterwards `serialize` compares the live layer with the snapshot and records what
+changed, using a structure similar to `MutationRecord`.
 
 ```
 WireMutation =
@@ -202,22 +213,28 @@ WireMutation =
                  prevSibling:NodeRef|null, nextSibling:NodeRef|null }
 ```
 
-Distilling/optimizing further is *deliberately deferred*. Compactness
-and a cleaner inverse can be achieved, it is known. When 
-performance or correctness demands it, it will be implemented, and
-documented in this section.
-
 Three things the wire form must get right, none of which are optional:
 
 **Added and removed subtrees are serialized in full.** `added` carries the
 complete markup of each inserted node, not a reference — the receiving
 peer has never seen it. `removed` likewise carries the full subtree of
-each removed node, captured *before* the removal takes effect. That second
-one costs us nothing at capture time and buys invertibility for free (§7),
-which is the whole reason undo stops being a research project.
+each removed node, as it was when the removal took effect. That buys
+invertibility for free (§7), which is the whole reason undo stops being a
+research project.
 
-**Old values are captured.** `attributeOldValue` and
-`characterDataOldValue` stay on in the observer options. Same reason.
+**Entries are worked out against the snapshot's copy, applied to it as
+they're written.** Every reference in an entry — a sibling anchor, a text
+node's index — is then valid in exactly the state a peer is in when it
+applies that entry. Removals come first, deepest parent first; then
+insertions, outermost parent first and each parent's children left to
+right; then attribute and text writes. A node the gesture created carries
+its finished subtree, and nothing inside it gets an entry of its own.
+
+**Moves are the ones that happened.** When toy z-order changes, we need to
+clarify whether A moves *below* B or B moves *above* A inside their common
+parent. The children that stay put are the longest run of them still in
+order. A child the gesture itself re-inserted is always reported as moved.
+Raising a toy above its neighbor is a move of that toy, not the neighbor.
 
 **Sibling anchors are node references, not indices.** A `child` record
 records `previousSibling`/`nextSibling` as identities. An index is a
@@ -705,22 +722,25 @@ actor = me.
 * **Undo acts on the owner's newest active real gesture** in a layer: not a
   checkpoint, not a `reverts` operation. The new operation's `reverts` is
   always that real gesture, even when it is active because of a redo, and
-  its mutations are the inverse of the target's.
+  its mutations are what applying the inverse of the target's changed.
 * **Redo is for your own undos only.** It acts on the actor's newest active
   undo operation, and is unavailable once the actor has committed a real
   gesture in that layer newer than that undo: doing something new
   invalidates what you could redo. If Alice undoes Bob's action, only Alice
   can redo it, and Bob's own Undo goes on to his previous action.
-* **A target whose inverse can no longer apply** (its node is gone) is
-  skipped. The next-newest candidate is offered instead, within a layer and
-  across layers. A stuck target never blocks later presses.
+* **Undo and redo are best effort.** A press tries the one operation it
+  names and gives up, committing nothing and saying why, if that cannot go
+  cleanly: later live work by anyone contends with it, or its inverse no
+  longer applies (its node is gone). It never falls through to an older
+  operation. `apply` is all-or-nothing, so a give-up leaves the layer as it
+  was.
 
 Consequences worth stating rather than discovering:
 
 * **Undo is not "reverse the current state."** It is "apply the inverse of
   the target operation on top of the current head." If Bob deleted the token
   after Alice moved it, Alice's undo of her move is an operation against a
-  token that isn't there, so it is skipped rather than applied. That is
+  token that isn't there, so it is refused rather than applied. That is
   correct and is what she asked for.
 * **Undoing a peer's action is mechanically supported.** It is just
   appending an inverse of an operation someone else authored — no
@@ -744,15 +764,14 @@ Within a layer the candidate search covers the union ancestry of this peer's
 local tips, not one parent chain: that is what this peer's DOM shows, so an
 owner's operations that arrived through merge parents count.
 
-An Undo press acts on whichever layer holds the owner's most recent undoable
-action, chosen by the owner's own `ts`: each op layer reports the `ts` of the
-operation it would invert (`undoCandidate`), and the highest wins, ties going
-to the op id. Redo does
-the same over the redo targets, where an undo operation's `ts` is the moment
-of the undo, so redo walks forward in the reverse of the order the undos
-happened in. A layer whose target can no longer apply (its node is gone) is
-skipped for the next-latest. The choice looks at nothing but the author's own
-timestamps, so it needs no record of "the last layer touched".
+An Undo press acts on whichever layer holds the owner's most recent live
+gesture, chosen by the owner's own `ts`: each op layer offers its newest live
+row (`newestLiveRow`), and the highest wins, ties going to the op id. Redo
+does the same over the rows the actor undid (`newestUndoneRow`), where the
+ts that counts is the moment of the undo, so redo walks forward in the
+reverse of the order the undos happened in. The choice looks at nothing but
+the author's own timestamps, so it needs no record of "the last layer
+touched". If the winner cannot go, the press ends there.
 
 ---
 

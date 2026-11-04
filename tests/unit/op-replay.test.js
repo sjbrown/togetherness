@@ -18,10 +18,17 @@ import {
 import { getHead, setHead, clearHead } from '../../src/op_head.js'
 import { checkpointOp } from '../../src/op_checkpoint.js'
 import { runInEnvelope, commitGesture } from '../../src/envelope.js'
+import { snapshot } from '../../src/op_wire_mutation.js'
 import { getOps, appendOp } from '../../src/op_dag.js'
 
 const content = new Map()
 beforeEach(() => content.clear())
+
+/** Run fn as a gesture on root and commit it, the way runGesture does. */
+function commitOn(ydoc, root, fn, opts) {
+  const before = snapshot(root)
+  return commitGesture(ydoc, TOYS_LAYER, runInEnvelope(root, fn), { before, ...opts })
+}
 
 /** checkpointOp, recording the snapshot in the shared content map. */
 function ckOp(el, opts) {
@@ -495,8 +502,8 @@ describe('a checkpoint applied as a delta contributes nothing', () => {
     const ck = ckOp(P, { authorId: 'alice', parents: ['base'], id: 'ck' })
 
     const Q = peer()
-    const qe = commitGesture(new Y.Doc(), TOYS_LAYER,
-      runInEnvelope(Q, () => Q.querySelector('[data-id="b"]').setAttribute('x', '1')),
+    const qe = commitOn(new Y.Doc(), Q,
+      () => Q.querySelector('[data-id="b"]').setAttribute('x', '1'),
       { id: 'qe', parents: ['base'] })
     const ops = new Map([['base', base], ['ck', ck], ['qe', qe]])
 
@@ -573,10 +580,10 @@ describe('receiveOp: concurrent delete vs. edit', () => {
   test('a concurrent delete and an edit of the deleted node are a conflict, not a throw', () => {
     const P = peer(), Q = peer()
     const ops = new Map([['base', { id: 'base', parents: [], mutations: [] }]])
-    const del = commitGesture(new Y.Doc(), TOYS_LAYER,
-      runInEnvelope(P, () => P.querySelector('[data-id=a]').remove()), { id: 'del', parents: ['base'] })
-    const mv = commitGesture(new Y.Doc(), TOYS_LAYER,
-      runInEnvelope(Q, () => Q.querySelector('[data-id=a]').setAttribute('x', '5')), { id: 'mv', parents: ['base'] })
+    const del = commitOn(new Y.Doc(), P,
+      () => P.querySelector('[data-id=a]').remove(), { id: 'del', parents: ['base'] })
+    const mv = commitOn(new Y.Doc(), Q,
+      () => Q.querySelector('[data-id=a]').setAttribute('x', '5'), { id: 'mv', parents: ['base'] })
     ops.set('del', del); ops.set('mv', mv)
 
     expect(() => receiveOp(P, ops, content, 'del', 'mv')).not.toThrow()
@@ -589,10 +596,11 @@ describe('commitGesture', () => {
   test('turns a captured batch into an operation in the log', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r" x="1"/>')
+    const before = snapshot(root)
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
 
-    const op = commitGesture(ydoc, TOYS_LAYER, records, { gesture: 'move', authorId: 'alice', parents: ['cp'] })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { before, gesture: 'move', authorId: 'alice', parents: ['cp'] })
 
     expect(op.gesture).toBe('move')
     expect(op.authorId).toBe('alice')
@@ -604,17 +612,19 @@ describe('commitGesture', () => {
   test('a gesture that changed nothing is not an operation', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r"/>')
+    const before = snapshot(root)
     const records = runInEnvelope(root, () => {})
-    expect(commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'alice' })).toBeNull()
+    expect(commitGesture(ydoc, TOYS_LAYER, records, { before, authorId: 'alice' })).toBeNull()
     expect([...getOps(ydoc, TOYS_LAYER).values()].length).toBe(0)
   })
 
   test('null parents are dropped rather than stored', () => {
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r" x="1"/>')
+    const before = snapshot(root)
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '2'))
-    const op = commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'a', parents: [null] })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { before, authorId: 'a', parents: [null] })
     expect(op.parents).toEqual([])
   })
 
@@ -623,9 +633,10 @@ describe('commitGesture', () => {
     const root = layer('<rect data-id="r" x="1"/>')
     const genesis = ckOp(root, { id: 'cp', authorId: 'alice' })
 
+    const before = snapshot(root)
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
-    const op = commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'alice', parents: ['cp'] })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { before, authorId: 'alice', parents: ['cp'] })
 
     const peer = layer()
     advanceTo(peer, new Map([['cp', genesis], [op.id, op]]), content, null, op.id)
@@ -637,9 +648,10 @@ describe('commitGesture', () => {
     // be able to reconstruct it. That is what makes genesis a checkpoint.
     const ydoc = new Y.Doc()
     const root = layer('<rect data-id="r" x="1"/>')
+    const before = snapshot(root)
     const records = runInEnvelope(root, () =>
       root.querySelector('[data-id="r"]').setAttribute('x', '7'))
-    const op = commitGesture(ydoc, TOYS_LAYER, records, { authorId: 'alice' })
+    const op = commitGesture(ydoc, TOYS_LAYER, records, { before, authorId: 'alice' })
 
     expect(() => advanceTo(layer(), new Map([[op.id, op]]), content, null, op.id))
       .toThrow(/unresolvable/)

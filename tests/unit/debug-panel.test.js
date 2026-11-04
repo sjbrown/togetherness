@@ -890,6 +890,23 @@ describe('snapshot', () => {
     unmount(); host.remove()
   })
 
+  test('the snapshot dialog leads with a working Download trace button', () => {
+    init({ getDebugState: () => makeState() })
+    openSnapshot()
+    const body = document.querySelector('.dialog-snapshot .dbg-snapshot')
+    const btn = body.querySelector('[data-dbg-action="download"]')
+    expect(body.firstElementChild.contains(btn)).toBe(true)
+
+    URL.createObjectURL = vi.fn(() => 'blob:x')
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    btn.click()
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1)
+    expect(click).toHaveBeenCalledTimes(1)
+    click.mockRestore()
+    closeSnapshot()
+  })
+
   test('trace events and panel re-renders leave an open snapshot untouched', async () => {
     const host = document.createElement('div')
     document.body.append(host)
