@@ -8,7 +8,7 @@ import { ensureLayerId } from '../../src/op_layers.js'
 import {
   TOYS_LAYER, TOY_TYPES, addToyDom, activateAllToyScriptsDom, reparentToyDom, deleteEl,
   findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
-  findDropTarget, runGesture, getLandingPosition,
+  findDropTarget, runGesture, getLandingPosition, toyCloneToy,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/toys.js'
 
@@ -930,5 +930,30 @@ describe('poker_deck: drawing a nested card', () => {
       expect(detail.color).toBe('#fa2020')
     }
     for (const card of onTable(t.layerEl)) expect(card.getAttribute('data-color')).toBe('#fa2020')
+  })
+})
+
+describe('cloning (a Supply copying a pile)', () => {
+  test('a cloned pile of two face-up aces of hearts has two face-up aces of hearts', async () => {
+    const t = await table()
+    const [a, b] = [loose(t.place, 'a', 1, 1), loose(t.place, 'b', 1, 1)]
+    for (const card of [a, b]) globalThis.single_poker_card.flip_card_to_front(card)
+    runInitializers(findEl(t.layerEl, 'pile1'), 'poker_card_pile', ['a', 'b'])
+    const pile = findEl(t.layerEl, 'pile1')
+    const state = (card) => ({
+      face: `${card.dataset.suit}.${card.dataset.rank} ${card.querySelector('.tspan_rank').textContent}${card.querySelector('.tspan_suit').textContent}`,
+      faceUp: !card.querySelector('.card_front + .card_back'),
+    })
+
+    const { id } = toyCloneToy(t.ydoc, t.layerEl, pile, pile, { authorId: AUTHOR, tableId: TABLE })
+
+    const copy = t.layerEl.querySelector(`[data-id="${id}"]`)
+    const cards = [...copy.querySelectorAll('.tt_contents > .toy')]
+    expect(cards).toHaveLength(2)
+    expect(cards.map(state)).toEqual([
+      { face: '1.1 A♥', faceUp: true },
+      { face: '1.1 A♥', faceUp: true },
+    ])
+    expect([...pile.querySelectorAll('.tt_contents > .toy')].map(state)).toEqual(cards.map(state)) // original untouched
   })
 })

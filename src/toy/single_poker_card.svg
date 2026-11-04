@@ -91,11 +91,17 @@ var single_poker_card = {
     }
   },
 
+  // Placing a card passes its suit and rank. A clone passes nothing; it
+  // already carries the data-suit and data-rank it was copied with, and
+  // keeps its face-up or face-down state. A fresh card is face down because
+  // the template is.
   initialize: function(elem, options = {}) {
-    const suit = options.suit ?? (1 + Math.floor(Math.random() * 4))
-    const rank = options.rank ?? (1 + Math.floor(Math.random() * 13))
+    const suit = options.suit ?? Number(elem.dataset.suit)
+    const rank = options.rank ?? Number(elem.dataset.rank)
+    if (!suit || !rank) {
+      throw new Error('[single_poker_card] initialize needs a suit and a rank')
+    }
     single_poker_card.paint_card(elem, suit, rank)
-    single_poker_card.flip_card_to_back(elem)
     elem.setAttribute('data-below', '')
     elem.setAttribute('data-above', '')
     // A card dealt by a deck remembers it, for 'Return to deck'.
