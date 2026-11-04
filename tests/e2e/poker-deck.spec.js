@@ -75,6 +75,8 @@ test('a deck contains its cards; draw, return, delete, pile and fan', async () =
   const drawn = await onTable.evaluateAll(els => els.map(el => `${el.dataset.suit}.${el.dataset.rank}`));
   expect(drawn.sort()).toEqual(stocked.slice(49).sort()); // the top three
   const ids = await onTable.evaluateAll(els => els.map(el => el.dataset.id));
+  // dealt face down: the back is painted after (on top of) the front
+  await expect(onTable.locator(':scope > svg > .card_front + .card_back')).toHaveCount(3);
   for (const el of await onTable.all()) {
     await expect(el).toHaveAttribute('data-home-deck', deckId);
   }

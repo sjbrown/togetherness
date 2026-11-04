@@ -214,6 +214,7 @@ var poker_deck = {
             suit: Number(card.getAttribute('data-suit')),
             rank: Number(card.getAttribute('data-rank')),
             deck: elem.getAttribute('data-id'),
+            topSide: '.card_back',
           },
         })
         card.remove()

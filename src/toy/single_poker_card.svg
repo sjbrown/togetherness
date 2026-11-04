@@ -91,10 +91,23 @@ var single_poker_card = {
     }
   },
 
-  // Placing a card passes its suit and rank. A clone passes nothing; it
-  // already carries the data-suit and data-rank it was copied with, and
-  // keeps its face-up or face-down state. A fresh card is face up because the
-  // template draws the front last.
+  // Puts the face matching selector on top: '.card_front' for face up,
+  // '.card_back' for face down. Throws if it matches neither face.
+  set_top_side: function(cardEl, selector) {
+    const faces = [...cardEl.querySelectorAll(':scope > svg > .card_front, :scope > svg > .card_back')]
+    const top = faces.find(face => face.matches(selector))
+    if (!top) {
+      throw new Error(`[single_poker_card] topSide ${selector} matches neither face`)
+    }
+    const other = faces.find(face => face !== top)
+    if (top.previousElementSibling !== other) other.after(top)
+  },
+
+  // Placing a card passes its suit and rank, and optionally topSide (see
+  // set_top_side). A clone passes nothing; it already carries the data-suit
+  // and data-rank it was copied with, and keeps its face-up or face-down
+  // state. Without topSide a fresh card is face up, because the template
+  // draws the front last.
   initialize: function(elem, options = {}) {
     const suit = options.suit ?? Number(elem.dataset.suit)
     const rank = options.rank ?? Number(elem.dataset.rank)
@@ -102,6 +115,7 @@ var single_poker_card = {
       throw new Error('[single_poker_card] initialize needs a suit and a rank')
     }
     single_poker_card.paint_card(elem, suit, rank)
+    if (options.topSide) single_poker_card.set_top_side(elem, options.topSide)
     elem.setAttribute('data-below', '')
     elem.setAttribute('data-above', '')
     // A card dealt by a deck remembers it, for 'Return to deck'.

@@ -926,7 +926,7 @@ describe('poker_deck: drawing a nested card', () => {
 
     expect(seen).toHaveLength(2)
     for (const detail of seen) {
-      expect(Object.keys(detail.initArgs).sort()).toEqual(['deck', 'rank', 'suit'])
+      expect(Object.keys(detail.initArgs).sort()).toEqual(['deck', 'rank', 'suit', 'topSide'])
       expect(detail.color).toBe('#fa2020')
     }
     for (const card of onTable(t.layerEl)) expect(card.getAttribute('data-color')).toBe('#fa2020')
@@ -955,5 +955,17 @@ describe('cloning (a Supply copying a pile)', () => {
       { face: '1.1 A♥', faceUp: true },
     ])
     expect([...pile.querySelectorAll('.tt_contents > .toy')].map(state)).toEqual(cards.map(state)) // original untouched
+  })
+})
+
+describe('dealing a nested card', () => {
+  const faceDown = (card) => !!card.querySelector('.card_front + .card_back')
+
+  test('a dealt card comes out face down, whatever the card template defaults to', async () => {
+    const t = await table()
+    draw(t, 'deck1', { num: 3 })
+    const dealt = onTable(t.layerEl)
+    expect(dealt).toHaveLength(3)
+    expect(dealt.every(faceDown)).toBe(true)
   })
 })

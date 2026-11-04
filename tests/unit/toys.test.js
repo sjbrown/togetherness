@@ -922,6 +922,54 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
     flip.mockRestore()
   })
 
+  describe('topSide', () => {
+    const isFaceUp = (el) => !el.querySelector('.card_front + .card_back')
+    const placed = async () => {
+      const ydoc = new Y.Doc()
+      const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+      return { ydoc, layerEl, cardEl: await placedCard(ydoc, layerEl) }
+    }
+    const init = ({ ydoc, layerEl, cardEl }, topSide) =>
+      initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 1, rank: 1, topSide })
+
+    test('.card_back puts the back on top, so the card is face down', async () => {
+      const c = await placed()
+      init(c, '.card_back')
+      expect(isFaceUp(c.cardEl)).toBe(false)
+    })
+
+    test('.card_front puts the front on top, so the card is face up', async () => {
+      const c = await placed()
+      init(c, '.card_front')
+      expect(isFaceUp(c.cardEl)).toBe(true)
+    })
+
+    test('without it the template decides, and a face already on top is not moved', async () => {
+      const c = await placed()
+      init(c, undefined)
+      expect(isFaceUp(c.cardEl)).toBe(true)
+      const records = []
+      const observer = new MutationObserver(m => records.push(...m))
+      observer.observe(c.cardEl, { childList: true, subtree: true })
+      globalThis.single_poker_card.set_top_side(c.cardEl, '.card_front')
+      records.push(...observer.takeRecords())
+      observer.disconnect()
+      expect(records).toHaveLength(0)
+    })
+
+    test('only the faces move: the positions group stays last', async () => {
+      const c = await placed()
+      init(c, '.card_back')
+      const kids = [...c.cardEl.querySelector(':scope > svg').children].map(k => k.getAttribute('class') ?? k.tagName)
+      expect(kids.at(-1)).toMatch(/tt_positions/)
+    })
+
+    test('a selector that matches neither face is an error', async () => {
+      const c = await placed()
+      expect(() => init(c, '.nope')).toThrow(/matches neither face/)
+    })
+  })
+
   test('initialize with no args on a card that already has a face (a clone) keeps it as it is', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
