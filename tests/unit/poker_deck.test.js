@@ -445,7 +445,7 @@ describe('single_poker_card: Return to deck', () => {
     card.setAttribute('data-note', 'lucky')
     card.setAttribute('data-color', '#123456')
     card.setAttribute('class', `${card.getAttribute('class')} marked`)
-    globalThis.single_poker_card.flip_card(card)                     // face up
+    globalThis.single_poker_card.flip_card_to_front(card)            // face up
     card.setAttribute('data-rotate', '90')
     card.setAttribute('transform', 'rotate(90 50 75)')
     card.setAttribute('data-above', 'somebody')
@@ -792,7 +792,7 @@ describe('dropping a card on a deck works like Return to deck', () => {
   test("a card dropped on its own deck ends up exactly as if it had used 'Return to deck'", async () => {
     // The same state before the card goes back: face up and rotated.
     const mess = (card) => {
-      globalThis.single_poker_card.flip_card(card)
+      globalThis.single_poker_card.flip_card_to_front(card)
       card.setAttribute('data-rotate', '45')
       card.setAttribute('transform', 'rotate(45 50 75)')
     }

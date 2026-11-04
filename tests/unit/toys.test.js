@@ -909,7 +909,7 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
       .toThrow(/needs a suit and a rank/)
   })
 
-  test('a fresh card is face down without initialize turning it over', async () => {
+  test('a fresh card is face up, because the template draws the front last, and initialize does not flip it', async () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const cardEl = await placedCard(ydoc, layerEl)
@@ -918,7 +918,7 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
     initializeToy(ydoc, layerEl, cardEl, 'single_poker_card', 'tester', 'test-table', { color: '#fff', suit: 1, rank: 1 })
 
     expect(flip).not.toHaveBeenCalled()
-    expect(cardEl.querySelector('.card_front + .card_back')).not.toBeNull()
+    expect(cardEl.querySelector('.card_front + .card_back')).toBeNull() // front is last, so it is on top
     flip.mockRestore()
   })
 
