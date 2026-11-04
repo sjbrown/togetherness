@@ -399,7 +399,7 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
   })
 
   test('a genuine cross-tray cycle runs each tray at most once, logs the conflict, and does not hang', async () => {
-    // Reuses the player_marker / dice_d6 toyType slots (addToy requires a
+    // Reuses the meeple / dice_d6 toyType slots (addToy requires a
     // registered TOY_TYPES entry) with entirely custom fetch-stubbed SVG +
     // script content — same technique as toy-menu.test.js's widget_root.
     const LOOP_A_SVG = `<?xml version="1.0" encoding="UTF-8"?>
@@ -431,7 +431,7 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
     var loop_b = {
       contents_change_handler: function(elem) {
         elem.setAttribute('data-b-recomputed', String(Number(elem.getAttribute('data-b-recomputed') || 0) + 1))
-        const groupA = document.querySelector('[data-toy-type="player_marker"] .tt_contents')
+        const groupA = document.querySelector('[data-toy-type="meeple"] .tt_contents')
         if (groupA) groupA.appendChild(document.createElementNS('http://www.w3.org/2000/svg', 'circle'))
       },
     }
@@ -439,14 +439,14 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
   <g class="tt_contents"></g>
 </svg>`
     vi.stubGlobal('fetch', vi.fn(async (url) => {
-      if (url === 'toy/player_marker.svg') return { ok: true, text: async () => LOOP_A_SVG }
+      if (url === 'toy/meeple.svg') return { ok: true, text: async () => LOOP_A_SVG }
       if (url === 'toy/dice_d6.svg')       return { ok: true, text: async () => LOOP_B_SVG }
       throw new Error(`unexpected fetch: ${url}`)
     }))
 
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'loopA', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'loopA', toyType: 'meeple', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'loopB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     // The handler scripts above use document.querySelector to reach across

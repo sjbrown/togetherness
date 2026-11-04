@@ -415,7 +415,7 @@ describe('buildExportSvg', () => {
   test('writes hoisted scripts once at document root, not per-toy', async () => {
     const ydoc = new Y.Doc()
     const live = liveCanvasSvg()
-    await addToy(ydoc, live.querySelector('#toys-layer'), { id: 't1', toyType: 'player_marker', x: 0, y: 0 })
+    await addToy(ydoc, live.querySelector('#toys-layer'), { id: 't1', toyType: 'meeple', x: 0, y: 0 })
 
     const clone = buildExportSvg(live, ydoc)
     // Only the inline script (data-namespace="d6") gets hoisted/exported —

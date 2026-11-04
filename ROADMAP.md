@@ -30,7 +30,6 @@ Legend: `[x]` done · `[~]` partial / placeholder · `[ ]` not started
 
 ## Presence & collaboration
 
-- [ ] Player Marker and attention prompts on triple click
 - [ ] Live cursor rendering and ghost trails
 - [ ] Soft-locking - user testing
 - [ ] Soft-locking - better ui hints

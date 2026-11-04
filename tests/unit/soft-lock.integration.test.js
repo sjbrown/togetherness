@@ -99,7 +99,7 @@ async function bootPeerB(extraToys = []) {
   const awareness = new awarenessProtocol.Awareness(ydoc)
   const user = { id: 'bailey', name: 'Bailey', color: '#0f0', gradient: { c1: '#0f0', c2: '#0a0', angle: 45 } }
 
-  await addToy(ydoc, layerEl, { id: 'die-1', toyType: 'player_marker', x: 0, y: 0, color: '#abc' })
+  await addToy(ydoc, layerEl, { id: 'die-1', toyType: 'dice_d6', x: 0, y: 0, color: '#abc' })
   for (const attrs of extraToys) await addToy(ydoc, layerEl, attrs)
 
   // Exactly index.html's initialization order: setLocalState BEFORE boot().
@@ -115,7 +115,7 @@ async function bootPeerB(extraToys = []) {
   return { App, ydoc, awareness }
 }
 
-const DIE_2 = { id: 'die-2', toyType: 'player_marker', x: 50, y: 0, color: '#abc' }
+const DIE_2 = { id: 'die-2', toyType: 'dice_d6', x: 50, y: 0, color: '#abc' }
 
 // Simulates a remote peer (Alice) selecting `elId`, by encoding a real
 // awareness update from a throwaway Awareness instance and applying it to
@@ -572,7 +572,7 @@ describe('soft-lock integration — getBoxCandidates excludes peer-held elements
     simulateRemoteSelection(awareness, 'die-1')
     expect(App.isHeldByOther('die-1')).toBe(true) // sanity
 
-    // A rect that fully encloses the toy (die-1 is player_marker, native
+    // A rect that fully encloses the toy (die-1 is dice_d6, native
     // 80x100, placed at (0,0), so it spans x:[-40,40], y:[-50,50]).
     const result = App.getBoxCandidates({ x: -50, y: -60, width: 200, height: 200 })
 
@@ -589,7 +589,7 @@ describe('soft-lock integration — getBoxCandidates excludes peer-held elements
     const { App } = await bootPeerB()
 
     App.select('die-1') // I hold it
-    // die-1 (player_marker, native 80x100) placed at (0,0) spans x:[-40,40], y:[-50,50] —
+    // die-1 (dice_d6, native 80x100) placed at (0,0) spans x:[-40,40], y:[-50,50] —
     // this box must fully enclose that, not the old forced-64x64 footprint.
     const result = App.getBoxCandidates({ x: -50, y: -60, width: 200, height: 200 })
     expect(result).toContain('die-1')

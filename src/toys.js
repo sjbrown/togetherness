@@ -1313,16 +1313,6 @@ export function getTtState(toyEl) {
 
 export const TOOLS = [
   {
-    name:    'marker',
-    toyType: 'player_marker',
-    file: 'player_marker.svg',
-    label: 'Player Marker',
-    iconUrl: 'toy/player_marker.svg',
-    layer:   'toys',
-    defaults: { label: '', size: 24 },
-    options: [],
-  },
-  {
     name:    'd6',
     toyType: 'dice_d6',
     file: 'dice_d6.svg',
@@ -1424,15 +1414,14 @@ export const TOOLS = [
   },
 ];
 export const TOY_TYPES = {
-  player_marker: TOOLS[0],
-  dice_d6: TOOLS[1],
-  meeple: TOOLS[2],
-  chip: TOOLS[3],
-  bag: TOOLS[4],
-  supply: TOOLS[5],
-  tray_sum: TOOLS[6],
-  token_glass: TOOLS[7],
-  single_poker_card: TOOLS[8],
+  dice_d6: TOOLS[0],
+  meeple: TOOLS[1],
+  chip: TOOLS[2],
+  bag: TOOLS[3],
+  supply: TOOLS[4],
+  tray_sum: TOOLS[5],
+  token_glass: TOOLS[6],
+  single_poker_card: TOOLS[7],
   stack: {
     name:    'stack',
     toyType: 'stack',
