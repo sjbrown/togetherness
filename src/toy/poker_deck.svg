@@ -26,12 +26,10 @@
      data-namespace="poker_deck"
      id="script_poker_deck"><![CDATA[
 
-// A deck is a literal collection of cards in its tt_contents, in order, so
-// the last is the top card. It starts with 52 nested <svg class="card">
-// that are part of the file
+// A deck is a literal collection of cards, ordered, so the last is the top
+// card. It starts with 52 primordial <svg class="card"> inside its
+// tt_contents group.
 var poker_deck = {
-
-  MAX_DRAW:    5,
 
   // Each card sits CARD_STEP_Y higher and CARD_STEP_X further left than the
   // one below it, so the deck visually shows its thickness
@@ -50,7 +48,7 @@ var poker_deck = {
       uiLabel: (node) => `Draw (${poker_deck._cards(node).length})`,
       radial: (node) => ({
         'How many': { param: 'num', type: 'integer', default: 1, min: 1,
-                      max: Math.max(1, Math.min(poker_deck.MAX_DRAW, poker_deck._cards(node).length)) },
+                      max: Math.max(1, Math.min(5, poker_deck._cards(node).length)) },
       }),
     },
     'Shuffle': {
@@ -201,26 +199,25 @@ var poker_deck = {
           'toy:reparent',
           { id: card.getAttribute('data-id'), containerId: null }
         )
-        // Overrides reparentToyDom's "preserve visual position" default.
         const svg = poker_deck._svg_of(card)
         const cw = parseFloat(svg.getAttribute('width'))  || poker_deck.CARD_WIDTH
         const ch = parseFloat(svg.getAttribute('height')) || poker_deck.CARD_HEIGHT
         svg.setAttribute('x', String(cx - cw / 2))
         svg.setAttribute('y', String(cy - ch / 2))
-        continue
+      } else {
+        poker_deck._event('toy:add', {
+          toyType: 'single_poker_card',
+          x: cx,
+          y: cy,
+          color,
+          initArgs: {
+            suit: Number(card.getAttribute('data-suit')),
+            rank: Number(card.getAttribute('data-rank')),
+            deck: elem.getAttribute('data-id'),
+          },
+        })
+        card.remove()
       }
-      poker_deck._event('toy:add', {
-        toyType: 'single_poker_card',
-        x: cx,
-        y: cy,
-        color,
-        initArgs: {
-          suit: Number(card.getAttribute('data-suit')),
-          rank: Number(card.getAttribute('data-rank')),
-          deck: elem.getAttribute('data-id'),
-        },
-      })
-      card.remove()
     }
   },
 
