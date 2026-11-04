@@ -297,7 +297,7 @@ var stack = {
   <g
      class="tt_positions"
      data-bounpos-type="pos-set"
-     name="chip"
+     data-tt-matches=".chip"
      ><circle
        cx="40" cy="32"
        r="25"

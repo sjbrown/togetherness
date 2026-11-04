@@ -363,7 +363,7 @@ export const BOUNPOS_TYPES = {
       values: { type: 'boundary', 'data-tt-matches': '' },
       types: {
         type: { show: [] },
-        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', label: 'Matches', show: ['add', 'edit'] },
       },
     },
     create(layerEl, params) {
@@ -384,7 +384,7 @@ export const BOUNPOS_TYPES = {
       values: { type: 'pos-set', 'data-tt-matches': '', snapRadius: 2, spacing: 80, xSpacing: 80, ySpacing: 80 },
       types: {
         type:       { show: [] },
-        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', label: 'Matches', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         spacing:    { kind: 'number', min: 20, max: 200, step: 4, show: ['addQuick'] },
         xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
@@ -407,7 +407,7 @@ export const BOUNPOS_TYPES = {
       values: { type: 'pos-set', 'data-tt-matches': '', snapRadius: 2, xSpacing: 70, ySpacing: 60 },
       types: {
         type:       { show: [] },
-        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', label: 'Matches', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
         ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
@@ -429,7 +429,7 @@ export const BOUNPOS_TYPES = {
       values: { type: 'pos-set', 'data-tt-matches': '', snapRadius: 2, xSpacing: 60, ySpacing: 70 },
       types: {
         type:       { show: [] },
-        'data-tt-matches': { kind: 'string', show: ['add', 'edit'] },
+        'data-tt-matches': { kind: 'string', label: 'Matches', show: ['add', 'edit'] },
         snapRadius: { kind: 'number', min: 1, max: 4, step: 1, show: ['edit'] },
         xSpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },
         ySpacing:   { kind: 'number', min: 30, max: 200, step: 1, show: ['edit'] },

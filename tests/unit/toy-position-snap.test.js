@@ -90,7 +90,7 @@ function baseFixtureSvg({ id, className, size = 80 }) {
       ${record('on_depart_position')}
     }
   ]]></script>
-  <g class="tt_positions" data-bounpos-type="pos-set" name="${className}">
+  <g class="tt_positions" data-bounpos-type="pos-set" data-tt-matches=".${className}">
     <circle id="pos" cx="${c}" cy="${c}" r="10"></circle>
   </g>
 </svg>`
@@ -140,7 +140,7 @@ describe('Toys.getSnapPoints', () => {
     expect(pts).toHaveLength(1)
     // chip's own point sits 8px above its own centre (see CHIP_POINT_OFFSET_Y).
     const expected = chipPointFor(300, 200)
-    expect(pts[0]).toMatchObject({ cx: expected.x, cy: expected.y, ownerId: 'chipA' })
+    expect(pts[0]).toMatchObject({ cx: expected.x, cy: expected.y, ownerId: 'chipA', matches: '.chip' })
   })
 
 })

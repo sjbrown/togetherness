@@ -384,13 +384,6 @@ export function onSelectionChanged(selectedIds) {
 //  EDIT PANEL — live, schema-driven view of the selected element's attributes
 // ==============================================================================
 
-// Schema keys that are attribute names are labelled without their data-tt-
-// prefix: data-tt-matches reads as "Matches". Other keys are shown as-is.
-function fieldLabel(key) {
-  const bare = key.replace(/^data-tt-/, '');
-  return bare === key ? key : bare.charAt(0).toUpperCase() + bare.slice(1);
-}
-
 function gatherTtStateData() {
   const element = App.getElementTtStateSchema?.() ?? null;
   return {
@@ -412,7 +405,7 @@ function gatherTtStateData() {
  *   label    — (add/addQuick mode) human label for the field
  *
  * typeSpec is a types entry from a ttStateSchema:
- *   { kind, show, min?, max?, step? }
+ *   { kind, show, label?, min?, max?, step? }
  *
  * show filtering:
  *   'addQuick' surface — only rendered if show explicitly includes 'addQuick'
@@ -422,6 +415,7 @@ function gatherTtStateData() {
 function renderSchemaField(key, value, typeSpec, ctx) {
   const { mode } = ctx;
   const spec = typeof typeSpec === 'string' ? { kind: typeSpec } : (typeSpec ?? {});
+  const label = spec.label ?? key;
   const show = spec.show;
   const kind = spec.kind;
 
@@ -447,13 +441,13 @@ function renderSchemaField(key, value, typeSpec, ctx) {
     if (mode === 'edit') {
       const id = ctx.id;
       return `<div class="field" data-cp-wire data-cp-mode="edit" data-cp-target="${id}" data-cp-key="${key}" data-cp-opacity="${allowNone}">
-        <label>${fieldLabel(key)}</label>
+        <label>${label}</label>
         <div class="cp-row">${picker}${noneBtn}</div>
       </div>`;
     } else {
       const toolName = ctx.toolName;
       return `<div class="opt-row cp-opt-row" data-cp-wire data-cp-mode="${mode}" data-cp-target="${toolName}" data-cp-key="${key}" data-cp-opacity="${allowNone}">
-        <span class="opt-label">${ctx.label ?? fieldLabel(key)}</span>
+        <span class="opt-label">${ctx.label ?? label}</span>
         <div class="cp-row">${picker}${noneBtn}</div>
       </div>`;
     }
@@ -463,11 +457,11 @@ function renderSchemaField(key, value, typeSpec, ctx) {
   if (kind === 'string') {
     const safe = String(value ?? '').replace(/"/g, '&quot;');
     if (mode === 'edit') {
-      return `<div class="field"><label>${fieldLabel(key)}</label><input type="text" value="${safe}"
+      return `<div class="field"><label>${label}</label><input type="text" value="${safe}"
         style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;box-sizing:border-box;font-family:ui-monospace,monospace"
         onchange="App.commitEdit('${ctx.id}',{'${key}':this.value})"/></div>`;
     } else {
-      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? fieldLabel(key)}</span><input type="text" value="${safe}"
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? label}</span><input type="text" value="${safe}"
         style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;width:120px"
         onchange="App.setToolParam('${ctx.toolName}','${key}',this.value)"/></div>`;
     }
@@ -477,11 +471,11 @@ function renderSchemaField(key, value, typeSpec, ctx) {
   if (kind === 'bool') {
     const checked = !!value;
     if (mode === 'edit') {
-      return `<div class="field"><label>${fieldLabel(key)}</label><input type="checkbox" ${checked ? 'checked' : ''}
+      return `<div class="field"><label>${label}</label><input type="checkbox" ${checked ? 'checked' : ''}
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
         onchange="App.commitEdit('${ctx.id}',{'${key}':this.checked})"/></div>`;
     } else {
-      return `<div class="opt-row"><label style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;cursor:pointer"><span class="opt-label">${ctx.label ?? fieldLabel(key)}</span><input type="checkbox" ${checked ? 'checked' : ''}
+      return `<div class="opt-row"><label style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;cursor:pointer"><span class="opt-label">${ctx.label ?? label}</span><input type="checkbox" ${checked ? 'checked' : ''}
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
         onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></label></div>`;
     }
@@ -493,23 +487,23 @@ function renderSchemaField(key, value, typeSpec, ctx) {
     const hasRange = min !== undefined && max !== undefined;
     if (mode === 'edit') {
       if (hasRange) {
-        return `<div class="field"><label>${fieldLabel(key)}</label>
+        return `<div class="field"><label>${label}</label>
           <range-ticked data-rt-wire data-rt-mode="edit" data-rt-target="${ctx.id}" data-rt-key="${key}"
             min="${min}" max="${max}" step="${step}" value="${value ?? min}"></range-ticked>
           </div>`;
       }
-      return `<div class="field"><label>${fieldLabel(key)}</label><input type="number" value="${value ?? 0}"
+      return `<div class="field"><label>${label}</label><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"
         style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;box-sizing:border-box"
         onchange="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
     } else {
       if (hasRange) {
-        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? fieldLabel(key)}</span>
+        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? label}</span>
           <range-ticked data-rt-wire data-rt-mode="${mode}" data-rt-target="${ctx.toolName}" data-rt-key="${key}"
             style="flex:1;min-width:0" min="${min}" max="${max}" step="${step}" value="${value ?? min}"></range-ticked>
           </div>`;
       }
-      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? fieldLabel(key)}</span><input type="number" value="${value ?? 0}"
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? label}</span><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"
         style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;width:80px"
         onchange="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;

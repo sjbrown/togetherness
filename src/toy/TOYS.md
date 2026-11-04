@@ -367,9 +367,9 @@ into — the contract is:
 - To accept only some toys, give that group a `data-tt-matches` attribute: a
   CSS selector tested against the dragged toy's wrapper and against its own
   root `<svg>`. `<g class="tt_contents" data-tt-matches=".card">` takes only
-  toys whose root `<svg>` has `class="card"`. It works like the `name` on a
-  `tt_positions` group, which is compared against the dragged toy's classes to
-  decide what may snap there. Without `data-tt-matches`, anything is accepted.
+  toys whose root `<svg>` has `class="card"`. A `tt_positions` group takes the
+  same attribute (`<g class="tt_positions" data-tt-matches=".chip">`) to
+  decide what may snap there; with none, nothing does. Without `data-tt-matches`, anything is accepted.
   A toy that doesn't match is not offered as a drop target, so it gets no
   hover highlight. Any other attempt to reparent it into the container, such
   as a `toy:reparent` event, fails with an error before anything changes.

@@ -328,7 +328,7 @@ var supply = {
        ry="5.7634964" />
   </g>
 
-  <g class="tt_positions" data-bounpos-type="pos-set" name="toy">
+  <g class="tt_positions" data-bounpos-type="pos-set" data-tt-matches=".toy">
     <circle
        style="fill:url(#radialGradient1747);fill-opacity:1"
        cx="50"

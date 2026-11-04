@@ -565,18 +565,6 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 }
 
 // ── Render pipelines ──────────────────────────────────────────────────────────
-/**
- * Extract toy class names from the toy's wrapper <g> and inner <svg>.
- * Returns a Set (empty if the toy has no classes).
- */
-function getToyClasses(domEl) {
-  if (moduleForElement(domEl) !== 'toys') return new Set();
-  return new Set([
-    ...domEl.classList,
-    ...(domEl.querySelector('svg')?.classList ?? []),
-  ]);
-}
-
 function findNearestSnap(x, y, snapPoints) {
   let best = null, bestD2 = Infinity;
   for (const { cx, cy, snapRadius } of snapPoints) {
@@ -589,15 +577,11 @@ function findNearestSnap(x, y, snapPoints) {
 
 function filterSnapPoints(domEl, snapPoints) {
   const isToy       = moduleForElement(domEl) === 'toys';
-  const toyClasses  = getToyClasses(domEl);
   const matchesSelf = function(snapPoint) {
     return domEl.getAttribute('data-id') === (snapPoint.ownerId)
   }
-  // Boundary and pos-set points carry a data-tt-matches selector (possibly
-  // null); toy tt_positions points carry a class name instead.
-  const matchesName = function(snapPoint) {
-    if (snapPoint.matches !== undefined) return isToy && Toys.selectorMatchesToy(snapPoint.matches, domEl);
-    return toyClasses.has(snapPoint.name);
+  const matchesToy = function(snapPoint) {
+    return isToy && Toys.selectorMatchesToy(snapPoint.matches, domEl)
   }
   const anchorPoints = []
   for (const topToyEl of _svgEl.querySelectorAll('#toys-layer > [data-id]')) {
@@ -610,7 +594,7 @@ function filterSnapPoints(domEl, snapPoints) {
   return snapPoints
     .filter(p => !occupantExists(p))
     .filter(p => !matchesSelf(p))
-    .filter(p => matchesName(p))
+    .filter(p => matchesToy(p))
 }
 
 function renderDoc() {

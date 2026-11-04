@@ -300,11 +300,11 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     expect(btns.length).toBe(3)
   })
 
-  test('a boundary edit field labels data-tt-matches as "Matches" and commits under that attribute key', () => {
+  test('a schema field with an explicit label shows it, and commits under that attribute key', () => {
     const element = {
       ltype: 'boun_pos', id: 'b1', label: 'Boundary', type: 'boundary',
       'data-tt-matches': '.card',
-      types: { type: { show: [] }, 'data-tt-matches': { kind: 'string', show: ['add', 'edit'] } },
+      types: { type: { show: [] }, 'data-tt-matches': { kind: 'string', label: 'Matches', show: ['add', 'edit'] } },
     }
     const html = editBody({ element })
     expect(html).toContain('<label>Matches</label>')
