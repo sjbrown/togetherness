@@ -279,7 +279,7 @@ describe('poker_deck: the cards fan up and to the left and the deck is as big as
     const deck = findEl(t.layerEl, 'deck1')
     const before = { geom: geom(t.layerEl, 'deck1'), x: attr(t.layerEl, 'deck1', 'x'), y: attr(t.layerEl, 'deck1', 'y') }
 
-    globalThis.poker_deck._place_cards(deck)
+    globalThis.poker_deck._arrange_all(deck)
     globalThis.poker_deck._fit(deck)
 
     expect({ geom: geom(t.layerEl, 'deck1'), x: attr(t.layerEl, 'deck1', 'x'), y: attr(t.layerEl, 'deck1', 'y') }).toEqual(before)
@@ -829,7 +829,7 @@ describe('dropping a card on a deck works like Return to deck', () => {
     expect(onTable(t.layerEl)).toHaveLength(0)
   })
 
-  test('a card from another deck, or from no deck, joins the deck it is dropped on, unchanged', async () => {
+  test('a card from another deck, or from no deck, joins the deck it is dropped on, and is homed there', async () => {
     const t = await table()
     draw(t, 'deck2')
     const foreign = onTable(t.layerEl)[0]
@@ -837,6 +837,7 @@ describe('dropping a card on a deck works like Return to deck', () => {
     const foreignKey = key(foreign)
     foreign.setAttribute('data-note', 'from the other deck')
     loose(t.place, 'plain', 4, 13)
+    expect(onTable(t.layerEl).find(c => c.getAttribute('data-id') === 'plain').hasAttribute('data-home-deck')).toBe(false)
 
     dropOn(t, foreignId, 'deck1')
     dropOn(t, 'plain', 'deck1')
@@ -844,9 +845,26 @@ describe('dropping a card on a deck works like Return to deck', () => {
     expect(order(t.layerEl, 'deck1')).toHaveLength(54)
     expect(order(t.layerEl, 'deck1').slice(-2)).toEqual([foreignKey, '4.13'])
     expect(order(t.layerEl, 'deck2')).toHaveLength(51)
-    const kept = toysIn(t.layerEl, 'deck1')[0]
-    expect(kept.getAttribute('data-note')).toBe('from the other deck')
-    expect(kept.getAttribute('data-home-deck')).toBe('deck2') // still remembers where it came from
+    const [kept, plain] = toysIn(t.layerEl, 'deck1')
+    expect(kept.getAttribute('data-note')).toBe('from the other deck') // the user's own change survives
+    expect(kept.getAttribute('data-home-deck')).toBe('deck1')          // the deck owns which deck it is in
+    expect(plain.getAttribute('data-home-deck')).toBe('deck1')
+  })
+
+  test('a card taken in by another deck goes back out and returns to that deck, not the first', async () => {
+    const t = await table()
+    draw(t, 'deck2')
+    const card = onTable(t.layerEl)[0]
+    const id = card.getAttribute('data-id')
+    dropOn(t, id, 'deck1')
+    draw(t, 'deck1')
+    const out = findEl(t.layerEl, id)
+    expect(out).not.toBeNull()
+
+    giveBack(t, out)
+
+    expect(toysIn(t.layerEl, 'deck1').map(c => c.getAttribute('data-id'))).toEqual([id])
+    expect(toysIn(t.layerEl, 'deck2')).toHaveLength(0)
   })
 
   test('the deck count and height follow a drop', async () => {
@@ -857,5 +875,44 @@ describe('dropping a card on a deck works like Return to deck', () => {
     const deck = findEl(t.layerEl, 'deck1')
     expect(deck.querySelector('.tspan_count').textContent).toBe('50')
     expect(parseFloat(deck.querySelector(':scope > svg').getAttribute('height'))).toBeGreaterThan(parseFloat(before))
+  })
+})
+
+describe('a non-card toy in a deck\'s contents', () => {
+  // data-tt-matches only steers drag-and-drop. toy:reparent and anything else
+  // that calls reparentToyDom can still put any toy there.
+  test('is not counted, drawn, shuffled or tidied as if it were a card', async () => {
+    const t = await table()
+    t.place('chip1', 'chip', CHIP_SVG, 1500, 500)
+    const chipBefore = findEl(t.layerEl, 'chip1').outerHTML
+
+    expect(() => reparentToyDom(t.layerEl, 'chip1', 'deck1')).not.toThrow()
+
+    const deck = findEl(t.layerEl, 'deck1')
+    expect(deck.querySelector('.tspan_count').textContent).toBe('52')
+    expect(order(t.layerEl, 'deck1')).toHaveLength(52)
+    expect(deck.querySelector('.tt_contents > [data-toy-type="chip"]')).not.toBeNull()
+    expect(deck.querySelector('.tt_contents > [data-toy-type="chip"]').getAttribute('data-above')).toBeNull()
+    expect(() => shuffleDeck(t, 'deck1')).not.toThrow()
+    expect(() => draw(t, 'deck1', { num: 5 })).not.toThrow()
+    expect(deck.querySelector('.tt_contents > [data-toy-type="chip"]')).not.toBeNull() // never drawn
+    expect(chipBefore).toContain('data-toy-type="chip"')
+  })
+})
+
+describe('poker_deck: drawing a nested card', () => {
+  test('passes only what a card reads in initArgs, and the deck colour as the toy colour', async () => {
+    const t = await table()
+    const seen = []
+    const spy = (e) => seen.push(e.detail)
+    document.addEventListener('toy:add', spy)
+    try { draw(t, 'deck1', { num: 2 }) } finally { document.removeEventListener('toy:add', spy) }
+
+    expect(seen).toHaveLength(2)
+    for (const detail of seen) {
+      expect(Object.keys(detail.initArgs).sort()).toEqual(['deck', 'rank', 'suit'])
+      expect(detail.color).toBe('#fa2020')
+    }
+    for (const card of onTable(t.layerEl)) expect(card.getAttribute('data-color')).toBe('#fa2020')
   })
 })

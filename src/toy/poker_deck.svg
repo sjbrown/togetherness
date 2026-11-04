@@ -166,7 +166,8 @@ var poker_deck = {
 
   _cards: function(elem) {
     const group = elem.querySelector('.tt_contents')
-    // TODO is this selector redundant?
+    // data-tt-matches only steers drag-and-drop, and anything calling
+    // reparentToyDom can put another kind of toy in here. Those aren't cards.
     return group
       ? [...group.querySelectorAll(':scope > svg.card, :scope > .toy[data-toy-type="single_poker_card"]')]
       : []
@@ -214,8 +215,6 @@ var poker_deck = {
         y: cy,
         color,
         initArgs: {
-          // TODO: why color? it's not a single_poker_card init arg
-          color,
           suit: Number(card.getAttribute('data-suit')),
           rank: Number(card.getAttribute('data-rank')),
           deck: elem.getAttribute('data-id'),
