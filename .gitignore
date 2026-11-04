@@ -16,5 +16,5 @@ test-results/
 Thumbs.db
 *.swp
 
-# Developer pages, copied in by bin/dev.sh while it runs
+# Mount point for developer pages, created by docker compose (see docker-compose.yml)
 src/dev/

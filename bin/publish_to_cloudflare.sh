@@ -5,7 +5,7 @@ rclone lsd r2:apps-1kfa-com
 
 echo "Troubleshoot: Show Config with   rclone config show r2"
 
-# src/dev/ only exists while bin/dev.sh runs, and is never published.
+# src/dev/ is the mount point for developer pages under bin/dev.sh; never published.
 echo "rclone sync ./src r2:apps-1kfa-com/table --exclude /dev/**"
 rclone sync ./src r2:apps-1kfa-com/table --exclude "/dev/**"
 
