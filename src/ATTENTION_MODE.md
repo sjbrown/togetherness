@@ -21,7 +21,7 @@ click ripples are ephemeral. The circle marking where the player started stays
 on the table until someone dismisses it.
 
 Attention mode supersedes the Player Marker toy, which existed to do this job
-with a persistent object. The toy is removed in a separate change.
+with a persistent object.
 
 ---
 

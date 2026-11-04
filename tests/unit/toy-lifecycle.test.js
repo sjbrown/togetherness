@@ -47,8 +47,8 @@ function stubFetch(svgText) {
 }
 
 async function placeAndActivate(ydoc, layerEl, id) {
-  await addToy(ydoc, layerEl, { id, toyType: 'player_marker', x: 0, y: 0 })
-  await activateToyScripts(ydoc, 'player_marker') // await real completion, not just "started"
+  await addToy(ydoc, layerEl, { id, toyType: 'meeple', x: 0, y: 0 })
+  await activateToyScripts(ydoc, 'meeple') // await real completion, not just "started"
   return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
 
@@ -67,7 +67,7 @@ describe('initializeToy', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    initializeToy(ydoc, layerEl, toyEl, 'player_marker')
+    initializeToy(ydoc, layerEl, toyEl, 'meeple')
 
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('initialized')
     expect(globalThis.widgetNs.initializeCallCount).toBe(1)
@@ -79,7 +79,7 @@ describe('initializeToy', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    initializeToy(ydoc, layerEl, toyEl, 'player_marker')
+    initializeToy(ydoc, layerEl, toyEl, 'meeple')
 
     // If a prototype had been passed, widgetNs.initialize would have
     // written 'from-prototype' instead.
@@ -92,7 +92,7 @@ describe('initializeToy', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    expect(initializeToy(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
+    expect(initializeToy(ydoc, layerEl, toyEl, 'meeple')).toBeUndefined()
     expect(layerEl.querySelector('#t1__status_tspan').textContent).toBe('unset')
   })
 
@@ -113,7 +113,7 @@ describe('initializeToy', () => {
     const layerEl = freshLayer()
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
-    initializeToy(ydoc, layerEl, toyEl, 'player_marker')
+    initializeToy(ydoc, layerEl, toyEl, 'meeple')
 
     expect(layerEl.querySelector('#t1__a_tspan').textContent).toBe('a-done')
     expect(layerEl.querySelector('#t1__b_tspan').textContent).toBe('b-done')
@@ -132,7 +132,7 @@ describe('initializeToy', () => {
     const { toyEl } = await placeAndActivate(ydoc, layerEl, 't1')
 
     const before = layerEl.querySelector('#t1__tspan_die_value').textContent
-    expect(initializeToy(ydoc, layerEl, toyEl, 'player_marker')).toBeUndefined()
+    expect(initializeToy(ydoc, layerEl, toyEl, 'meeple')).toBeUndefined()
     expect(layerEl.querySelector('#t1__tspan_die_value').textContent).toBe(before)
   })
 })

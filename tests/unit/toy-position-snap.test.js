@@ -110,7 +110,7 @@ function freshLayer() {
   return layerEl
 }
 
-// Reuses the player_marker / dice_d6 / bag / tray_sum TOY_TYPES slots
+// Reuses the meeple / dice_d6 / bag / tray_sum TOY_TYPES slots
 // (addToy requires a registered TOY_TYPES entry) with custom fetch-stubbed
 // SVG — same technique tests/unit/tray.test.js's cross-tray-cycle test
 // uses.
@@ -150,12 +150,12 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const BASE_SVG    = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     const STACKER_SVG = baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       STACKER_SVG,
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base1', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'base1', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'stacker1', toyType: 'dice_d6', x: 500, y: 500, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
@@ -186,12 +186,12 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
   test('departing an owner\u2019s position fires on_position_vacated on the owner AND on_depart_position on the occupant', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
@@ -217,13 +217,13 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
   test('a toy that both departs one owner and arrives at another gets both reactions in the same gesture', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       BASE_SVG.replace(/base_fixture/g, 'base_fixture2'),
       'toy/bag.svg':           baseFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'ownerA', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'ownerA', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'ownerB', toyType: 'dice_d6',       x: 500, y: 500, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'mover',  toyType: 'bag',           x: 100, y: 100, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
@@ -248,10 +248,10 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('an identical duplicate event is deduped — the handler runs at most once', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    vi.stubGlobal('fetch', stubToyFetch({ 'toy/player_marker.svg': BASE_SVG }))
+    vi.stubGlobal('fetch', stubToyFetch({ 'toy/meeple.svg': BASE_SVG }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
@@ -268,10 +268,10 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('a missing handler is a silent no-op — no error, no crash', async () => {
     const PLAIN_SVG = plainFixtureSvg({ id: 'plain_fixture', className: 'plain' })
-    vi.stubGlobal('fetch', stubToyFetch({ 'toy/player_marker.svg': PLAIN_SVG }))
+    vi.stubGlobal('fetch', stubToyFetch({ 'toy/meeple.svg': PLAIN_SVG }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
@@ -328,10 +328,10 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
 
   test('an event with no fnName is skipped without error', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
-    vi.stubGlobal('fetch', stubToyFetch({ 'toy/player_marker.svg': BASE_SVG }))
+    vi.stubGlobal('fetch', stubToyFetch({ 'toy/meeple.svg': BASE_SVG }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
@@ -368,12 +368,12 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
   test('departingPositionEvents: [] when el isn\u2019t sitting on anyone\u2019s point', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'other', toyType: 'dice_d6',       x: 900, y: 900, color: '#fff' })
 
     const otherEl = layerEl.querySelector('[data-id="other"]')
@@ -383,12 +383,12 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
   test('departingPositionEvents: an \'on_position_vacated\' event for the owner and an \'on_depart_position\' event for el, sharing the same positionId/ownerId', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     // mover starts stacked exactly on owner's point.
     await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
 
@@ -405,12 +405,12 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
   test('arrivingPositionEvents: an \'on_position_occupied\' event for the owner and an \'on_arrive_position\' event for el', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       plainFixtureSvg({ id: 'mover_fixture', className: 'stacker_class' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 900, y: 900, color: '#fff' })
 
     const moverEl = layerEl.querySelector('[data-id="mover"]')
@@ -509,7 +509,7 @@ describe('promoteZOrder — recursive', () => {
   test('direct occupants are promoted above el, preserving their relative order to each other', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       plainFixtureSvg({ id: 'y_fixture', className: 'y' }),
       'toy/tray_sum.svg':      plainFixtureSvg({ id: 'x_fixture', className: 'x' }),
       'toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
@@ -519,7 +519,7 @@ describe('promoteZOrder — recursive', () => {
     // base is added first (bottommost); occupantY and occupantX both sit
     // exactly on base's own point, in that relative order; other is
     // unrelated and sits elsewhere entirely.
-    await addToy(ydoc, layerEl, { id: 'base',      toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'base',      toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'occupantY', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'occupantX', toyType: 'tray_sum',      x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'other',     toyType: 'bag',           x: 900, y: 900, color: '#fff' })
@@ -537,14 +537,14 @@ describe('promoteZOrder — recursive', () => {
     const BASE_SVG   = baseFixtureSvg({ id: 'base_fixture', className: 'onbase' })
     const MIDDLE_SVG = baseFixtureSvg({ id: 'middle_fixture', className: 'onmiddle' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       MIDDLE_SVG,
       'toy/bag.svg':           plainFixtureSvg({ id: 'top_fixture', className: 'top' }),
       'toy/tray_sum.svg':      plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base',   toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'base',   toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'middle', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'top',    toyType: 'bag',           x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'other',  toyType: 'tray_sum',      x: 900, y: 900, color: '#fff' })
@@ -558,13 +558,13 @@ describe('promoteZOrder — recursive', () => {
   test('only occupants (direct or transitive) are promoted — an unrelated toy is untouched', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
       'toy/bag.svg':           plainFixtureSvg({ id: 'other_fixture', className: 'other' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base',      toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'base',      toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'occupant',  toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'bystander', toyType: 'bag',           x: 900, y: 900, color: '#fff' })
 
@@ -598,12 +598,12 @@ describe('moveToyAndStack — recursive move', () => {
   test('carries a direct occupant along by the same delta, preserving its offset within the stack', async () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base',     toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'base',     toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'occupant', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
 
     const baseEl     = layerEl.querySelector('[data-id="base"]')
@@ -623,13 +623,13 @@ describe('moveToyAndStack — recursive move', () => {
     const BASE_SVG   = baseFixtureSvg({ id: 'base_fixture', className: 'onbase' })
     const MIDDLE_SVG = baseFixtureSvg({ id: 'middle_fixture', className: 'onmiddle' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       MIDDLE_SVG,
       'toy/bag.svg':           plainFixtureSvg({ id: 'top_fixture', className: 'top' }),
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base',   toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'base',   toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'middle', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'top',    toyType: 'bag',           x: 100, y: 100, color: '#fff' })
 
@@ -649,12 +649,12 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const BASE_SVG    = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     const STACKER_SVG = baseFixtureSvg({ id: 'stacker_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,
+      'toy/meeple.svg': BASE_SVG,
       'toy/dice_d6.svg':       STACKER_SVG,
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'base1', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'base1', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'stacker1', toyType: 'dice_d6', x: 500, y: 500, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
@@ -711,13 +711,13 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const BASE_SVG = baseFixtureSvg({ id: 'base_fixture', className: 'stacker_class' })
     const OTHER_BASE_SVG = baseFixtureSvg({ id: 'other_base_fixture', className: 'stacker_class' })
     vi.stubGlobal('fetch', stubToyFetch({
-      'toy/player_marker.svg': BASE_SVG,       // moving base
+      'toy/meeple.svg': BASE_SVG,       // moving base
       'toy/dice_d6.svg':       plainFixtureSvg({ id: 'occ_fixture', className: 'occ' }), // its occupant
       'toy/bag.svg':           OTHER_BASE_SVG, // the destination owner
     }))
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'movingBase', toyType: 'player_marker', x: 100, y: 100, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'movingBase', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'occupant',   toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'destBase',   toyType: 'bag',           x: 900, y: 900, color: '#fff' })
     activateAllToyScriptsDom(ydoc, layerEl)

@@ -55,7 +55,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals() })
 
 async function placeToy(ydoc, layerEl, id, color = '#111') {
-  return addToy(ydoc, layerEl, { id, toyType: 'player_marker', x: 0, y: 0, color })
+  return addToy(ydoc, layerEl, { id, toyType: 'dice_d6', x: 0, y: 0, color })
 }
 
 describe('runInEnvelope — raw capture', () => {

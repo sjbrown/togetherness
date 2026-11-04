@@ -14,7 +14,7 @@ const __dir   = path.dirname(fileURLToPath(import.meta.url))
 const TOY_DIR = path.resolve(__dir, '../../src/toy')
 
 // Real production assets, same convention as tray.test.js/dice-d6.test.js.
-const PLAYER_MARKER_SVG = fs.readFileSync(path.join(TOY_DIR, 'player_marker.svg'), 'utf8')
+const DICE_D6_SVG = fs.readFileSync(path.join(TOY_DIR, 'dice_d6.svg'), 'utf8')
 const TRAY_SUM_SVG      = fs.readFileSync(path.join(TOY_DIR, 'tray_sum.svg'), 'utf8')
 const TRAY_JS           = fs.readFileSync(path.join(TOY_DIR, 'js/tray.js'), 'utf8')
 
@@ -27,7 +27,7 @@ function freshLayer() {
 beforeEach(() => {
   _clearSvgTextCache()
   vi.stubGlobal('fetch', vi.fn(async (url) => {
-    if (url === 'toy/player_marker.svg') return { ok: true, text: async () => PLAYER_MARKER_SVG }
+    if (url === 'toy/dice_d6.svg') return { ok: true, text: async () => DICE_D6_SVG }
     if (url === 'toy/tray_sum.svg')      return { ok: true, text: async () => TRAY_SUM_SVG }
     if (url === 'toy/js/tray.js')        return { ok: true, text: async () => TRAY_JS }
     throw new Error(`unexpected fetch: ${url}`)
@@ -46,15 +46,15 @@ describe('reparentToyDom — validation', () => {
   test('throws if the target container is not found', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     expect(() => reparentToyDom(layerEl, 'die1', 'nope')).toThrow(/target not found/)
   })
 
   test('throws if the target has no .tt_contents', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    await addToy(ydoc, layerEl, { id: 'a', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'b', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'a', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'b', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     expect(() => reparentToyDom(layerEl, 'a', 'b')).toThrow(/no \.tt_contents/)
   })
 
@@ -80,7 +80,7 @@ describe('reparentToyDom — the move itself', () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
 
     const dieEl  = layerEl.querySelector('[data-id="die1"]')
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
@@ -96,7 +96,7 @@ describe('reparentToyDom — the move itself', () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     reparentToyDom(layerEl, 'die1', 'tray1')
 
     reparentToyDom(layerEl, 'die1', null)
@@ -109,7 +109,7 @@ describe('reparentToyDom — the move itself', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'player_marker', x: 0, y: 0, color: '#fff' })
+    await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
 
     reparentToyDom(layerEl, 'inner', 'outer')
     reparentToyDom(layerEl, 'die1', 'inner')
