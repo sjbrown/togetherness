@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>togetherness · component stories</title>
-<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="/ui.css">
 
 <!-- ── Module imports ─────────────────────────────────────────────────────── -->
 <script type="importmap">
@@ -41,7 +41,7 @@
     gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto;
   }
   .story {
-    background: var(--bg) url('img/bg_slatehex.png') center/cover;
+    background: var(--bg) url('/img/bg_slatehex.png') center/cover;
     border-radius: var(--radius); overflow: hidden;
     box-shadow: var(--emboss); position: relative; min-height: 160px;
     display: flex; flex-direction: column;
@@ -113,7 +113,7 @@ import { initIcons, icon } from '/icons.js';
 import * as UI from '/ui.js';
 import { SELECT_TOOL } from '/tools-schema.js';
 import { SHAPE_TYPES } from '/drawing.js';
-import { TOOLS as TOY_TOOLS } from '/toys.js';
+import { TOOLS as APP_TOY_TOOLS } from '/toys.js';
 import { entityGradient } from '/entity_gradient.js';
 import { upsertUserGradient } from '/user.js';
 
@@ -123,10 +123,10 @@ initIcons();
 const PALETTE = ['#c8941e','#5a7ea8','#8a5ea8','#5ea88a','#a85e5e','#a8905e','#5e8aa8'];
 
 const DEFAULT_BACKGROUNDS = [
-  { label: 'Slate Hex',  url: 'img/bg_slatehex.png',  width: 1384, height: 998 },
-  { label: 'Beige Hex',  url: 'img/bg_beigehex.png',  width: 815,  height: 718 },
-  { label: 'Green Felt', url: 'img/bg_greenfelt.png', width: 800,  height: 600 },
-  { label: 'Iron Grid',  url: 'img/bg_irongrid.png',  width: 438,  height: 285 },
+  { label: 'Slate Hex',  url: '/img/bg_slatehex.png',  width: 1384, height: 998 },
+  { label: 'Beige Hex',  url: '/img/bg_beigehex.png',  width: 815,  height: 718 },
+  { label: 'Green Felt', url: '/img/bg_greenfelt.png', width: 800,  height: 600 },
+  { label: 'Iron Grid',  url: '/img/bg_irongrid.png',  width: 438,  height: 285 },
 ];
 
 const mockShapes = [
@@ -178,9 +178,12 @@ const mockLayers = [
 ];
 
 // A fake App sufficient for the pure render functions + tool-opts schema.
+// Icon paths are relative to the app root; this page is served from /dev/.
+const rooted = (url) => url && `/${url}`;
 const SHAPE_TOOLS  = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
-  name, label: def.schema.label, layer: 'drawing', iconUrl: def.iconUrl,
+  name, label: def.schema.label, layer: 'drawing', iconUrl: rooted(def.iconUrl),
 }));
+const TOY_TOOLS    = APP_TOY_TOOLS.map(t => ({ ...t, iconUrl: rooted(t.iconUrl) }));
 const drawingTools = [SELECT_TOOL, ...SHAPE_TOOLS];
 const toysTools    = [SELECT_TOOL, ...TOY_TOOLS];
 const toolById = Object.fromEntries([SELECT_TOOL, ...SHAPE_TOOLS, ...TOY_TOOLS].map(t => [t.name, t]));
@@ -190,7 +193,7 @@ const toolParams = Object.fromEntries(
 
 window.App = {
   getPalette: () => PALETTE,
-  getBackground: () => ({ url: 'img/bg_slatehex.png', width: 1384, height: 998 }),
+  getBackground: () => ({ url: '/img/bg_slatehex.png', width: 1384, height: 998 }),
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getTool: (n) => toolById[n] ?? null,
   getToolSchema: (n) => {

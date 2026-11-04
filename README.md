@@ -88,6 +88,8 @@ That's it! No build step! No dependencies on your localhost!
 
 Open the app in two browser windows with the same URL hash (e.g. `http://localhost:3000/#my-room`) to see real-time sync.
 
+Developer pages from `tests/dev/` (component stories, the radial menu tuner) are served at [http://localhost:3000/dev/](http://localhost:3000/dev/) while `bin/dev.sh` runs. They're never published.
+
 ## Testing
 
 ```bash

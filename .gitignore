@@ -15,3 +15,6 @@ test-results/
 .DS_Store
 Thumbs.db
 *.swp
+
+# Developer pages, copied in by bin/dev.sh while it runs
+src/dev/
