@@ -62,6 +62,7 @@ const SNAP_EASE = [0.34, 1.56, 0.64, 1];   // snap-back cubic-bezier; the radial
 const DELIGHT_TRANSLATE_SCALE = 0.05;
 export const ACTION_SQUARE_SIDE = 22; // px; the handle rect and its resting square
 const HANDLE_HALF = ACTION_SQUARE_SIDE / 2;
+export const TOUCH_HIT_SIDE = 44;     // px; hit box for touch presses, larger than the drawn square
 
 // Charge indicators, drawn on #overlay-layer from getBowstringState().
 const CHARGE_FADE_MS = 500;        // toy clone fades in over this, then holds
@@ -206,14 +207,19 @@ function el(tag, attrs) {
  * rot (the same { deg, cx, cy } App.getRotation returns, or null) rotates
  * the square along with the toy.
  */
-export function hitTestBowstring(geo, px, py, scale, rot = null) {
-  return hitTestBowstringAt(bowstringOrigin(geo, rot), px, py, scale);
+export function hitTestBowstring(geo, px, py, scale, rot = null, side = ACTION_SQUARE_SIDE) {
+  return hitTestBowstringAt(bowstringOrigin(geo, rot), px, py, scale, side);
 }
 
 /** Same hit-test for a square already anchored at origin. */
-export function hitTestBowstringAt(origin, px, py, scale) {
-  const half = ACTION_SQUARE_SIDE / scale / 2;
+export function hitTestBowstringAt(origin, px, py, scale, side = ACTION_SQUARE_SIDE) {
+  const half = side / scale / 2;
   return Math.abs(px - origin.x) <= half && Math.abs(py - origin.y) <= half;
+}
+
+/** Hit-box side for a pointer type: touch gets the larger target. */
+export function hitSideFor(pointerType) {
+  return pointerType === 'touch' ? TOUCH_HIT_SIDE : ACTION_SQUARE_SIDE;
 }
 
 /**

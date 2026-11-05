@@ -1517,7 +1517,7 @@ const App = {
     if (!App.hasToyActions(id)) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
-    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
+    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id), Delight.hitSideFor(e?.pointerType))) return false;
     return Delight.startBowstring(id, e, _svgEl);
   },
 
@@ -1550,10 +1550,10 @@ const App = {
    * Fire the group action if canvasPoint lands on its square. Returns true
    * when it did, so canvas.js can swallow the click.
    */
-  fireGroupActionAt: (canvasPoint) => {
+  fireGroupActionAt: (canvasPoint, pointerType) => {
     const group = App.getGroupAction();
     if (!group) return false;
-    if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
+    if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale(), Delight.hitSideFor(pointerType))) return false;
     App.invokeToyMenuActions(group.ids, group.namespace, group.key);
     App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
     return true;
