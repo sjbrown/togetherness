@@ -1601,6 +1601,30 @@ const App = {
   moveBowstring: (e, canvasPoint) => Delight.moveBowstring(e, canvasPoint),
   endBowstring:  (e)              => Delight.endBowstring(e),
 
+  standingRadialActive: ()  => Delight.standingRadialActive(),
+  standingRadialMove:   (x, y) => Delight.moveStandingRadial({ x, y }),
+  standingRadialPress:  (x, y) => Delight.pressStandingRadial({ x, y }),
+
+  /**
+   * A double-click on layer object id: its toy's double-click menu action if
+   * it has one, else its radial menu, else centre the view on it.
+   */
+  objectDoubleClick: (id) => {
+    const svgEl = _svgEl?.querySelector(`[data-id="${id}"]`);
+    if (!svgEl) return;
+    if (moduleForElement(svgEl) === 'toys') {
+      const action = Toys.getDoubleClickAction(svgEl);
+      if (action) {
+        App.invokeToyMenuAction(id, action.namespace, action.key);
+        App.addLog(`double-click → ${action.key}`, 'local');
+        return;
+      }
+      if (Delight.openStandingRadial(id)) return;
+    }
+    const geo = App.getBBox(id);
+    if (geo) Canvas.centerOn(geo.x + geo.width / 2, geo.y + geo.height / 2);
+  },
+
   /**
    * Called by delight.js when a bowstring resolves — on click, or on the
    * far end of a charged pull's snap-back. A release on a radial spoke
