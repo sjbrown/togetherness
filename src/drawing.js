@@ -622,7 +622,7 @@ export function layerData(layerEl) {
 export function getTtStateSchema(svgElOrType) {
   const type = typeof svgElOrType === 'string'
     ? svgElOrType
-    : (svgElOrType?.getAttribute?.('data-type') ?? svgElOrType?.tagName ?? 'rect');
+    : (svgElOrType?.tagName ?? 'rect');
   const def = SHAPE_TYPES[type];
   if (!def) {
     // Unknown type (e.g. 'select', a toy/bounPos tool name) — not a drawing
