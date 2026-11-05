@@ -242,7 +242,7 @@ function onPointerDown(e) {
     const p = toCanvas(e.clientX, e.clientY);
     // An open standing radial menu takes the press: it fires or closes.
     if (App.standingRadialActive?.()) {
-      ToolMode._gesture = 'attention';
+      ToolMode._gesture = 'radial-press';
       ToolMode._moveRef = null;
       App.standingRadialPress(p.x, p.y);
       return;
@@ -551,8 +551,8 @@ function onPointerUp(e) {
 
   const isCancelled = e.type === 'pointercancel';
 
-  // An attention press never counts toward a tap sequence.
-  if (ToolMode._gesture === 'attention') {
+  // Attention and radial-menu presses never count toward a tap sequence.
+  if (ToolMode._gesture === 'attention' || ToolMode._gesture === 'radial-press') {
     ToolMode._gesture = null;
     ToolMode._moveRef = null;
     if (ToolMode._pointers.size === 0) {
