@@ -4,7 +4,7 @@
  * End-to-end test for boundary-constrained toy dragging with ghost rendering.
  *
  * Scenario:
- * 1. Create two separate boundary regions, both named "toy"
+ * 1. Create two separate boundary regions, both with Matches ".toy"
  * 2. Place a toy inside boundary A
  * 3. Drag from inside A, through the gap, into B, and past B's right edge:
  *    - While pointer is in the gap:  ghost stays at A's right edge
@@ -57,7 +57,7 @@ test.describe('boundary-constrained toy dragging', () => {
 
     const bAId = await page.evaluate(() => window.App.getSelectedIds()[0]);
     expect(bAId).toBeTruthy();
-    await page.evaluate((id) => window.App.commitEdit(id, { name: 'toy' }), bAId);
+    await page.evaluate((id) => window.App.commitEdit(id, { 'data-tt-matches': '.toy' }), bAId);
 
     // ── Create boundary B ─────────────────────────────────────────────────────
     await page.evaluate((b) => window.App.commitBoundary(b), bB);
@@ -65,7 +65,7 @@ test.describe('boundary-constrained toy dragging', () => {
 
     const bBId = await page.evaluate(() => window.App.getSelectedIds()[0]);
     expect(bBId).toBeTruthy();
-    await page.evaluate((id) => window.App.commitEdit(id, { name: 'toy' }), bBId);
+    await page.evaluate((id) => window.App.commitEdit(id, { 'data-tt-matches': '.toy' }), bBId);
 
     // ── Sanity checks: both boundaries in DOM with correct geometry + name ────
     const boundarySanity = await page.evaluate((ids) => {
@@ -89,8 +89,8 @@ test.describe('boundary-constrained toy dragging', () => {
         transformB:     elB?.getAttribute('transform') ?? null,
         layerObjects:   layerObjects.map(o => ({ id: o.id, label: o.label })),
         bAIdEqualsBBId: bAId === bBId,
-        elANameAttr:    elA?.getAttribute('name') ?? null,
-        elBNameAttr:    elB?.getAttribute('name') ?? null,
+        elAMatchesAttr: elA?.getAttribute('data-tt-matches') ?? null,
+        elBMatchesAttr: elB?.getAttribute('data-tt-matches') ?? null,
       };
     }, { bAId, bBId });
 
@@ -99,8 +99,8 @@ test.describe('boundary-constrained toy dragging', () => {
     expect(boundarySanity.elBExists,    'boundary B element in DOM').toBe(true);
     expect(boundarySanity.elAInBounPos, 'boundary A in correct layer').toBe(true);
     expect(boundarySanity.elBInBounPos, 'boundary B in correct layer').toBe(true);
-    expect(boundarySanity.metaAName,    'boundary A name').toBe('toy');
-    expect(boundarySanity.metaBName,    'boundary B name').toBe('toy');
+    expect(boundarySanity.elAMatchesAttr, 'boundary A data-tt-matches').toBe('.toy');
+    expect(boundarySanity.elBMatchesAttr, 'boundary B data-tt-matches').toBe('.toy');
     // Verify geometry: A should span x=100..300, B should span x=450..650
     // Children are local; the group's transform carries the position.
     expect(boundarySanity.pathAD,  'boundary A path').toMatch(/^M0,0 L200,0/);

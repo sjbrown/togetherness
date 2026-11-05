@@ -7,7 +7,7 @@
  * operation, either bare (the functions) or inside a gesture (the LayerAPI).
  */
 
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
   // ID helpers
@@ -49,16 +49,24 @@ function makeLayer() {
 }
 
 function addB(layer, overrides = {}) {
-  const { id, name } = newBoundaryId();
+  const { id, matches } = newBoundaryId();
   BOUNPOS_TYPES.boundary.create(layer.layerEl, {
-    id, name, x: 100, y: 100, w: 200, h: 150,
+    id, matches, x: 100, y: 100, w: 200, h: 150,
     ...overrides,
   });
-  return { id, name };
+  return { id, matches };
+}
+
+// A toy wrapper <g> carrying the given classes, as computeBoundaryRects sees it.
+function toyWith(...classes) {
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('data-module', 'toys');
+  g.setAttribute('class', classes.join(' '));
+  return g;
 }
 
 function addPS(layer, overrides = {}) {
-  const { id, name } = newPositionSetId();
+  const { id, matches } = newPositionSetId();
   const x = overrides.x ?? 0, y = overrides.y ?? 0;
   const w = overrides.w ?? 400, h = overrides.h ?? 300;
   const genType  = overrides.genType  ?? 'square';
@@ -66,10 +74,10 @@ function addPS(layer, overrides = {}) {
   const ySpacing = overrides.ySpacing ?? 80;
   const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
   BOUNPOS_TYPES['pos-grid-sq'].create(layer.layerEl, {
-    id, name, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
-    ...overrides, id, name,
+    id, matches, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
+    ...overrides, id, matches,
   });
-  return { id, name, circles };
+  return { id, matches, circles };
 }
 
 const circlesOf = (el) =>
@@ -105,18 +113,18 @@ function makeGhostPosSet({ x = 0, y = 0, w = 200, h = 200, genType = 'square', x
 // ── ID helpers ─────────────────────────────────────────────────────────────────
 
 describe('newBoundaryId', () => {
-  test('id starts with tt-b-v1- and name is toy', () => {
-    const { id, name } = newBoundaryId();
+  test('id starts with tt-b-v1- and matches is .toy', () => {
+    const { id, matches } = newBoundaryId();
     expect(id.slice(0,8)).toBe(`tt-b-v1-`);
-    expect(name).toBe('toy');
+    expect(matches).toBe('.toy');
   });
 });
 
 describe('newPositionSetId', () => {
-  test('id starts with tt-ps-v1- and name is toy', () => {
-    const { id, name } = newPositionSetId();
+  test('id starts with tt-ps-v1- and matches is .toy', () => {
+    const { id, matches } = newPositionSetId();
     expect(id.slice(0,9)).toBe(`tt-ps-v1-`);
-    expect(name).toBe('toy');
+    expect(matches).toBe('.toy');
   });
 });
 
@@ -296,19 +304,20 @@ describe('boundary create / findEl', () => {
 
   test('boundary <g> has <path> and <text> children, laid out locally under a translate', () => {
     const layer = makeLayer();
-    const { id, name } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
+    const { id, matches } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);
     expect([...el.children].map(c => c.localName)).toEqual(['path', 'text']);
     expect(el.getAttribute('transform')).toBe('translate(100, 100)');
     expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 200, h: 150 });
-    expect(el.querySelector('text').textContent).toBe(name);
+    expect(el.querySelector('text').textContent).toBe(matches);
   });
 
   test('attributes are written to the <g> wrapper', () => {
     const layer = makeLayer();
-    const { id, name } = addB(layer);
+    const { id, matches } = addB(layer);
     const el = findEl(layer.layerEl, id);
-    expect(el.getAttribute('name')).toBe(name);
+    expect(el.getAttribute('data-tt-matches')).toBe(matches);
+    expect(el.hasAttribute('name')).toBe(false);
     expect(el.getAttribute('data-bounpos-type')).toBe('boundary');
   });
 });
@@ -355,22 +364,22 @@ describe('deleteEl', () => {
 });
 
 describe('editBounPos rename', () => {
-  test('updates the name attribute and the label’s text node', () => {
+  test('updates the data-tt-matches attribute and the label’s text node', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
     const el = findEl(layer.layerEl, id);
     const textNode = el.querySelector('text').firstChild;
-    editBounPos({ id, name: 'forest' }, layer.layerEl);
-    expect(el.getAttribute('name')).toBe('forest');
-    expect(el.querySelector('text').textContent).toBe('forest');
+    editBounPos({ id, 'data-tt-matches': '.forest' }, layer.layerEl);
+    expect(el.getAttribute('data-tt-matches')).toBe('.forest');
+    expect(el.querySelector('text').textContent).toBe('.forest');
     expect(el.querySelector('text').firstChild).toBe(textNode);   // changed in place
   });
 
   test('a rename through the LayerAPI is one gesture that records a text mutation', () => {
     const layer = makeLayer();
-    const { id, name } = newBoundaryId();
-    layer.L.add('boundary', { id, name, x: 0, y: 0, w: 100, h: 100 });
-    layer.L.edit(layer.L.find(id), { name: 'forest' });
+    const { id, matches } = newBoundaryId();
+    layer.L.add('boundary', { id, matches, x: 0, y: 0, w: 100, h: 100 });
+    layer.L.edit(layer.L.find(id), { 'data-tt-matches': '.forest' });
     const op = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()].pop();
     expect(op.gesture).toBe('edit');
     expect(op.mutations.map(m => m.t)).toEqual(expect.arrayContaining(['attr', 'text']));
@@ -482,14 +491,14 @@ describe('previewEdit', () => {
     path.setAttribute('d', rectToPath(0, 0, 100, 100));
     ghostEl.appendChild(path);
 
-    expect(() => previewEdit(ghostEl, { name: 'dungeon' })).not.toThrow();
+    expect(() => previewEdit(ghostEl, { 'data-tt-matches': '.dungeon' })).not.toThrow();
     expect(ghostEl.querySelectorAll('circle')).toHaveLength(0);
   });
 
   test('is a no-op when editData has none of xSpacing/ySpacing/snapRadius', () => {
     const ghostEl = makeGhostPosSet({ circleCount: 3 });
 
-    previewEdit(ghostEl, { name: 'grid' });
+    previewEdit(ghostEl, { 'data-tt-matches': '.grid' });
 
     expect(ghostEl.querySelectorAll(':scope > circle')).toHaveLength(3);
   });
@@ -523,10 +532,10 @@ describe('applyMove', () => {
 
   test('a move of a 121-circle position set already on top is one op with exactly one attr mutation, on transform', () => {
     const layer = makeLayer();
-    const { id, name } = newPositionSetId();
+    const { id, matches } = newPositionSetId();
     const circles = gridFillExtent(0, 0, 1000, 1000, 'square', 100, 100);
     layer.L.add('pos-grid-sq', {
-      id, name, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
+      id, matches, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
       x: 0, y: 0, w: 1000, h: 1000, circles,
     });
     expect(circlesOf(findEl(layer.layerEl, id))).toHaveLength(121);
@@ -565,7 +574,7 @@ describe('world geometry across create -> move -> resize -> move', () => {
   // Reference: the previous absolute-coordinate behavior.
   test('boundary readers report the reference world rect at each step', () => {
     const layer = makeLayer();
-    const { id, name } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
+    const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);
     const steps = [
       [() => {}, { x: 100, y: 100, w: 200, h: 150 }],
@@ -577,7 +586,7 @@ describe('world geometry across create -> move -> resize -> move', () => {
       act();
       expect(getGeom(el)).toEqual({ x: want.x, y: want.y, width: want.w, height: want.h });
       expect(getAnchor(el)).toEqual({ x: want.x, y: want.y });
-      const rects = computeBoundaryRects(layer.layerEl, new Set([name]), { x: want.x + 1, y: want.y + 1 });
+      const rects = computeBoundaryRects(layer.layerEl, toyWith('toy'), { x: want.x + 1, y: want.y + 1 });
       expect(rects).toEqual([want]);
     }
   });
@@ -608,7 +617,7 @@ describe('old absolute-layout elements', () => {
     const g = document.createElementNS(SVG_NS, 'g');
     const set = (el, attrs) => Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
     set(g, {
-      id: 'tt-ps-v1-old', 'data-id': 'tt-ps-v1-old', 'data-module': 'boun_pos', name: 'toy',
+      id: 'tt-ps-v1-old', 'data-id': 'tt-ps-v1-old', 'data-module': 'boun_pos', 'data-tt-matches': '.toy',
       'data-bounpos-type': 'pos-set', 'data-snap-radius': '20', 'data-gen-type': 'square',
       'data-gen-x-spacing': '100', 'data-gen-y-spacing': '100',
     });
@@ -777,43 +786,69 @@ describe('previewResize', () => {
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 describe('computeBoundaryRects', () => {
-  test('returns null when toy has no classes', () => {
+  test('returns null when the toy matches no selector', () => {
     const layer = makeLayer();
-    addB(layer, { x: 0, y: 0, w: 300, h: 300 });
-    expect(computeBoundaryRects(layer.layerEl, new Set(), { x: 50, y: 50 })).toBeNull();
+    addB(layer, { matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    expect(computeBoundaryRects(layer.layerEl, toyWith(), { x: 50, y: 50 })).toBeNull();
   });
 
-  test('returns null when no boundary name matches', () => {
+  test('returns null when no boundary data-tt-matches selects the toy', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
-    expect(computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 })).toBeNull();
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    expect(computeBoundaryRects(layer.layerEl, toyWith('dungeon'), { x: 50, y: 50 })).toBeNull();
   });
 
-  test('returns rects when class matches and toy starts inside', () => {
+  test('returns rects when the selector matches and toy starts inside', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
-    const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 50, y: 50 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    const rects = computeBoundaryRects(layer.layerEl, toyWith('forest'), { x: 50, y: 50 });
     expect(rects).not.toBeNull();
     expect(rects).toHaveLength(1);
     expect(rects[0]).toMatchObject({ x: 0, y: 0, w: 300, h: 300 });
   });
 
+  test('a selector matches the toy\'s inner <svg> as well as its wrapper', () => {
+    const layer = makeLayer();
+    const { id } = newBoundaryId();
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    const toy = toyWith();
+    const inner = document.createElementNS(SVG_NS, 'svg');
+    inner.setAttribute('class', 'forest');
+    toy.appendChild(inner);
+    expect(computeBoundaryRects(layer.layerEl, toy, { x: 50, y: 50 })).toHaveLength(1);
+  });
+
+  test('a boundary with no data-tt-matches constrains nothing', () => {
+    const layer = makeLayer();
+    addB(layer, { matches: '', x: 0, y: 0, w: 300, h: 300 });
+    expect(computeBoundaryRects(layer.layerEl, toyWith('toy'), { x: 50, y: 50 })).toBeNull();
+  });
+
+  test('an invalid selector constrains nothing and warns', () => {
+    const layer = makeLayer();
+    addB(layer, { matches: '>>>', x: 0, y: 0, w: 300, h: 300 });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(computeBoundaryRects(layer.layerEl, toyWith('toy'), { x: 50, y: 50 })).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a valid selector'));
+    warn.mockRestore();
+  });
+
   test('returns null when toy starts outside matched boundary', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
+    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 100, h: 100 });
     // anchor is outside the boundary
-    const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 200, y: 200 });
+    const rects = computeBoundaryRects(layer.layerEl, toyWith('forest'), { x: 200, y: 200 });
     expect(rects).toBeNull();
   });
 
   test('pos-set elements are ignored', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
-    findEl(layer.layerEl, id).setAttribute('name', 'dungeon');
-    const rects = computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 });
+    findEl(layer.layerEl, id).setAttribute('data-tt-matches', '.dungeon');
+    const rects = computeBoundaryRects(layer.layerEl, toyWith('dungeon'), { x: 50, y: 50 });
     expect(rects).toBeNull();
   });
 });
@@ -822,14 +857,14 @@ describe('getSnapPoints', () => {
   test('returns snap points', () => {
     const layer = makeLayer();
     const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', xSpacing: 100, ySpacing: 100 });
-    editBounPos({ id, name: 'forest' }, layer.layerEl);
+    editBounPos({ id, 'data-tt-matches': '.forest' }, layer.layerEl);
     const pts = getSnapPoints(layer.layerEl);
     expect(pts.length).toBe(circles.length);
     pts.forEach(p => {
       expect(typeof p.cx).toBe('number');
       expect(typeof p.cy).toBe('number');
       expect(typeof p.snapRadius).toBe('number');
-      expect(p.name).toBe('forest');
+      expect(p.matches).toBe('.forest');
     });
   });
 });
@@ -847,13 +882,13 @@ describe('layerData / getTtState', () => {
 // ── Edit schema ───────────────────────────────────────────────────────────────
 
 describe('getTtStateSchema via rendered DOM', () => {
-  test('boundary schema has name field with string kind', () => {
+  test('boundary schema has a data-tt-matches field with string kind', () => {
     const div = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     div.setAttribute('data-bounpos-type', 'boundary');
-    div.setAttribute('name', 'dungeon');
+    div.setAttribute('data-tt-matches', '.dungeon');
     const schema = getTtStateSchema(div);
-    expect(schema.name).toBe('dungeon');
-    expect(schema.types.name.kind).toBe('string');
+    expect(schema['data-tt-matches']).toBe('.dungeon');
+    expect(schema.types['data-tt-matches'].kind).toBe('string');
     expect(schema.types['snap-radius']).toBeUndefined();
   });
 });

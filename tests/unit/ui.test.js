@@ -300,6 +300,19 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     expect(btns.length).toBe(3)
   })
 
+  test('a schema field with an explicit label shows it, and commits under that attribute key', () => {
+    const element = {
+      ltype: 'boun_pos', id: 'b1', label: 'Boundary', type: 'boundary',
+      'data-tt-matches': '.card',
+      types: { type: { show: [] }, 'data-tt-matches': { kind: 'string', label: 'Matches', show: ['add', 'edit'] } },
+    }
+    const html = editBody({ element })
+    expect(html).toContain('<label>Matches</label>')
+    expect(html).not.toContain('data-tt-matches</label>')
+    expect(html).toContain('value=".card"')
+    expect(html).toContain(`App.commitEdit('b1',{'data-tt-matches':this.value})`)
+  })
+
   test('a non-drawing selection (e.g. boun_pos) omits Duplicate, showing only Delete/Edit', () => {
     const html = pillHTML({
       selectionActive: true, multiSelectionActive: false, selectedCount: 0,

@@ -172,7 +172,7 @@ var chip = {
      style="stroke:#ffffff;stroke-opacity:1;fill:none;stroke-dasharray:3.15, 9.45;stroke-dashoffset:0;stroke-width:3.15;stroke-linecap:butt"
      />
 
-  <g class="tt_positions" data-bounpos-type="pos-set" name="chip">
+  <g class="tt_positions" data-bounpos-type="pos-set" data-tt-matches=".chip">
     <circle cx="40" cy="32" r="10" fill="#fff" fill-opacity="0.1"></circle>
   </g>
 </svg>

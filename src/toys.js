@@ -890,17 +890,28 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
  * Whether a container's tt_contents group accepts toyEl. The group may carry
  * a `data-tt-matches` attribute: a CSS selector (`.card`) that toyEl's wrapper or
  * its own inner <svg> must match, the same two elements a tt_positions
- * `name` is compared against when snapping. No `data-tt-matches` accepts anything.
+ * group's own `data-tt-matches` is compared against when snapping. No
+ * `data-tt-matches` on a container accepts anything.
  *
  * A selector that doesn't parse accepts nothing, and says so.
  */
 export function acceptsToy(contentsGroup, toyEl) {
   const selector = contentsGroup.getAttribute('data-tt-matches')
   if (!selector) return true
+  return selectorMatchesToy(selector, toyEl)
+}
+
+/**
+ * Whether a CSS selector matches toyEl's wrapper or its own inner <svg>. An
+ * empty selector matches nothing, so callers decide what "no selector" means.
+ * A selector that doesn't parse matches nothing, and says so.
+ */
+export function selectorMatchesToy(selector, toyEl) {
+  if (!selector) return false
   try {
     return toyEl.matches(selector) || !!toyEl.querySelector(':scope > svg')?.matches(selector)
   } catch (err) {
-    console.warn(`[toys] tt_contents data-tt-matches="${selector}" is not a valid selector`)
+    console.warn(`[toys] data-tt-matches="${selector}" is not a valid selector`)
     return false
   }
 }
@@ -950,7 +961,7 @@ function localToLayerMatrix(localEl, layerEl) {
  * should look it up once per call rather than once per owner.
  */
 function getPositionsMeta(domEl, layerInv) {
-  const NULL = { g: null, name: null, snapRadius: null, circles: null, canvasCircles: null }
+  const NULL = { g: null, matches: null, snapRadius: null, circles: null, canvasCircles: null }
   const g = domEl?.querySelector?.(`.${domEl.id}__tt_positions`) ?? null
   if (!g) return NULL
 
@@ -958,7 +969,7 @@ function getPositionsMeta(domEl, layerInv) {
   if (!circles.length) return NULL
   const c0 = circles[0]
   const snapRadius = Number(g.getAttribute('data-snap-radius') ?? c0.getAttribute('r'))
-  const name = g.getAttribute('name') || '';
+  const matches = g.getAttribute('data-tt-matches') || '';
 
   const groupCtm = g.getScreenCTM?.()
   const m = layerInv && groupCtm ? layerInv.multiply(groupCtm) : null
@@ -976,7 +987,7 @@ function getPositionsMeta(domEl, layerInv) {
       cy: cx * m.b + cy * m.d + m.f,
     })
   })
-  return { g, name, snapRadius, circles, canvasCircles }
+  return { g, matches, snapRadius, circles, canvasCircles }
 }
 
 /**
@@ -988,11 +999,11 @@ export function getSnapPoints(layerEl) {
 
   for (const ownerEl of layerEl.querySelectorAll(':scope > [data-id]')) {
     const ownerId = ownerEl.getAttribute('data-id')
-    const { g, canvasCircles, name } = getPositionsMeta(ownerEl, layerInv)
+    const { g, canvasCircles, matches } = getPositionsMeta(ownerEl, layerInv)
     if (!g) continue
 
     for (const c of canvasCircles) {
-      points.push({ cx: c.cx, cy: c.cy, snapRadius: c.r, circleId: c.id, ownerId, name })
+      points.push({ cx: c.cx, cy: c.cy, snapRadius: c.r, circleId: c.id, ownerId, matches })
     }
   }
 
