@@ -105,6 +105,17 @@ describe('group action square', () => {
     expect(key).toBe('Roll')
   })
 
+  test('a touch press 18px off-centre fires; a mouse press there does not', async () => {
+    const { App } = await bootApp(dice())
+    App.select('a'); App.toggleSelection('b'); App.toggleSelection('c')
+    const spy = vi.spyOn(App, 'invokeToyMenuActions')
+    const { origin } = App.getGroupAction()
+    const pt = { x: origin.x + 18, y: origin.y }
+    expect(App.fireGroupActionAt(pt, 'mouse')).toBe(false)
+    expect(App.fireGroupActionAt(pt, 'touch')).toBe(true)
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
   test('a click away from the square does nothing', async () => {
     const { App } = await bootApp(dice())
     App.select('a'); App.toggleSelection('b')

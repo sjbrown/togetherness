@@ -8,6 +8,8 @@ import {
   stringPathD,
   bowstringOrigin,
   hitTestBowstring,
+  hitSideFor,
+  TOUCH_HIT_SIDE,
   chargeOpacityFor,
   chargeRadiusFor,
   MAX_CHARGE_RADIUS,
@@ -170,6 +172,15 @@ describe('bowstringOrigin — the south-east-most corner of the selection ring',
   })
 })
 
+describe('hitSideFor', () => {
+  it('gives touch the 44px target and everything else the drawn square', () => {
+    expect(hitSideFor('touch')).toBe(44)
+    expect(hitSideFor('mouse')).toBe(22)
+    expect(hitSideFor('pen')).toBe(22)
+    expect(hitSideFor(undefined)).toBe(22)
+  })
+})
+
 describe('hitTestBowstring', () => {
   const geo = { x: 0, y: 0, width: 100, height: 100 }
   const origin = bowstringOrigin(geo) // { x: 106, y: 106 }
@@ -184,6 +195,20 @@ describe('hitTestBowstring', () => {
 
   it('misses just outside the square', () => {
     expect(hitTestBowstring(geo, origin.x + 12, origin.y, 1)).toBe(false)
+  })
+
+  it('hits 20px out with the touch side, which the drawn square misses', () => {
+    expect(hitTestBowstring(geo, origin.x + 20, origin.y, 1)).toBe(false)
+    expect(hitTestBowstring(geo, origin.x + 20, origin.y, 1, null, TOUCH_HIT_SIDE)).toBe(true)
+  })
+
+  it('still misses beyond the touch side', () => {
+    expect(hitTestBowstring(geo, origin.x + 23, origin.y, 1, null, TOUCH_HIT_SIDE)).toBe(false)
+  })
+
+  it('keeps the touch side at 44 screen px when zoomed', () => {
+    expect(hitTestBowstring(geo, origin.x + 40, origin.y, 0.5, null, TOUCH_HIT_SIDE)).toBe(true)
+    expect(hitTestBowstring(geo, origin.x + 46, origin.y, 0.5, null, TOUCH_HIT_SIDE)).toBe(false)
   })
 
   it('misses the opposite corner of the toy entirely', () => {
