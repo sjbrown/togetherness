@@ -2,26 +2,36 @@
 
 A toy is one SVG file: artwork and behaviour together, as ordinary SVG plus
 a `<script>`. You need to know JavaScript and SVG. You don't need to know
-anything about Yjs, CRDTs, or how sync works — that's handled for you.
+anything about the Togetherness Table platform dependencies, no Yjs, CRDTs,
+or WebRTC -- that's all handled for you.
 
-## The document is the state
+## Principal 1: The SVG document is the state
 
 A table is an SVG document. Players can export it, open it in Inkscape (or
-any SVG-compliant editor), move things around, recolour them, fix a typo,
-and bring it back in — an old table, long after the session that made it
-has gone, is a file you can work on. Write every toy on the assumption that
-this is part of someone's normal workflow, not an edge case.
+any SVG editor), move things around, recolour them, fix a typo,
+run it through your own custom scripts, send it over email and import it
+to another Togetherness Table session.
+Write every toy on the assumption that this is part of a user's normal
+workflow.
 
-So: **if a fact about your toy is worth remembering, it lives in the DOM.**
-Not in a JavaScript variable, not in a closure, not in a `Map` keyed by id.
-Your namespace object holds *behaviour*; the document holds *state*. The test
-is simple: export, reopen, and your toy should look and act the same.
+So: **all toy state lives in the DOM.**
+Not in a JavaScript variable, not in a closure.
+
+Furthermore, resist *rendering* with javascript. For example, see poker
+card example implementations. When the card is flipped, it doesn't destroy
+the currently visible side, and render the opposite side.  Instead, it
+keeps both sides alive in the SVG structure, and just changes their
+z-order.  Imagine how the two approaches change the workflow for a user
+loading a card into Inkscape to edit it.
+
+Where rendering is unavoidable (eg, the card count indicator in a poker
+deck), keep it minimal.
 
 ### Where state goes
 
-| State | Where it lives |
+| State | How to handle it |
 |-------|----------------|
-| What the toy shows | Real SVG: text in `<tspan>`s, shapes, `fill`, `transform`. Not a canvas, not generated at render time. |
+| Something visually present on the toy | Real SVG: text in `<tspan>`s, shapes, `fill`, `transform`. |
 | A value you need back later | An attribute or text node on your toy (`<tspan class="count">`, `class="flipped"`). A face-up card is two `<g>`s in a different order, not a boolean in a variable. |
 | Per-instance bookkeeping | A `data-*` attribute on the toy's root `<g>`. These ride along when the toy is cloned (a supply's copy, a duplicate), and survive export. |
 | Which toy is inside which | **Nesting.** A card in a deck is the card's `<svg>` *inside* the deck's `.tt_contents`. Not an id list, not a `data-held-by`. If you can drag a die out of a tray in Inkscape, the tray has lost it. |
@@ -34,21 +44,20 @@ is simple: export, reopen, and your toy should look and act the same.
   peers who join later, and invisible in an editor.
 - **Derived state stored as truth.** If a total, a count or a label can be
   computed from the contents, compute it in `contents_change_handler` and
-  write the *result* where a reader can see it; never read it back as input.
+  write the *result* where a reader can see it.
 - **Markup only your code can interpret.** Prefer ordinary SVG
   (`<text>`, `<rect>`, `transform`, `<use>`) that an editor renders correctly
   without running your script. Scripts are saved with the document, but an
   editor won't run them: a toy whose art is blank until `initialize` paints
   it is a blank rectangle in Inkscape.
-- **Deleting and removing are different verbs.** Taking a card out of a deck
-  is a *reparent*; discarding it is a *delete*. Don't conflate them.
 
 ### What the editor may do to your file
 
 Expect these, and design for them:
 
-- **Attributes get edited.** Position, size, colours, text. Read them fresh
-  each time rather than caching.
+- **Other toys' code mutate your toys.** You may not have authored all the
+  code that edit your toy's attributes: position, size, colours, text.
+  Read them fresh each time rather than caching.
 - **Ids get changed.** `id` belongs to the editor's user (your own code must
   still never alter ids; see the end of this file). Your toy's identity
   is `data-id`, set once and never rewritten by the platform. Reference
@@ -61,10 +70,10 @@ Expect these, and design for them:
   helper (`js/tray.js`) is assumed to be present from the app's own source
   tree when the document is reopened.
 - **Valid toy, minimum.** To be taken back in, a toy needs only
-  `<g class="toy" data-toy-type="...">` containing at least one `<svg>`.
+  `<g class="toy" data-toy-type="...">` containing one `<svg>`.
   Everything else the platform restores.
 
-## A minimal toy
+## A minimal toy example
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="80"
@@ -143,10 +152,8 @@ inert artwork.
 
 Namespaces are plain objects on `window`, shared by every instance of your
 toy type — pick a `data-namespace` that isn't already taken by a built-in
-toy (check `src/toy/` and `src/toy/js/` for the current list — things like
-`dice`, `d6`, `tray`, `tray_sum`, `token`, `card_deck`). Reusing
-an existing name silently overwrites it, and whichever toy loads last
-wins — not an error you'll see at the point it happens.
+toy (check `src/toy/` and `src/toy/js/`)
+Reusing an existing name is an error.
 
 ## Menu actions
 
@@ -181,16 +188,15 @@ menu: {
 - **`radial`** — optional. Gives the action a spoke on the radial menu;
   see below.
 
-The first applicable action is your toy's **default action**. It's what
-a click on the toy's action square (the `*` at the corner of its
-selection ring) runs.
+The first applicable action is your toy's **default action**. The UI
+will give the user affordances to readily fire this action.
 
 ### The radial menu
 
-Dragging the action square opens a radial menu around it. Each action
-that declares `radial` gets a spoke, and releasing on a spoke runs that
-action. A spoke can carry one parameter, which the player picks by how
-far out along the spoke they let go:
+The UI affords a radial menu for toys. Each action
+that declares `radial` gets a spoke, and selecting a spoke runs that
+action. A spoke can carry one parameter whose selectable values are
+displayed on the spoke.
 
 ```js
 menu: {
@@ -364,27 +370,22 @@ If you're building a *container* — something other toys can be dropped
 into — the contract is:
 
 - Your SVG has a `<g class="tt_contents">`, the standard drop zone.
-- To accept only some toys, give that group a `data-tt-matches` attribute: a
-  CSS selector tested against the dragged toy's wrapper and against its own
-  root `<svg>`. `<g class="tt_contents" data-tt-matches=".card">` takes only
-  toys whose root `<svg>` has `class="card"`. A `tt_positions` group takes the
-  same attribute (`<g class="tt_positions" data-tt-matches=".chip">`) to
-  decide what may snap there; with none, nothing does. Without `data-tt-matches`, anything is accepted.
-  A toy that doesn't match is not offered as a drop target, so it gets no
-  hover highlight. Any other attempt to reparent it into the container, such
-  as a `toy:reparent` event, fails with an error before anything changes.
+- To accept only certain toys, give that group a `data-tt-matches` attribute:
+  a CSS selector tested against the toy's class.
+  Eg, `<g class="tt_contents" data-tt-matches=".card">` takes only
+  toys whose root `<svg>` has `class="card"`.
+  Any other attempt to reparent it into the container, such
+  as a `toy:reparent` event, fails with an error.
   A selector that doesn't parse accepts nothing.
+  Without `data-tt-matches`, any toy is accepted.
 - `contents_change_handler(elem)` is called automatically whenever
   anything inside that group changes (a contained die was rolled, a toy
   was dropped in or dragged out). Recompute whatever you display from
   the contents at that point.
-- `getValue(elem)` lets *your* container be nested inside another one —
-  return your own displayed value as a string.
+- `getValue(elem)` lets *your* container report a value to *a higher-level
+  container*.
 
-`tray.js` (loaded by every tray-shaped toy via `data-namespace="tray"`)
-has the helpers you'll want for this: `visit_contents`,
-`get_numeric_value`, `getValue`, `getUnderstoodNumber`. Read it before
-writing a new container type from scratch.
+Read `tray.js` and `poker_deck.js` for container examples.
 
 ## Resizing: the `wh_follow_resize` class
 
@@ -432,14 +433,6 @@ should scale proportionally with the toy. The class makes the intent explicit
 and allows the platform to genericize the resize logic across any toy type, not
 just hardcoded special cases.
 
-## What you don't need to think about
-
-Sync, persistence, undo, and multiplayer are all handled beneath the
-DOM you're working with. You never touch Yjs, never write a CRDT
-operation, never worry about what happens if two peers act at once — the
-platform resolves that. If your handler runs, its effect will sync to
-every peer and survive a reload, with no code from you beyond the DOM
-mutation itself.
 
 ## Don't alter element IDs
 
