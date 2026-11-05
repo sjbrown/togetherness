@@ -8,6 +8,9 @@ services:
     volumes:
       # Hot-reload without rebuild — mount src directly
       - ./src:/app/
+      # Developer pages at /dev/, never part of the published app. Docker
+      # creates an empty src/dev/ as the mount point (gitignored).
+      - ./tests/dev:/app/dev:ro
     working_dir: /app
     command: python -m http.server 8000
     depends_on:

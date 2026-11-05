@@ -15,3 +15,6 @@ test-results/
 .DS_Store
 Thumbs.db
 *.swp
+
+# Mount point for developer pages, created by docker compose (see docker-compose.yml)
+src/dev/
