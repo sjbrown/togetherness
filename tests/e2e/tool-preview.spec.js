@@ -18,6 +18,9 @@ test('tools panel shows a toy preview that follows the colour', async ({ page })
   await page.evaluate(() => { window.UI.pillTap('d6'); window.UI.openSheet('tools'); });
   const preview = page.locator('#panelBody .tool-preview svg');
   await expect(preview).toHaveCount(1, { timeout: 5000 });
+  const grid = await page.locator('#panelBody .tool-grid').boundingBox();
+  const previewBox = await page.locator('#panelBody .tool-preview').boundingBox();
+  expect(previewBox.y).toBeGreaterThan(grid.y + grid.height);
 
   const matrix = () => preview.locator('feColorMatrix').first().getAttribute('values');
   const before = await matrix();
@@ -72,11 +75,11 @@ test('preview box stays in place for non-toy tools', async ({ page }) => {
   await page.evaluate(() => { window.UI.pillTap('d6'); window.UI.openSheet('tools'); });
   const box = page.locator('#panelBody .tool-preview');
   await expect(box.locator('svg').first()).toBeVisible({ timeout: 5000 });
-  const filled = await page.locator('#panelBody .field').first().boundingBox();
+  const filled = await box.boundingBox();
 
   await page.evaluate(() => window.App.setTool('select'));
   await expect(box).toHaveCount(1);
   await expect(box.locator('svg')).toHaveCount(0);
-  const empty = await page.locator('#panelBody .field').first().boundingBox();
-  expect(empty.y).toBe(filled.y);
+  const empty = await box.boundingBox();
+  expect(empty.height).toBe(filled.height);
 });
