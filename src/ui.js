@@ -150,6 +150,7 @@ export function toggleMenu() {
   UIData.menuOpen = !UIData.menuOpen;
   $('#menuBtn')?.classList.toggle('open', UIData.menuOpen);
   $('#menuItems')?.classList.toggle('open', UIData.menuOpen);
+  $('#pill')?.classList.toggle('collapsed', UIData.menuOpen);
   if (UIData.menuOpen) { hideToolOpts(); }
   updateInfoBar();
 }
@@ -157,6 +158,7 @@ export function closeMenu() {
   UIData.menuOpen = false;
   $('#menuBtn')?.classList.remove('open');
   $('#menuItems')?.classList.remove('open');
+  $('#pill')?.classList.remove('collapsed');
   updateInfoBar();
 }
 
