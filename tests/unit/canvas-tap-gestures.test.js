@@ -119,6 +119,8 @@ beforeEach(() => {
   ToolMode._lastTap   = 0
   ToolMode._wasPinch  = false
   ToolMode._tapCount  = 0
+  ToolMode._tapHits   = []
+  ToolMode._lastAddAt = 0
   clearTimeout(ToolMode._tapTimer)
   ToolMode._tapTimer  = null
 })
@@ -203,6 +205,105 @@ describe('pinch-zoom vs. tap disambiguation', () => {
     // Only ever a single tap in a row (1, then drag breaks it, then 1) — never 2 or 3.
     expect(app.onViewReset).not.toHaveBeenCalled()
     expect(app.attentionEnter).not.toHaveBeenCalled()
+  })
+})
+
+describe('double-click on a layer object', () => {
+  function objTap(stage, id, pointerId) {
+    const target = document.querySelector(`[data-id="${id}"]`)
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId, target }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { pointerId, target }))
+  }
+
+  function objectApp(overrides = {}) {
+    document.getElementById('toys-layer').innerHTML =
+      '<g data-id="a" data-module="drawing"></g><g data-id="b" data-module="drawing"></g>'
+    return makeApp({ objectDoubleClick: vi.fn(), nextSelectionMode: vi.fn(), ...overrides })
+  }
+
+  test('goes to the object, not the view reset', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = objectApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    objTap(stage, 'a', 1)
+    objTap(stage, 'a', 2)
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.objectDoubleClick).toHaveBeenCalledWith('a')
+    expect(app.onViewReset).not.toHaveBeenCalled()
+  })
+
+  test('two quick taps on different objects do nothing', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = objectApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    objTap(stage, 'a', 1)
+    objTap(stage, 'b', 2)
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.objectDoubleClick).not.toHaveBeenCalled()
+    expect(app.onViewReset).not.toHaveBeenCalled()
+  })
+
+  test('the second press does not cycle the selection mode', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    let selected = []
+    const app = objectApp({
+      getSelectedIds: () => selected,
+      select: (id) => { selected = [id] },
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    objTap(stage, 'a', 1)
+    objTap(stage, 'a', 2)
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.nextSelectionMode).not.toHaveBeenCalled()
+  })
+})
+
+describe('add-tool throttle', () => {
+  test('a second placement inside the double-click window is ignored', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = makeApp({ commitDrawing: vi.fn(), updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('rect', {})
+
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    expect(app.commitDrawing).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(400)
+    tap(stage, { pointerId: 3 })
+    vi.useRealTimers()
+    expect(app.commitDrawing).toHaveBeenCalledTimes(2)
+  })
+
+  test('a double-click with an add tool does not reset the view', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = makeApp({ commitDrawing: vi.fn(), updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('rect', {})
+
+    tap(stage, { pointerId: 1 })
+    tap(stage, { pointerId: 2 })
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.onViewReset).not.toHaveBeenCalled()
   })
 })
 

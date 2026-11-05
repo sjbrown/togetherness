@@ -34,7 +34,16 @@ export const ToolMode = {
   _tapCount:   0,
   _tapTimer:   null,
   _tapPts:     [],      // client points of the current tap sequence
+  _tapHits:    [],      // id under each tap of the sequence, null for empty table
+  _lastAddAt:  0,       // when the last add-tool press was accepted
 };
+
+// Add-tool presses closer together than this are one double-click, not two
+// placements.
+const ADD_THROTTLE_MS = 300;
+
+// The object under the press in progress, for the tap sequence to record.
+let _downHitId = null;
 
 // A triple-click is three presses in about the same place; three quick
 // clicks on different things are not.
@@ -92,6 +101,7 @@ export function setTool(name, params = {}) {
     ToolMode._tapCount = 0;
     ToolMode._lastTap  = 0;
     ToolMode._tapPts   = [];
+    ToolMode._tapHits  = [];
   }
   ToolMode.tool = name;
   ToolMode.params = { ...params };
@@ -111,6 +121,14 @@ export function syncBackgroundTransform() { applyViewTransform(); }
 
 export function resetView() {
   _view = { x: 0, y: 0, scale: 1 };
+  applyViewTransform();
+}
+
+// Pans so canvas point (cx, cy) sits at the middle of the stage; zoom is kept.
+export function centerOn(cx, cy) {
+  const r = _stageEl.getBoundingClientRect();
+  _view.x = r.width  / 2 - cx * _view.scale;
+  _view.y = r.height / 2 - cy * _view.scale;
   applyViewTransform();
 }
 
@@ -214,6 +232,7 @@ function onPointerDown(e) {
   // Let ui.js know to close dropdowns — it listens on document capture
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   _stageEl.setPointerCapture(e.pointerId);
+  _downHitId = null;
 
   // Attention mode, select tool only: while it is on it takes every
   // single-pointer press; otherwise the third press of a tap sequence enters
@@ -221,6 +240,13 @@ function onPointerDown(e) {
   // counting as a tap, so a triple-click there starts a new one).
   if (ToolMode.tool === 'select' && ToolMode._pointers.size === 1) {
     const p = toCanvas(e.clientX, e.clientY);
+    // An open standing radial menu takes the press: it fires or closes.
+    if (App.standingRadialActive?.()) {
+      ToolMode._gesture = 'radial-press';
+      ToolMode._moveRef = null;
+      App.standingRadialPress(p.x, p.y);
+      return;
+    }
     if (App.attentionActive()) {
       ToolMode._gesture = 'attention';
       ToolMode._moveRef = null;
@@ -259,6 +285,7 @@ function onPointerDown(e) {
 
   const hitEl = hitForActiveLayer(e);
   const hitId = hitEl?.dataset?.id ?? null;
+  _downHitId = hitId;
 
   if (ToolMode.tool === 'select') {
     // Resize mode: the corner handles are drawn just outside the tray's
@@ -360,6 +387,11 @@ function onPointerDown(e) {
     }
   } else {
     // Draw mode
+    if (Date.now() - ToolMode._lastAddAt < ADD_THROTTLE_MS) {
+      ToolMode._gesture = 'throttled';
+      return;
+    }
+    ToolMode._lastAddAt = Date.now();
     ToolMode._gesture = 'draw';
     const p = toCanvas(e.clientX, e.clientY);
     ToolMode._draft = { type: ToolMode.tool, ox: p.x, oy: p.y };
@@ -376,6 +408,12 @@ function onPointerMove(e) {
   if (ToolMode.tool !== 'select') {
     const p = toCanvas(e.clientX, e.clientY);
     App.updateAddCursor(p.x, p.y, ToolMode.tool);
+  }
+
+  if (ToolMode.tool === 'select' && App.standingRadialActive?.()) {
+    const p = toCanvas(e.clientX, e.clientY);
+    App.standingRadialMove(p.x, p.y);
+    return;
   }
 
   // In attention mode moves go to attention, hovering or not; a pinch still
@@ -513,8 +551,8 @@ function onPointerUp(e) {
 
   const isCancelled = e.type === 'pointercancel';
 
-  // An attention press never counts toward a tap sequence.
-  if (ToolMode._gesture === 'attention') {
+  // Attention and radial-menu presses never count toward a tap sequence.
+  if (ToolMode._gesture === 'attention' || ToolMode._gesture === 'radial-press') {
     ToolMode._gesture = null;
     ToolMode._moveRef = null;
     if (ToolMode._pointers.size === 0) {
@@ -547,7 +585,9 @@ function onPointerUp(e) {
       // ...and if this tap landed on an element that was ALREADY the sole
       // selection, it's a deliberate second click — toggle the next mode
       // in the cycle
-      if (!isCancelled && ToolMode._moveRef.wasReclick) {
+      // (the second press of a double-click is not a deliberate reclick)
+      const secondOfDouble = ToolMode._tapCount >= 1 && Date.now() - ToolMode._lastTap < 300;
+      if (!isCancelled && ToolMode._moveRef.wasReclick && !secondOfDouble) {
         App.nextSelectionMode(ToolMode._moveRef.id);
       }
     }
@@ -648,9 +688,11 @@ function onPointerUp(e) {
       if (now - ToolMode._lastTap < 300) {
         ToolMode._tapCount++;
         ToolMode._tapPts.push({ x: e.clientX, y: e.clientY });
+        ToolMode._tapHits.push(_downHitId);
       } else {
         ToolMode._tapCount = 1;
         ToolMode._tapPts = [{ x: e.clientX, y: e.clientY }];
+        ToolMode._tapHits = [_downHitId];
       }
       ToolMode._lastTap = now;
 
@@ -659,9 +701,16 @@ function onPointerUp(e) {
       // wait out the double-tap window before acting on the final count.
       clearTimeout(ToolMode._tapTimer);
       ToolMode._tapTimer = setTimeout(() => {
-        if (ToolMode._tapCount === 2) {
-          resetView();
-          App.onViewReset();
+        if (ToolMode._tapCount === 2 && ToolMode.tool === 'select') {
+          const [first, second] = ToolMode._tapHits;
+          if (first === second) {
+            if (first) {
+              App.objectDoubleClick(first);
+            } else {
+              resetView();
+              App.onViewReset();
+            }
+          }
         }
         ToolMode._tapCount = 0;
       }, 300);
