@@ -1099,11 +1099,11 @@ function defaultToolsBody(data) {
     : '';
 
   return `
-    ${data.layer === 'toys' ? toyPreviewHTML(data) : ''}
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>
-    ${addFields}${helpHTML}`;
+    ${addFields}${helpHTML}
+    ${data.layer === 'toys' ? toyPreviewHTML(data) : ''}`;
 }
 
 /**
