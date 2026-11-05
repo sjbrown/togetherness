@@ -785,13 +785,13 @@ describe('chip: value from the Tools panel range slider (real assets)', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// token_glass: Tools panel value range slider (0-24) → initialize(elem, options)
+// token_glass: Tools panel value range slider (0-30) → initialize(elem, options)
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Same contract as chip above: app.js's commitToy forwards the active
 // tool's params as an { color, value } initArgs object. token_glass.svg's
-// own side of it picks which of its 24 .game-icon faces
-// (data-token-style-index 1-24) is visible — or, for 0, hides all of them.
+// own side of it picks which of its 30 .game-icon faces
+// (data-token-style-index 1-30) is visible — or, for 0, hides all of them.
 // That 0 case matters: it's the same "nothing showing" state increment()
 // already leaves you in after cycling Value+1 past the last face, so 0 has
 // to mean the same thing on placement as it does mid-game.

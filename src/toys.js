@@ -1420,7 +1420,7 @@ export const TOOLS = [
     defaults: { fill: '#fa2020', value: 0 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
-      { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 24, step: 1, show: ['add'] },
+      { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 30, step: 1, show: ['add'] },
     ],
   },
   {
