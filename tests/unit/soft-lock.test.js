@@ -21,7 +21,6 @@ import {
   CYCLE_MS,
   FADE_END,
   LOOP_BUFFER_MS,
-  fadeVanish,
   growVanish,
   vanishOffsets,
   cycleMs,
@@ -582,12 +581,6 @@ describe('vanishOffsets', () => {
 })
 
 describe('curves', () => {
-  test('fade eases in: slow at first, faster later', () => {
-    expect(fadeVanish(0)).toBe(0)
-    expect(fadeVanish(0.5)).toBeCloseTo(0.25, 5)
-    expect(fadeVanish(1)).toBe(1)
-  })
-
   test('grow runs the other way, linearly: nearly gone at the bid, full at the deadline', () => {
     expect(growVanish(0)).toBe(1)
     expect(growVanish(0.5)).toBeCloseTo(0.5, 5)
@@ -620,35 +613,26 @@ describe('cycle timing', () => {
 })
 
 describe('vanishFrames', () => {
-  const fade = vanishFrames(fadeVanish)
   const grow = vanishFrames(growVanish)
 
   test('key times run from 0 to 1, strictly increasing', () => {
-    const kt = nums(fade.keyTimes)
+    const kt = nums(grow.keyTimes)
     expect(kt[0]).toBe(0)
     expect(kt[kt.length - 1]).toBe(1)
     for (let i = 1; i < kt.length; i++) expect(kt[i]).toBeGreaterThan(kt[i - 1])
   })
 
   test('every track has one value per key time', () => {
-    for (const f of [fade, grow]) {
-      const n = nums(f.keyTimes).length
-      expect(nums(f.a)).toHaveLength(n)
-      expect(nums(f.b)).toHaveLength(n)
-    }
+    const n = nums(grow.keyTimes).length
+    expect(nums(grow.a)).toHaveLength(n)
+    expect(nums(grow.b)).toHaveLength(n)
   })
 
   test('the window ends at its share of the cycle, then the last frame is held', () => {
-    const kt = nums(fade.keyTimes)
-    const a = nums(fade.a)
+    const kt = nums(grow.keyTimes)
+    const a = nums(grow.a)
     expect(kt[kt.length - 2]).toBeCloseTo(REQUEST_WINDOW_MS / CYCLE_MS, 3)
     expect(a[a.length - 1]).toBe(a[a.length - 2])
-  })
-
-  test('fade starts as the full ring and ends nearly gone', () => {
-    const a = nums(fade.a)
-    expect(a[0]).toBe(0)
-    expect(a[a.length - 1]).toBeCloseTo(FADE_END, 3)
   })
 
   test('grow starts nearly gone and ends as the full ring', () => {
@@ -657,10 +641,8 @@ describe('vanishFrames', () => {
     expect(a[a.length - 1]).toBe(0)
   })
 
-  test('fade lags a linear sweep midway (ease-in), grow does not', () => {
-    const mid = (f) => nums(f.a)[12]
-    expect(mid(fade)).toBeCloseTo(FADE_END * 0.25, 3)
-    expect(mid(grow)).toBeCloseTo(FADE_END * 0.5, 3)
+  test('grow is a linear sweep: half way at mid-window', () => {
+    expect(nums(grow.a)[12]).toBeCloseTo(FADE_END * 0.5, 3)
   })
 })
 
@@ -677,20 +659,18 @@ describe('vanishFrames started mid-cycle', () => {
   const PHASES = [0, 1, 500, 1234, REQUEST_WINDOW_MS, REQUEST_WINDOW_MS + 400, CYCLE_MS - 20, CYCLE_MS - 5, CYCLE_MS - 1]
 
   test.each(PHASES)('phase %i: key times start at 0, end at 1, strictly increasing', (phase) => {
-    for (const curve of [fadeVanish, growVanish]) {
-      const f = vanishFrames(curve, phase)
-      const kt = nums(f.keyTimes)
-      expect(kt[0]).toBe(0)
-      expect(kt[kt.length - 1]).toBe(1)
-      for (let i = 1; i < kt.length; i++) expect(kt[i]).toBeGreaterThan(kt[i - 1])
-      expect(nums(f.a)).toHaveLength(kt.length)
-      expect(nums(f.b)).toHaveLength(kt.length)
-    }
+    const f = vanishFrames(growVanish, phase)
+    const kt = nums(f.keyTimes)
+    expect(kt[0]).toBe(0)
+    expect(kt[kt.length - 1]).toBe(1)
+    for (let i = 1; i < kt.length; i++) expect(kt[i]).toBeGreaterThan(kt[i - 1])
+    expect(nums(f.a)).toHaveLength(kt.length)
+    expect(nums(f.b)).toHaveLength(kt.length)
   })
 
   test.each(PHASES)('phase %i: tracks the unrotated cycle shifted by the phase', (phase) => {
-    const base = vanishFrames(fadeVanish)
-    const rotated = vanishFrames(fadeVanish, phase)
+    const base = vanishFrames(growVanish)
+    const rotated = vanishFrames(growVanish, phase)
     for (let tau = 0; tau <= CYCLE_MS; tau += 53) {
       const t = (phase + tau) % CYCLE_MS
       // the wrap back to the start is a step; skip the few ms around it
@@ -706,8 +686,8 @@ describe('vanishFrames started mid-cycle', () => {
   })
 
   test('the first frame is where the unrotated cycle is at that phase', () => {
-    const base = vanishFrames(fadeVanish)
-    const f = vanishFrames(fadeVanish, 1500)
+    const base = vanishFrames(growVanish)
+    const f = vanishFrames(growVanish, 1500)
     expect(nums(f.a)[0]).toBeCloseTo(at(base, 'a', 1500 / CYCLE_MS), 3)
   })
 })

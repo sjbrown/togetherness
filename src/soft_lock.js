@@ -292,12 +292,9 @@ export function computeTickActions({ myClientId, awarenessStates, now }) {
 
 // ── Request animation ────────────────────────────────────────────────────────
 //
-// While a request is open, two rings animate over the same cycle, driven by
-// a single "vanish" value v in [0, 1] (0 = the full gradient ring, 1 =
-// colours pushed into the far corner, ring nearly gone):
-//
-//   - the holder's ring fades:     v rises with ease-in
-//   - the requester's ring grows:  v falls linearly, from the opposite corner
+// While a request is open, the requester's ring grows, driven by a single
+// "vanish" value v in [0, 1] (0 = the full gradient ring, 1 = colours pushed
+// into the far corner, ring nearly gone) that falls linearly over the window.
 //
 // A cycle is the request window plus a buffer, and repeats. The buffer holds
 // the final frame so a tick or a slow network that resolves the request a
@@ -311,10 +308,8 @@ export const CYCLE_MS = REQUEST_WINDOW_MS + LOOP_BUFFER_MS;
 const FRAME_SAMPLES = 24;
 
 export const easeLinear = (p) => p;
-export const easeInQuad = (p) => p * p;
 
 // v as a function of window progress p
-export const fadeVanish = (p) => easeInQuad(p);
 export const growVanish = (p) => 1 - easeLinear(p);
 
 /**

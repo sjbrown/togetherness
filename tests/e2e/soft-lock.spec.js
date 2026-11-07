@@ -112,7 +112,7 @@ test.describe('soft-lock: two-peer element requests', () => {
     await browser.close();
   });
 
-  test('an open request animates: the holder\'s ring fades while the requester\'s ring grows', async () => {
+  test('an open request animates: the requester\'s ring grows while the holder\'s ring stays as it is', async () => {
     // SMIL isn't evaluated by jsdom, so this is the only place the real
     // animation runs. animVal is the live animated value of a stop's offset;
     // it keeps advancing across the continuous overlay re-renders that
@@ -127,9 +127,10 @@ test.describe('soft-lock: two-peer element requests', () => {
     await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
     await clickToy(page2, id);                     // B requests
 
-    // A's own ring is stroked by the fading gradient, B's request ring by the growing one.
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveAttribute('stroke', /url\(#req-fade-/, { timeout: 2000 });
+    // B's request ring is stroked by the growing gradient; A's own ring keeps A's gradient.
     await expect(page2.locator('#overlay-layer .requestedRing')).toHaveAttribute('stroke', /url\(#req-grow-/, { timeout: 2000 });
+    await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
+    await expect(page1.locator('#overlay-layer .selRing')).not.toHaveAttribute('stroke', /req-/);
 
     // The moving stop's live offset (stop index 1 of the gradient).
     const offset = (page, kind) => page.evaluate((k) => {
@@ -137,13 +138,10 @@ test.describe('soft-lock: two-peer element requests', () => {
       return stop ? stop.offset.animVal : null;
     }, kind);
 
-    const fade0 = await offset(page1, 'fade');
     const grow0 = await offset(page2, 'grow');
     await page1.waitForTimeout(1000);
-    const fade1 = await offset(page1, 'fade');
     const grow1 = await offset(page2, 'grow');
 
-    expect(fade1).toBeGreaterThan(fade0);          // holder's colours retreating
     expect(grow1).toBeLessThan(grow0);             // requester's colours emerging
 
     await browser.close();

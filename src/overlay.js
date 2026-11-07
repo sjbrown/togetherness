@@ -30,9 +30,8 @@
  * Requested/contested indicator (soft_lock.js): a separate, independent
  * decoration drawn on any element with an outstanding acquisition request.
  * It is a ring in the requester's own gradient that grows from the
- * bottom-left corner while the holder's ring, in their gradient, fades
- * toward the top-right (see soft_lock.js). Both repeat until the
- * request resolves.
+ * bottom-left corner (see soft_lock.js), repeating until the request
+ * resolves. The holder's ring is left as it is.
  *
  * Drop-target hover indicator: another independent decoration,
  * driven by App.move() during a toy drag
@@ -209,10 +208,10 @@ const _remoteAddCursors = new Map();
 // { tool, groupEl } | null.
 let _localAddCursor = null;
 
-// Soft-lock "requested" indicator — Map<elId, { ts, requesterGrad, holderGrad }>
+// Soft-lock "requested" indicator — Map<elId, { ts, requesterGrad }>
 // for every element with an outstanding acquisition request, rebuilt on each
-// syncFromAwareness() call. ts is the earliest request's start; the grads are
-// { c1, c2, angle } or null when that player's gradient isn't known.
+// syncFromAwareness() call. ts is the earliest request's start; requesterGrad
+// is { c1, c2, angle } or null when that player's gradient isn't known.
 // Deliberately independent of SelectionMode: an
 // element can be contested regardless of whether it's 'local', 'remote', or
 // unselected from this client's point of view, so it's rendered as its own
@@ -718,11 +717,9 @@ function collectRequests(awarenessStates, myClientId) {
   for (const elId of SoftLock.getAllContestedElementIds(awarenessStates)) {
     const first = SoftLock.getAcquirersOf(elId, awarenessStates)
       .sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
-    const holderId = SoftLock.getHolderClientId(elId, awarenessStates);
     requests.set(elId, {
       ts:            first.ts,
       requesterGrad: gradientSpecOf(first.clientId, awarenessStates, myClientId),
-      holderGrad:    holderId === null ? null : gradientSpecOf(holderId, awarenessStates, myClientId),
     });
   }
   return requests;
@@ -732,18 +729,15 @@ function reducedMotion() {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
 }
 
-function requestGradientId(kind, elId) {
-  return `req-${kind}-${elId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
+function requestGradientId(elId) {
+  return `req-grow-${elId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 }
 
 /**
- * Builds a <linearGradient> into `defs` whose colours retreat into one
- * corner over the request window, and returns its id.
- *
- *   kind 'fade': the holder's gradient, colours retreating toward its far end.
- *   kind 'grow': the requester's gradient run backwards (vector and colour
- *                order reversed), so the full ring looks like their normal
- *                one but the colours emerge from the opposite corner.
+ * Builds a <linearGradient> into `defs` from the requester's gradient run
+ * backwards (vector and colour order reversed), so the full ring looks like
+ * their normal one but the colours emerge from the opposite corner over the
+ * request window. Returns its id.
  *
  * Stops 1 and 2 carry the motion as SMIL <animate>s. Each begins now, with
  * its keyframes rotated to the phase the request's age puts it at, so a
@@ -751,16 +745,13 @@ function requestGradientId(kind, elId) {
  * (Backdating `begin` instead would leave the browser's animation timer
  * unscheduled.) Reduced motion gets the static full ring.
  */
-function buildVanishGradient(defs, id, spec, ts, kind) {
-  const grow = kind === 'grow';
+function buildVanishGradient(defs, id, spec, ts) {
   const vec = gradientVector(spec.angle);
-  const lg = el('linearGradient', grow
-    ? { id, x1: vec.x2, y1: vec.y2, x2: vec.x1, y2: vec.y1 }
-    : { id, ...vec });
-  const [from, to] = grow ? [spec.c2, spec.c1] : [spec.c1, spec.c2];
+  const lg = el('linearGradient', { id, x1: vec.x2, y1: vec.y2, x2: vec.x1, y2: vec.y1 });
+  const from = spec.c2, to = spec.c1;
   const calm = reducedMotion();
   const elapsed = Date.now() - ts;
-  const { a, b } = SoftLock.vanishOffsets(calm ? 0 : (grow ? SoftLock.growVanish : SoftLock.fadeVanish)(SoftLock.windowProgress(elapsed)));
+  const { a, b } = SoftLock.vanishOffsets(calm ? 0 : SoftLock.growVanish(SoftLock.windowProgress(elapsed)));
 
   lg.appendChild(el('stop', { offset: 0, 'stop-color': from, 'stop-opacity': 0 }));
   const s1 = el('stop', { offset: a, 'stop-color': from, 'stop-opacity': 0 });
@@ -770,7 +761,7 @@ function buildVanishGradient(defs, id, spec, ts, kind) {
   lg.appendChild(el('stop', { offset: 1, 'stop-color': to }));
 
   if (!calm) {
-    const frames = SoftLock.vanishFrames(grow ? SoftLock.growVanish : SoftLock.fadeVanish, SoftLock.cycleMs(elapsed));
+    const frames = SoftLock.vanishFrames(SoftLock.growVanish, SoftLock.cycleMs(elapsed));
     const begin = `${((_svgEl?.getCurrentTime?.() ?? 0) + 0.001).toFixed(3)}s`;
     for (const [stop, values] of [[s1, frames.a], [s2, frames.b]]) {
       stop.appendChild(el('animate', {
@@ -781,19 +772,6 @@ function buildVanishGradient(defs, id, spec, ts, kind) {
   }
   defs.appendChild(lg);
   return id;
-}
-
-// A holder's selection entry while someone is asking for the element: the
-// same entry, with its ring stroked by the fading gradient. Local entries use
-// my own gradient; remote ones the holder's.
-function fadedEntry(elId, entry, defs) {
-  const req = _requests.get(elId);
-  if (!req || entry.mode === 'candidate') return entry;
-  const remote = entry.mode === 'remote' || entry.mode === 'locked';
-  const spec = remote ? req.holderGrad : (entry.grad ?? App.user?.gradient);
-  if (!spec?.c1) return entry;
-  const id = buildVanishGradient(defs, requestGradientId('fade', elId), { c2: spec.c1, angle: 90, ...spec }, req.ts, 'fade');
-  return { ...entry, ringStroke: `url(#${id})` };
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -822,9 +800,8 @@ export function render() {
   }
 
   // ── Selection rings  ───────────────────────────────
-  for (const [elId, selEntry] of SelectionMode) {
-    if (selEntry.mode === 'none') continue;
-    const entry = fadedEntry(elId, selEntry, requestDefs);
+  for (const [elId, entry] of SelectionMode) {
+    if (entry.mode === 'none') continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
     // getBBox is UNROTATED; furniture rides the element's own rotation so
@@ -1084,7 +1061,7 @@ export function handleCursor(corner, deg, kind) {
 
 function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? _localGradUrl();
+  const stroke = _localGradUrl();
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1102,7 +1079,7 @@ function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
 
 function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
+  const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1172,7 +1149,7 @@ function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
  */
 function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
+  const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   parent.appendChild(el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1214,7 +1191,7 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _lay
  */
 function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
+  const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1276,7 +1253,7 @@ function renderRemoteSelection(geo, entry, scale, rot = null) {
   // Ring strokes with the peer's own <linearGradient id="grad-{id}"> (see
   // user.js's upsertUserGradient) when one is available; solid color is
   // only a fallback for peers who haven't broadcast a gradient.
-  const stroke = entry.ringStroke ?? (entry.gradId ? `url(#${entry.gradId})` : (entry.color ?? '#888'));
+  const stroke = (entry.gradId ? `url(#${entry.gradId})` : (entry.color ?? '#888'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1328,7 +1305,7 @@ function renderRemoteSelection(geo, entry, scale, rot = null) {
 function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
   const { x, y, width, height } = geo;
   const stroke = req.requesterGrad
-    ? `url(#${buildVanishGradient(defs, requestGradientId('grow', elId), req.requesterGrad, req.ts, 'grow')})`
+    ? `url(#${buildVanishGradient(defs, requestGradientId(elId), req.requesterGrad, req.ts)})`
     : 'var(--warn)';
   const ring = el('rect', {
     x:      x - PAD,

@@ -262,9 +262,9 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
 })
 
 
-// ── Request animation: requester's ring grows, holder's ring fades ─────────
+// ── Request animation: requester's ring grows ──────────────────────────────
 //
-// Both are gradients whose stops carry SMIL animations. jsdom doesn't run
+// The ring is a gradient whose stops carry SMIL animations. jsdom doesn't run
 // SMIL, so these assert the structure the browser animates from, plus the
 // static offsets the request's age puts the stops at.
 
@@ -321,26 +321,21 @@ describe('request animation', () => {
     expect(ring.getAttribute('rx')).toBe('4')
   })
 
-  test('a remote holder\'s ring is stroked by a fading gradient in the holder\'s colours', () => {
+  test('a remote holder\'s ring keeps the holder\'s own gradient while requested', () => {
     observe()
-    expect(strokeOf('.remote-sel rect')).toBe('url(#req-fade-goblin-1)')
-    const lg = grad('req-fade-goblin-1')
-    const g = stops(lg)
-    expect(g[0].getAttribute('stop-color')).toBe(ALICE.gradient.c1)
-    expect(g[3].getAttribute('stop-color')).toBe(ALICE.gradient.c2)
-    expect(+lg.getAttribute('x1')).toBeLessThan(+lg.getAttribute('x2'))
+    expect(strokeOf('.remote-sel rect')).not.toMatch(/req-/)
+    expect(layer().querySelectorAll('linearGradient')).toHaveLength(1)
   })
 
-  test('my own selection ring fades when someone requests what I hold', () => {
-    overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
+  test('my own selection ring keeps my gradient when someone requests what I hold', () => {
+    overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'), { id: 'me' })
     localSelectionChanged(new Set(['goblin-1']))
     syncFromAwareness(new Map([
       [1, { desired: held(['goblin-1']) }],
       [2, { user: BAILEY, desired: bid('goblin-1', NOW) }],
     ]), 1)
 
-    expect(strokeOf('.selRing')).toBe('url(#req-fade-goblin-1)')
-    expect(stops(grad('req-fade-goblin-1'))[0].getAttribute('stop-color')).toBe('#5a7ea8')
+    expect(strokeOf('.selRing')).toBe('url(#grad-me)')
     expect(strokeOf('.requestedRing')).toBe('url(#req-grow-goblin-1)')
   })
 
@@ -355,25 +350,21 @@ describe('request animation', () => {
 
   test('the moving stops carry looping animations over the request window plus its buffer', () => {
     observe()
-    for (const id of ['req-grow-goblin-1', 'req-fade-goblin-1']) {
-      const [, s1, s2] = stops(grad(id))
-      for (const stop of [s1, s2]) {
-        const anims = stop.querySelectorAll('animate')
-        expect(anims).toHaveLength(1)
-        expect(anims[0].getAttribute('attributeName')).toBe('offset')
-        expect(anims[0].getAttribute('repeatCount')).toBe('indefinite')
-        expect(anims[0].getAttribute('dur')).toBe('4s')
-      }
+    const [, s1, s2] = stops(grad('req-grow-goblin-1'))
+    for (const stop of [s1, s2]) {
+      const anims = stop.querySelectorAll('animate')
+      expect(anims).toHaveLength(1)
+      expect(anims[0].getAttribute('attributeName')).toBe('offset')
+      expect(anims[0].getAttribute('repeatCount')).toBe('indefinite')
+      expect(anims[0].getAttribute('dur')).toBe('4s')
     }
   })
 
   test('a request already half through its window starts the stops half-way, not from zero', () => {
     observe({ requestAgeMs: 1500 })
     const [, grow1] = stops(grad('req-grow-goblin-1'))
-    const [, fade1] = stops(grad('req-fade-goblin-1'))
-    // grow: v = 1 - 0.5; fade: v = 0.5^2. Offsets are end * v.
+    // v = 1 - 0.5; the offset is end * v.
     expect(+grow1.getAttribute('offset')).toBeCloseTo(0.92 * 0.5, 3)
-    expect(+fade1.getAttribute('offset')).toBeCloseTo(0.92 * 0.25, 3)
     // begins now (a backdated begin is never scheduled); the keyframes start at that phase instead
     const anim = grow1.querySelector('animate')
     expect(anim.getAttribute('begin')).toBe('0.001s')
