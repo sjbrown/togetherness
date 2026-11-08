@@ -44,6 +44,7 @@ import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
+import * as SelectionLocal                         from './selection_local.js';
 import * as ExternalServices                      from './external_services.js';
 
 
@@ -90,102 +91,19 @@ let _activeLayer  = 'toys';
 // connection is doing right now, not only what it did.
 const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [], signalingConns: [] };
 
-// _desired is this client's own selection intent:
-//   { [elId]: { ts: number, holding: boolean } }
-//
-// holding:true means its in my committed selection (ts = last claimed)
-// holding:false means a bid to acquire (el held by someone else)
-//               (ts = when the bid started)
-//
-// _applySelState (below) mutates _desired
-// Exception: a gesture that only refreshes an already-held claim's
-// timestamp writes _desired directly and broadcasts itself
-let _desired = {};
-
-// The selection-gated mode for the sole held id: { id, mode } | null.
-// Null iff the held set isn't a single element
-// Broadcast via the awareness `mode` field verbatim
-let _activeMode = null;
-
-// Tracks whether the last _afterClaimsChanged call left a non-empty selection
-let _lastClaimedSetNonEmpty = false;
-
-// ── Selection mutation helpers —
-
-// The elIds I currently hold (a snapshot array, not a live view).
-function _heldIds() {
-  return Object.keys(_desired).filter((id) => _desired[id].holding);
-}
-
-function _sameIdSet(a, b) {
-  if (a.length !== b.length) return false;
-  const setA = new Set(a);
-  return b.every((id) => setA.has(id));
-}
-
-function _selState() {
-  return { desired: _desired, activeMode: _activeMode };
-}
-
-// Applies a new pure Selection state to _desired/_activeMode.
-function _applySelState(rawNext) {
-  const soleId = Selection.soleHeldId(rawNext);
-  // Reconcile runs first, unconditionally, so no caller has to remember
-  // that a mode can be invalidated by a changed held set.
-  const next = Selection.reconcileMode(rawNext, soleId ? _defaultModeFor(soleId) : null);
-  const desiredChanged = next.desired !== _desired;
-  const modeChanged = next.activeMode !== _activeMode;
-  if (!desiredChanged && !modeChanged) return;
-
-  const prevHeld = _heldIds();
-  _desired = next.desired;
-  _activeMode = next.activeMode;
-
-  // a mode-only change re-renders and re-broadcasts
-  // a bid-only change just broadcasts.
-  if (desiredChanged && !_sameIdSet(prevHeld, _heldIds())) {
-    _afterClaimsChanged();
-  } else if (modeChanged) {
-    _renderSelectionMode();
-    _broadcastMode();
-  } else {
-    _broadcastDesired();
-  }
-}
-
-// Remove specific elIds from the committed selection.
-function _unclaim(ids) {
-  let state = _selState();
-  for (const id of ids) state = Selection.unclaim(state, id);
-  _applySelState(state);
-}
-
-// Clear the committed selection entirely.
-function _clearClaims() {
-  _applySelState(Selection.clearClaims(_selState()));
-}
-
-// Called whenever the held-id SET has changed (not just a bid or a mode).
-function _afterClaimsChanged() {
-  const claimedSet = new Set(_heldIds());
-  const wasSelecting = _lastClaimedSetNonEmpty;
-  _lastClaimedSetNonEmpty = claimedSet.size > 0;
+// Called whenever the held-id SET has changed (not just a bid or a mode),
+// before SelectionLocal broadcasts it.
+function _onHeldChanged(held, prevHeld) {
   // Deselecting to nothing is an intent signal - good time to try checkpointing
-  if (wasSelecting && claimedSet.size === 0) {
+  if (prevHeld.length > 0 && held.size === 0) {
     for (const layer of opLayers()) maybeIdleCheckpoint(layer, 'deselect');
   }
-  Overlay.localSelectionChanged(claimedSet);
-  // _activeMode is already reconciled by this point, so this is pure
+  Overlay.localSelectionChanged(held);
+  // The active mode is already reconciled by this point, so this is pure
   // rendering. Still needed even when the mode is unchanged, since
   // localSelectionChanged just reset every claimed id to 'local'.
   _renderSelectionMode();
-  _broadcastDesired();
-  _broadcastMode();
-  UI.onSelectionChanged(claimedSet);
-}
-
-function _broadcastDesired() {
-  _awareness.setLocalStateField('desired', { ..._desired });
+  UI.onSelectionChanged(held);
 }
 
 // ── Selection-gated mode ─────────────────────────────────────────────────
@@ -249,12 +167,8 @@ function _toLocalPoint(id, px, py, rot = _rotationOf(id)) {
 }
 
 function _renderSelectionMode() {
-  const soleId = Selection.soleHeldId(_selState());
-  Overlay.setSelectionMode(soleId, soleId ? _activeMode.mode : null);
-}
-
-function _broadcastMode() {
-  _awareness.setLocalStateField('mode', _activeMode ? _activeMode.mode : null);
+  const soleId = SelectionLocal.soleHeldId();
+  Overlay.setSelectionMode(soleId, soleId ? SelectionLocal.activeMode().mode : null);
 }
 
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
@@ -286,15 +200,14 @@ function _softLockTick() {
   const { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease } = tickActions;
   if (!elIdsToAcquire.length && !elIdsToDropRequest.length && !elIdsToRelease.length) return;
 
-  _applySelState(Selection.applyTickActions(_selState(), tickActions));
+  SelectionLocal.apply(Selection.applyTickActions(SelectionLocal.state(), tickActions));
 }
 
 // Returns the single selected id, or null if zero or more than one are selected.
 // Callers that need to work on a single element must check
 // this returns non-null before proceeding
 function _singleSelectedId() {
-  const ids = _heldIds();
-  return ids.length === 1 ? ids[0] : null;
+  return SelectionLocal.soleHeldId();
 }
 let _activeTool   = 'select';
 let _previewCache = { key: null, states: null }; // getOpPreview's last result
@@ -464,6 +377,12 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   _tableId   = tableId;
   _isCreator = isCreator;
   _svgEl     = svgElement ?? document.querySelector('#stage svg');
+  SelectionLocal.init({
+    awareness,
+    defaultModeFor: _defaultModeFor,
+    onHeldChanged:  _onHeldChanged,
+    onModeChanged:  _renderSelectionMode,
+  });
 
   _netStatus.signaling = signalingUrls;
 
@@ -789,7 +708,7 @@ function onOpsChanged(layer, evt, transaction) {
     }
   }
   // A remote op may have removed an element this peer still holds.
-  _applySelState(Selection.dropMissingClaims(_selState(),
+  SelectionLocal.apply(Selection.dropMissingClaims(SelectionLocal.state(),
     (id) => !!_svgEl.querySelector(`[data-id="${id}"]`)));
   Overlay.render();
   // The layer list reads the live DOM, which these ops just changed.
@@ -895,7 +814,7 @@ const App = {
     Object.fromEntries(opLayers().map(layer => [layer.name, maybeCheckpoint(layer, reason)])),
   getCheckpointFrequency: () => User.getCheckpointFrequency(),
   setCheckpointFrequency: (minutes) => User.setCheckpointFrequency(minutes),
-  getSelectedIds:  () => _heldIds(),
+  getSelectedIds:  () => SelectionLocal.heldIds(),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return null;
@@ -990,19 +909,19 @@ const App = {
   // Advisory soft-lock request: write/refresh this client's own acquisition
   // entry for `id`. A no-op if one is already outstanding for this id.
   requestElement: (id) => {
-    _applySelState(Selection.request(_selState(), id));
+    SelectionLocal.apply(Selection.request(SelectionLocal.state(), id));
   },
 
   // Refresh this client's claim timestamp for a single already-held
   // elId, without touching the rest of the current multi-selection.
   reassertClaim: (id) => {
-    _applySelState(Selection.reassertClaim(_selState(), id));
+    SelectionLocal.apply(Selection.reassertClaim(SelectionLocal.state(), id));
   },
 
   // Drop every claim this client currently holds
   //  * no tool switch, unlike select(null).
   clearSelection: () => {
-    _clearClaims();
+    SelectionLocal.clearClaims();
   },
 
   // Exclusive single-select: a held-by-other id becomes a request
@@ -1010,32 +929,32 @@ const App = {
   // id; a re-click of a held-by-self id is a rebuttal.
   select: (id) => {
     App.setTool('select');
-    _applySelState(Selection.select(_selState(), id, { isHeldByOther: App.isHeldByOther }));
+    SelectionLocal.apply(Selection.select(SelectionLocal.state(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
   // Toggle a single id in/out of the selection: deselect if held,
   // request if held-by-other, else add.
   toggleSelection: (id) => {
-    _applySelState(Selection.toggle(_selState(), id, { isHeldByOther: App.isHeldByOther }));
+    SelectionLocal.apply(Selection.toggle(SelectionLocal.state(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
   commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
     const newIds = App.getBoxCandidates({ x, y, width, height });
     // additive: union with existing selection; otherwise replace
     const ids = additive
-      ? [...new Set([..._heldIds(), ...newIds])]
+      ? [...new Set([...SelectionLocal.heldIds(), ...newIds])]
       : newIds;
     if (ids.length === 0) {
       App.select(null);
     } else if (ids.length === 1) {
       App.select(ids[0]);
     } else {
-      _applySelState(Selection.commitMultiSelect(_selState(), ids));
+      SelectionLocal.apply(Selection.commitMultiSelect(SelectionLocal.state(), ids));
     }
   },
 
   deleteMultiSelected: () => {
-    const ids = _heldIds();
+    const ids = SelectionLocal.heldIds();
     if (ids.length === 0) return;
 
     // A selection can never span layers (App.setLayer clears claims on
@@ -1051,7 +970,7 @@ const App = {
     if (deleted > 0) {
       App.addLog(`deleted ${deleted} objects`, 'local');
     }
-    _clearClaims();
+    SelectionLocal.clearClaims();
     Overlay.clearHoverCandidates();
   },
 
@@ -1256,8 +1175,8 @@ const App = {
     if (!yEl) return false;
     L.delete(id);
     App.addLog(`deleted ${id}`, 'local');
-    if (_desired[id]?.holding) {
-      _unclaim([id]);
+    if (SelectionLocal.isHeld(id)) {
+      SelectionLocal.unclaim([id]);
     }
     return true;
   },
@@ -1265,7 +1184,7 @@ const App = {
   deleteSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (_heldIds().length > 1) {
+      if (SelectionLocal.heldIds().length > 1) {
         UI.toast('Use Delete Button for multi-selection', 'warn');
         console.error('deleteSelected called with multi-selection; use deleteMultiSelected');
       }
@@ -1277,7 +1196,7 @@ const App = {
   duplicateSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (_heldIds().length > 1) UI.toast('Duplicate works on a single shape', 'warn');
+      if (SelectionLocal.heldIds().length > 1) UI.toast('Duplicate works on a single shape', 'warn');
       return;
     }
     const src = _Layers.drawing.find(id);
@@ -1436,7 +1355,7 @@ const App = {
       Overlay.endDragPlaceholder(id);
 
       // A toy landing inside a container leaves selection
-      _clearClaims();
+      SelectionLocal.clearClaims();
 
       return;
     }
@@ -1461,16 +1380,16 @@ const App = {
   // The generic "further click" gesture: asks id's own owning LayerAPI
   // what mode comes next and hands the answer to Selection.enterMode.
   nextSelectionMode: (id) => {
-    if (Selection.shape(_selState()) !== 'single' || !_desired[id]?.holding) return;
+    if (Selection.shape(SelectionLocal.state()) !== 'single' || !SelectionLocal.isHeld(id)) return;
     const { domEl, layer } = _layerFor(id);
-    const mode = layer?.nextSelectMode?.(domEl, _activeMode?.mode ?? null) ?? null;
-    _applySelState(Selection.enterMode(_selState(), id, mode));
+    const mode = layer?.nextSelectMode?.(domEl, SelectionLocal.activeMode()?.mode ?? null) ?? null;
+    SelectionLocal.apply(Selection.enterMode(SelectionLocal.state(), id, mode));
   },
 
   // True only once id has been cycled into a mode with actual drag
   // handles -- sel-move/sel-action have none, so this isn't just "is
-  // _activeMode set".
-  getResizeModeId: () => (_activeMode && RESIZE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
+  // there an active mode".
+  getResizeModeId: () => (SelectionLocal.activeMode() && RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) ? SelectionLocal.activeMode().id : null,
 
   // ── Bowstring handle (delight.js) ─────────────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
@@ -1493,7 +1412,7 @@ const App = {
     // Only shows for a type whose own default mode is 'sel-action', and
     // only while the current mode still is that default -- declining
     // otherwise avoids intercepting a corner that no longer shows it.
-    if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
+    if (defaultMode !== 'sel-action' || SelectionLocal.activeMode()?.mode !== defaultMode) return false;
     if (!App.hasToyActions(id)) return false;
     const geo = App.getBBox(id);
     if (!geo) return false;
@@ -1508,7 +1427,7 @@ const App = {
    * are held and every one's first menu action is the same (namespace, key).
    */
   getGroupAction: () => {
-    const ids = _heldIds();
+    const ids = SelectionLocal.heldIds();
     if (ids.length < 2) return null;
     let shared = null, origin = null;
     for (const id of ids) {
@@ -1605,14 +1524,14 @@ const App = {
   //                     whether a click on an already-resize-mode container
   //                     starts a resize gesture or falls through.
   getResizeCorner: (id, cx, cy) => {
-    if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode)) return null;
+    if (SelectionLocal.activeMode()?.id !== id || !RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) return null;
     const geo = App.getBBox(id);
     const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, p.x, p.y, App.getViewScale());
+    return Overlay.hitTestSelectionHandle(SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale());
   },
 
   startResize: (id, corner) => {
-    if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
+    if (SelectionLocal.activeMode()?.id !== id || !RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -1621,7 +1540,7 @@ const App = {
     // pointer sample has to be un-rotated about the SAME point the handles
     // were drawn at.
     _resizeState = {
-      id, corner, mtype, mode: _activeMode.mode, rotation: _rotationOf(id),
+      id, corner, mtype, mode: SelectionLocal.activeMode().mode, rotation: _rotationOf(id),
       startRect: { ...bbox }, lastRect: { ...bbox },
     };
     Overlay.startResizeGhost(id);
@@ -1668,7 +1587,7 @@ const App = {
   // shape) with different arithmetic. The point stays on CANVAS space and
   // the commit writes one degree count rather than a bbox.
 
-  getRotateModeId: () => (_activeMode && ROTATE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
+  getRotateModeId: () => (SelectionLocal.activeMode() && ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) ? SelectionLocal.activeMode().id : null,
 
   getRotateSnapDeg: (mtype) => _rotateSnapDegByLayer[mtype],
   setRotateSnapDeg: (mtype, deg) => { _rotateSnapDegByLayer[mtype] = Number(deg) || 0; },
@@ -1676,15 +1595,15 @@ const App = {
   setPivotSnapFraction: (f) => { _pivotSnapFraction = Number(f) || 0; },
 
   getRotateHandle: (id, cx, cy) => {
-    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode)) return null;
+    if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) return null;
     const geo = App.getBBox(id);
     const p   = _toLocalPoint(id, cx, cy);
     return Overlay.hitTestSelectionHandle(
-      _activeMode.mode, geo, p.x, p.y, App.getViewScale(), App.getPivot(id));
+      SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale(), App.getPivot(id));
   },
 
   startRotate: (id, corner) => {
-    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
+    if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     // The pivot is captured once, like the resize gesture captures rotation:
@@ -1730,7 +1649,7 @@ const App = {
   // Similar to resize and rotate. No ghost needed though.
 
   startPivotDrag: (id) => {
-    if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
+    if (SelectionLocal.activeMode()?.id !== id || SelectionLocal.activeMode().mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     const { domEl, layer } = _layerFor(id);
@@ -1778,7 +1697,7 @@ const App = {
   // cancelMultiMove — called on pointercancel; reverts all ghosts, no gesture
 
   startMultiDrag: (originCanvas) => {
-    const elements = _heldIds().map(id => {
+    const elements = SelectionLocal.heldIds().map(id => {
       const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
       if (!domEl) return null;
       const anchor = App.getAnchor(domEl);
@@ -1812,9 +1731,7 @@ const App = {
 
     // Defend every element in the group, not just the one under the
     // pointer.  All of them are being "used".
-    const claimNow = Date.now();
-    for (const el of elements) _desired[el.id] = { ts: claimNow, holding: true };
-    _broadcastDesired();
+    SelectionLocal.reassertClaims(elements.map(el => el.id));
 
     _awareness.setLocalStateField('multidrag', {
       elIds:   elements.map(e => e.id),
@@ -1832,8 +1749,7 @@ const App = {
     const now = Date.now();
     if (now - (_multiDragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
       _multiDragState.lastClaimRefresh = now;
-      for (const el of elements) _desired[el.id] = { ts: now, holding: true };
-      _broadcastDesired();
+      SelectionLocal.reassertClaims(elements.map(el => el.id), { now });
     }
 
     // Compute the candidate anchor position and apply constraints
@@ -1913,7 +1829,7 @@ const App = {
     // claims here -- select()/toggleSelection() already own that decision
     // (e.g. a redundant setTool('select') while a multi-selection is being
     // built via shift-click must not wipe it out).
-    if (name !== 'select') _clearClaims();
+    if (name !== 'select') SelectionLocal.clearClaims();
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
@@ -1934,7 +1850,7 @@ const App = {
     // Abandon any claims on the layer being left.
     // this makes it impossible to hold a mixed toys+drawing selection
     // That in turn is what lets undo stay one mechanism per action
-    if (id !== _activeLayer) _clearClaims();
+    if (id !== _activeLayer) SelectionLocal.clearClaims();
     _activeLayer = id;
     UI.saveLayerState();
     // Default to Select when changing layers (tools differ per layer)
@@ -1952,7 +1868,7 @@ const App = {
     // actual delete from awareness.states, so awareness.getLocalState()
     // returns null afterward. Awareness.setLocalStateField's own
     // implementation is `if (getLocalState() !== null) { ... }` — a
-    // silent no-op otherwise. Every _broadcastDesired / _broadcastMode call
+    // silent no-op otherwise. Every SelectionLocal broadcast
     // after this point would do nothing, this client's own soft-lock
     // requests never reach anyone, making a peer's hold look unbreakable
     // from here.
@@ -1962,8 +1878,7 @@ const App = {
     _awareness?.setLocalState({
       user:    App.user,
       cursor:  null,
-      desired: { ..._desired },
-      mode:    _activeMode ? _activeMode.mode : null,
+      ...SelectionLocal.awarenessFields(),
       ...Attention.awarenessFields(),
     });
   },
@@ -1974,7 +1889,7 @@ const App = {
   undoFor: (ownerId) => {
     // A moved/resized/deleted shape's selRing is meaningless once the
     // gesture that put it there is undone
-    _clearClaims();
+    SelectionLocal.clearClaims();
     const row = newestAcrossLayers(layer => OpLayer.newestLiveRow(_ydoc, layer, _tableId, App.user.id,
       { owner: ownerId, joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.ts);
     if (!row) return UI.toast('Nothing to undo', 'warn');
@@ -1982,7 +1897,7 @@ const App = {
   },
   // Redo the newest thing this peer undid, by when it was undone.
   redo: () => {
-    _clearClaims();
+    SelectionLocal.clearClaims();
     const row = newestAcrossLayers(layer => OpLayer.newestUndoneRow(_ydoc, layer, _tableId, App.user.id,
       { joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.undoneAt);
     if (!row) return UI.toast('Nothing to redo', 'warn');
@@ -2269,7 +2184,7 @@ function authorProfile(id) {
 
 // Undo or redo the chosen op from a history row, or say why not.
 function stepOp(kind, layerName, opId) {
-  _clearClaims();
+  SelectionLocal.clearClaims();
   const layer   = getOpLayer(layerName);
   const layerEl = layerElOf(layer);
   const run     = kind === 'undo' ? OpLayer.undoOp : OpLayer.redoOp;

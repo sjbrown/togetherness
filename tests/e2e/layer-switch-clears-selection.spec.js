@@ -1,8 +1,9 @@
 /**
  * tests/e2e/layer-switch-clears-selection.spec.js
  *
- * Selection is never layer-scoped by construction — _desired is one flat
- * map, and toggleSelection doesn't check which layer an id belongs to.
+ * Selection is never layer-scoped by construction — selection_local.js's
+ * `desired` is one flat map, and toggleSelection doesn't check which layer
+ * an id belongs to.
  * Switching the active layer now clears the selection explicitly, which is
  * what makes a mixed toys+drawing selection actually impossible rather
  * than just unlikely — load-bearing for undo, which uses one mechanism
