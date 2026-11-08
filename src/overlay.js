@@ -5,17 +5,17 @@
  *   #selection_shared — peers' claims: their rings and request rings
  *   #awareness        — peers' movement: drags, bowstring charges, add-cursors
  *   #selection_local  — drawn from this client's own state
- * Owns SelectionMode: the per-shape decoration map.
+ * Owns SelectionModeLocal and SelectionModeShared: the per-shape decoration
+ * maps for #selection_local and #selection_shared.
  * Called by App after doc changes (renderDoc pipeline, all three) and
  * after awareness changes (renderPresence pipeline, the two peer groups;
  * #selection_shared only when peers' claims or requests changed).
  *
- * SelectionMode modes (the `.mode` property on each Map entry):
+ * SelectionModeLocal modes (the `.mode` property on each Map entry):
  *   'none'         — no decoration
  *   'local'        — solid gradient ring
  *   'candidate'    — same visual as 'local'; live rubber-band candidates
  *                    (cleared on commit/cancel)
- *   'remote'       — dashed border + peer name label (awareness)
  *   'sel-move'     — same visual as 'local'; the default a sole selection
  *                    shows before any mode-cycling click (see below)
  *   'sel-resize'   — local selection ring + 4 corner drag handles
@@ -29,7 +29,13 @@
  *                    every rendering and hit-testing path below.
  *   'sel-action'   — local selection ring + the action affordance square
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
+ *
+ * SelectionModeShared modes:
+ *   'remote'       — dashed border + peer name label (awareness)
  *   'locked'       — remote peer is actively editing
+ *
+ * The two maps are independent: an element both I and a peer claim (e.g.
+ * mid soft-lock handoff) shows both rings until the claims converge.
  *
  * Requested/contested indicator (soft_lock.js): a separate, independent
  * decoration drawn on any element with an outstanding acquisition request.
@@ -75,6 +81,7 @@
  */
 
 import * as SoftLock from './soft_lock.js';
+import * as SelectionShared from './selection_shared.js';
 import { gradientVector } from './entity_gradient.js';
 import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
@@ -188,11 +195,12 @@ export function hitTestPivot(pivotPoint, px, py, scale) {
   return Math.hypot(px - pivotPoint.cx, py - pivotPoint.cy) <= radius;
 }
 
-// ── SelectionMode ─────────────────────────────────────────────────────────────
-// Map<elId, { mode, peerName?, color? }>
-// overlay.js is the only writer (via setSelectionMode).
-// App.js reads it to answer queries.
-export const SelectionMode = new Map();
+// ── Selection modes ───────────────────────────────────────────────────────────
+// Map<elId, { mode, color, grad }>, written by the local setters below.
+export const SelectionModeLocal = new Map();
+// Map<elId, { mode, peerName, color, gradId }>, rebuilt by syncFromAwareness
+// from selection_shared.js's derive().
+export const SelectionModeShared = new Map();
 
 // ── Drag ghost state ──────────────────────────────────────────────────────────
 // Local drags — managed imperatively; elements survive render() calls.
@@ -214,12 +222,11 @@ let _localAddCursor = null;
 
 // Soft-lock "requested" indicator — Map<elId, { ts, requesterGrad }>
 // for every element with an outstanding acquisition request, rebuilt on each
-// syncFromAwareness() call. ts is the earliest request's start; requesterGrad
-// is { c1, c2, angle } or null when that player's gradient isn't known.
-// Deliberately independent of SelectionMode: an
-// element can be contested regardless of whether it's 'local', 'remote', or
-// unselected from this client's point of view, so it's rendered as its own
-// decoration layer rather than another mutually-exclusive `kind`.
+// syncFromAwareness() call from selection_shared.js's derive().
+// Deliberately independent of the selection modes: an element can be
+// contested regardless of whether it's mine, a peer's, or unselected from
+// this client's point of view, so it's rendered as its own decoration
+// rather than another mutually-exclusive `kind`.
 let _requests = new Map();
 
 // Remote bowstring charges, keyed by clientId. Rebuilt from awareness on
@@ -264,7 +271,7 @@ function _localGradUrl() {
   return _myUserId ? `url(#grad-${_myUserId})` : null;
 }
 
-// ── SelectionMode setters ─────────────────────────────────────────────────────
+// ── SelectionModeLocal setters ────────────────────────────────────────────────
 /**
  * Called by App whenever _selectedIds changes.
  * Clears all previous local/candidate/resize entries and sets 'local' for
@@ -272,17 +279,13 @@ function _localGradUrl() {
  * the caller passes selectedIds and Overlay decides how to render it.
  */
 export function localSelectionChanged(selectedIds) {
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'local' || entry.mode === 'candidate' || SELECTION_MODES.has(entry.mode)) {
-      SelectionMode.delete(id);
-    }
-  }
+  SelectionModeLocal.clear();
   const color = App.user.color;
   const grad  = App.user.gradient;
   for (const id of selectedIds) {
-    SelectionMode.set(id, { mode: 'local', color, grad });
+    SelectionModeLocal.set(id, { mode: 'local', color, grad });
   }
-  render();
+  renderSelectionLocal();
 }
 
 // Demotes any existing selection-mode entry back to 'local', then
@@ -291,47 +294,48 @@ export function localSelectionChanged(selectedIds) {
 // Pass elId=null to leave everything 'local'.
 // `mode` is one of SELECTION_MODES
 export function setSelectionMode(elId, mode) {
-  for (const [id, entry] of SelectionMode) {
-    if (SELECTION_MODES.has(entry.mode)) SelectionMode.set(id, { ...entry, mode: 'local' });
+  for (const [id, entry] of SelectionModeLocal) {
+    if (SELECTION_MODES.has(entry.mode)) SelectionModeLocal.set(id, { ...entry, mode: 'local' });
   }
   if (elId) {
-    const entry = SelectionMode.get(elId);
-    if (entry && entry.mode === 'local') SelectionMode.set(elId, { ...entry, mode });
+    const entry = SelectionModeLocal.get(elId);
+    if (entry && entry.mode === 'local') SelectionModeLocal.set(elId, { ...entry, mode });
   }
-  render();
+  renderSelectionLocal();
 }
 
-// Replaces any existing candidate entries; leaves 'local', 'remote',
-// 'locked', and mode entries alone. A 'local' or mode entry always
-// takes precedence over the candidate ring.
+// Replaces any existing candidate entries; leaves 'local' and mode
+// entries alone. A 'local' or mode entry always takes precedence over the
+// candidate ring.
 export function setHoverCandidates(ids) {
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'candidate') SelectionMode.delete(id);
+  for (const [id, entry] of SelectionModeLocal) {
+    if (entry.mode === 'candidate') SelectionModeLocal.delete(id);
   }
   const color = App.user.color;
   const grad  = App.user.gradient;
   for (const id of ids) {
-    const existing = SelectionMode.get(id);
+    const existing = SelectionModeLocal.get(id);
     if (existing && (existing.mode === 'local' || SELECTION_MODES.has(existing.mode))) continue;
-    SelectionMode.set(id, { mode: 'candidate', color, grad });
+    SelectionModeLocal.set(id, { mode: 'candidate', color, grad });
   }
-  render();
+  renderSelectionLocal();
 }
 
 // Clear all rubber-band candidate entries (called on box-select cancel or commit).
 export function clearHoverCandidates() {
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'candidate') SelectionMode.delete(id);
+  for (const [id, entry] of SelectionModeLocal) {
+    if (entry.mode === 'candidate') SelectionModeLocal.delete(id);
   }
-  render();
+  renderSelectionLocal();
 }
 
 // Called by App when awareness changes — rebuilds remote selection + drag entries
 export function syncFromAwareness(awarenessStates, myClientId) {
-  // Remove stale remote entries
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'remote' || entry.mode === 'locked') SelectionMode.delete(id);
-  }
+  const shared = SelectionShared.derive(awarenessStates, myClientId, App.user?.gradient);
+  SelectionModeShared.clear();
+  for (const [elId, entry] of shared.holders) SelectionModeShared.set(elId, entry);
+  _requests = shared.requests;
+
   _remoteDrags.clear();
   _remoteAddCursors.clear();
 
@@ -347,31 +351,6 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     const peerName = peer?.name ?? String(clientId);
     const color    = peer?.color ?? '#888';
     const gradId   = peer?.gradient?.c1 ? `grad-${peer.id}` : null;
-
-    // Remote selection rings — one per held (holding:true) key in
-    // `desired`. A holding:false entry is a bid, rendered instead via
-    // the contested/'requested' ring below.
-    if (state?.desired && typeof state.desired === 'object') {
-      const elIds = Object.keys(state.desired).filter((elId) => state.desired[elId].holding);
-      for (const elId of elIds) {
-        // Local selection always takes precedence over a remote peer's
-        // claim to the same elId — mirrors the same rule setHoverCandidates
-        // already applies for candidate-vs-local. Without this, a remote
-        // peer's broadcast can silently clobber my own 'local' entry with
-        // 'remote' any time both sides briefly, even legitimately, claim
-        // the same elId at once (e.g. mid soft-lock handoff) — I'd see the
-        // other peer's ring instead of my own, even though my own
-        // selection data still says I hold it.
-        const existing = SelectionMode.get(elId);
-        if (existing && (existing.mode === 'local' || SELECTION_MODES.has(existing.mode))) continue;
-        SelectionMode.set(elId, {
-          mode: 'remote',
-          peerName,
-          color,
-          gradId,
-        });
-      }
-    }
 
     // Remote single drag ghost
     if (state?.drag?.elId) {
@@ -425,7 +404,6 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     }
   });
   _remoteBowstrings = nextRemoteBowstrings;
-  _requests = collectRequests(awarenessStates, myClientId);
   renderSelectionShared();
   renderAwareness();
   _pumpRemoteCharge();
@@ -459,7 +437,7 @@ export function startDragPlaceholder(elId) {
   });
 
   _dragGhosts.set(elId, { placeholderEl, ghostEl, ringEl, dx: 0, dy: 0 });
-  render();
+  renderSelectionLocal();
 }
 
 /**
@@ -493,7 +471,7 @@ export function endDragPlaceholder(elId) {
   entry.ghostEl.remove();
   entry.ringEl.remove();
   _dragGhosts.delete(elId);
-  render();
+  renderSelectionLocal();
 }
 
 // ── Resize ghosts ────────────────────────────────────────────────────────────
@@ -526,7 +504,7 @@ export function startResizeGhost(elId) {
   const ringEl = el('rect', { fill: 'none', class: 'selRing' });
 
   _resizeGhosts.set(elId, { placeholderEl, ghostEl, ringEl });
-  render();
+  renderSelectionLocal();
 }
 
 /**
@@ -615,7 +593,7 @@ export function endResizeGhost(elId) {
   entry.ghostEl.remove();
   entry.ringEl.remove();
   _resizeGhosts.delete(elId);
-  render();
+  renderSelectionLocal();
 }
 
 // ── Edit-preview ghosts ──────────────────────────────────────────────────────
@@ -646,7 +624,7 @@ export function startGhost(elId) {
   ghostEl.removeAttribute('id');
 
   _ghosts.set(elId, { placeholderEl, ghostEl });
-  render();
+  renderSelectionLocal();
 }
 
 /**
@@ -673,7 +651,7 @@ export function endGhost(elId) {
   entry.placeholderEl.remove();
   entry.ghostEl.remove();
   _ghosts.delete(elId);
-  render();
+  renderSelectionLocal();
 }
 
 // ── Pivot drag preview ───────────────────────────────────────────────────────
@@ -692,7 +670,7 @@ export function setPivotPreview(elId, pivot) {
     if (_pivotPreview?.elId === elId && _pivotPreview.fx === pivot.fx && _pivotPreview.fy === pivot.fy) return;
     _pivotPreview = { elId, fx: pivot.fx, fy: pivot.fy };
   }
-  render();
+  renderSelectionLocal();
 }
 
 // ── Drop-target hover
@@ -711,27 +689,7 @@ let _dropTargetId = null;
 export function setDropTargetHover(containerElId) {
   if (_dropTargetId === containerElId) return;
   _dropTargetId = containerElId;
-  render();
-}
-
-function gradientSpecOf(clientId, awarenessStates, myClientId) {
-  const g = clientId === myClientId ? App.user?.gradient : awarenessStates.get(clientId)?.user?.gradient;
-  return g?.c1 ? { c1: g.c1, c2: g.c2 ?? g.c1, angle: g.angle ?? 90 } : null;
-}
-
-// The earliest request per element is the one animated, matching the one
-// resolveElementWinner would pick.
-function collectRequests(awarenessStates, myClientId) {
-  const requests = new Map();
-  for (const elId of SoftLock.getAllContestedElementIds(awarenessStates)) {
-    const first = SoftLock.getAcquirersOf(elId, awarenessStates)
-      .sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
-    requests.set(elId, {
-      ts:            first.ts,
-      requesterGrad: gradientSpecOf(first.clientId, awarenessStates, myClientId),
-    });
-  }
-  return requests;
+  renderSelectionLocal();
 }
 
 function reducedMotion() {
@@ -791,8 +749,6 @@ export function render() {
   renderAwareness();
 }
 
-const REMOTE_MODES = new Set(['remote', 'locked']);
-
 // #selection_local: everything drawn from this client's own state. Awareness
 // ticks never reach here, so its nodes are rebuilt only on local or doc change.
 function renderSelectionLocal() {
@@ -813,8 +769,8 @@ function renderSelectionLocal() {
   }
 
   // ── Selection rings  ───────────────────────────────
-  for (const [elId, entry] of SelectionMode) {
-    if (entry.mode === 'none' || REMOTE_MODES.has(entry.mode)) continue;
+  for (const [elId, entry] of SelectionModeLocal) {
+    if (entry.mode === 'none') continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
     // getBBox is UNROTATED; furniture rides the element's own rotation so
@@ -891,24 +847,22 @@ let _selectionSharedKey = null;
 function renderSelectionShared() {
   if (!_selectionSharedEl) return;
   const scale = App.getViewScale();
-  const remote = [...SelectionMode].filter(([, entry]) => REMOTE_MODES.has(entry.mode));
-  const key = JSON.stringify([scale, remote, [..._requests]]);
+  const key = JSON.stringify([scale, [...SelectionModeShared], [..._requests]]);
   if (key === _selectionSharedKey) return;
   _selectionSharedKey = key;
   _selectionSharedEl.innerHTML = '';
 
   const requestDefs = el('defs', {});   // attached only if a request filled it
 
-  for (const [elId, entry] of remote) {
+  for (const [elId, entry] of SelectionModeShared) {
     const geo = App.getBBox(elId);
     if (!geo) continue;
     renderRemoteSelection(geo, entry, scale, App.getRotation?.(elId) ?? null, _selectionSharedEl);
   }
 
-  // ── Requested/contested indicator — independent of SelectionMode kind ──
-  // Drawn regardless of whether the element is 'local', 'remote', or has no
-  // SelectionMode entry at all — contestedness is orthogonal to who (if
-  // anyone) currently holds it from this client's point of view.
+  // ── Requested/contested indicator — independent of the selection modes ──
+  // Drawn regardless of who (if anyone) currently holds the element from
+  // this client's point of view.
   for (const [elId, req] of _requests) {
     const geo = App.getBBox(elId);
     if (!geo) continue;

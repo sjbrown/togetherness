@@ -3,7 +3,7 @@
  *
  * Unit tests for the drop-target hover indicator (phase 5.3): overlay.js's
  * independent decoration, driven directly by App.move() during a toy drag
- * (not by SelectionMode or awareness — see setDropTargetHover).
+ * (not by the selection modes or awareness — see setDropTargetHover).
  *
  * Same harness pattern as soft-lock-visual.test.js (real overlay.js +
  * jsdom, no App boot).

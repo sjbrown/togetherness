@@ -160,22 +160,15 @@ describe('soft-lock e2e — clicking a held element (real App.select, real DOM)'
   })
 })
 
-describe('soft-lock e2e — local cleanup must precede broadcast (ordering regression)', () => {
+describe('soft-lock e2e — deselecting an element a peer also holds', () => {
   test('deselecting an elId a remote peer also holds correctly shows their remote ring, not nothing', async () => {
-    // Reproduces a real live bug: setLocalStateField fires the awareness
-    // 'change' event SYNCHRONOUSLY, which can trigger syncFromAwareness
-    // before the caller has a chance to clean up its own stale local
-    // SelectionMode entry. syncFromAwareness's local-takes-precedence guard
-    // (added for a different bug) would then see the still-present stale
-    // 'local' entry and skip assigning 'remote' — and nothing afterward
-    // re-triggers that decision, leaving the elId with NO ring at all
-    // rather than the correct remote one. Only a real end-to-end test with
-    // the actual synchronous event cascade can catch this — hand-built-Map
-    // tests that call syncFromAwareness directly bypass the ordering
-    // entirely and would pass either way.
+    // setLocalStateField fires the awareness 'change' event SYNCHRONOUSLY,
+    // so syncFromAwareness runs in the middle of the deselect. Only a real
+    // end-to-end test with that event cascade exercises it — hand-built-Map
+    // tests that call syncFromAwareness directly bypass the ordering.
     const { App, awareness } = await bootPeerB()
 
-    App.select('die-1') // Bailey holds it locally — 'local' SelectionMode entry exists
+    App.select('die-1') // Bailey holds it locally — a SelectionModeLocal entry exists
     expect(App.getSelectedIds()).toEqual(['die-1'])
 
     // Now Alice ALSO broadcasts holding the same elId (however that
@@ -184,9 +177,8 @@ describe('soft-lock e2e — local cleanup must precede broadcast (ordering regre
     // for this test; what matters is Bailey's client now sees a conflict).
     simulateRemoteSelection(awareness, 'die-1')
 
-    // Bailey deselects — this is the exact call sequence that broadcasts
-    // (triggering a synchronous syncFromAwareness) before this fix ensured
-    // local cleanup happens first.
+    // Bailey deselects — the broadcast triggers a synchronous
+    // syncFromAwareness mid-call.
     App.select(null)
 
     expect(App.getSelectedIds()).toEqual([])
