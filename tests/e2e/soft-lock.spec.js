@@ -97,7 +97,7 @@ test.describe('soft-lock: two-peer element requests', () => {
     await expect(page2.locator('[data-toy-type]')).toHaveCount(1, { timeout: 5000 });
 
     await clickToy(page1, id);                     // A holds it
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
+    await expect(page1.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 3000 });
 
     await clickToy(page2, id);                     // B requests it
 
@@ -107,7 +107,7 @@ test.describe('soft-lock: two-peer element requests', () => {
     await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
 
     // A request is not a selection: B must have no local ring of its own.
-    await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(0);
+    await expect(page2.locator('#selection_local .selRing')).toHaveCount(0);
 
     await browser.close();
   });
@@ -124,13 +124,13 @@ test.describe('soft-lock: two-peer element requests', () => {
     await expect(page2.locator('[data-toy-type]')).toHaveCount(1, { timeout: 5000 });
 
     await clickToy(page1, id);                     // A holds
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
+    await expect(page1.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 3000 });
     await clickToy(page2, id);                     // B requests
 
     // B's request ring is stroked by the growing gradient; A's own ring keeps A's gradient.
     await expect(page2.locator('#overlay-layer .requestedRing')).toHaveAttribute('stroke', /url\(#req-grow-/, { timeout: 2000 });
     await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
-    await expect(page1.locator('#overlay-layer .selRing')).not.toHaveAttribute('stroke', /req-/);
+    await expect(page1.locator('#selection_local .selRing')).not.toHaveAttribute('stroke', /req-/);
 
     // The moving stop's live offset (stop index 1 of the gradient).
     const offset = (page, kind) => page.evaluate((k) => {
@@ -158,13 +158,13 @@ test.describe('soft-lock: two-peer element requests', () => {
     await clickToy(page2, id);                     // B requests, A stays away
 
     // After the window elapses: B holds it locally...
-    await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 6000 });
+    await expect(page2.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 6000 });
     await expect(page2.locator('#overlay-layer .requestedRing')).toHaveCount(0, { timeout: 2000 });
 
     // ...and A — this is the ordering-bug regression at its visible layer —
     // must show B's dashed remote ring, not a blank.
     await expect(page1.locator('#overlay-layer .remote-sel')).toHaveCount(1, { timeout: 3000 });
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(0);
+    await expect(page1.locator('#selection_local .selRing')).toHaveCount(0);
 
     await browser.close();
   });
@@ -189,8 +189,8 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     // ...and well past the original deadline, A still holds it.
     await page1.waitForTimeout(3500);
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1);
-    await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(0);
+    await expect(page1.locator('#selection_local .selRing')).toHaveCount(1);
+    await expect(page2.locator('#selection_local .selRing')).toHaveCount(0);
     await expect(page2.locator('#overlay-layer .remote-sel')).toHaveCount(1);
 
     await browser.close();
@@ -209,7 +209,7 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     await clickToy(page1, id1);                    // A selects die 1...
     await clickToy(page1, id2, { shift: true });   // ...and shift-adds die 2
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(2, { timeout: 3000 });
+    await expect(page1.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
 
     await clickToy(page2, id1);                    // B requests die 1
 
@@ -222,8 +222,8 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     // Well past B's deadline, A must still hold BOTH dice.
     await page1.waitForTimeout(4000);
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(2);
-    await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(0);
+    await expect(page1.locator('#selection_local .selRing')).toHaveCount(2);
+    await expect(page2.locator('#selection_local .selRing')).toHaveCount(0);
 
     await browser.close();
   });
@@ -254,9 +254,9 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     // A ends holding only toy 2 — the held toy was silently excluded, no
     // request was queued (no requested ring anywhere), B's holding untouched.
-    await expect(page1.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
+    await expect(page1.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 3000 });
     await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(0);
-    await expect(page2.locator('#overlay-layer .selRing')).toHaveCount(1);
+    await expect(page2.locator('#selection_local .selRing')).toHaveCount(1);
 
     await browser.close();
   });

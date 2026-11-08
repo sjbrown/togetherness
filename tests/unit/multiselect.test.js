@@ -124,6 +124,7 @@ function makeOverlayDOM() {
     <svg id="canvas">
       <defs></defs>
       <g id="overlay-layer"></g>
+      <g id="selection_local"></g>
     </svg>
   `
 }
@@ -200,7 +201,7 @@ describe('Overlay.setHoverCandidates', () => {
     }
     overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
     setHoverCandidates(['el-1', 'el-2'])
-    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    const rings = document.querySelectorAll('#selection_local .selRing')
     expect(rings).toHaveLength(2)
   })
 
@@ -217,7 +218,7 @@ describe('Overlay.setHoverCandidates', () => {
 
     // Rings must be present, referencing the id init() was given — the
     // element itself is user.js's responsibility, not Overlay's.
-    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    const rings = document.querySelectorAll('#selection_local .selRing')
     expect(rings).toHaveLength(2)
     rings.forEach(r => expect(r.getAttribute('stroke')).toBe('url(#grad-me)'))
   })
@@ -225,7 +226,7 @@ describe('Overlay.setHoverCandidates', () => {
   test('candidate with null bbox renders no ring (getBBox returns null)', () => {
     overlayInit(makeOverlayApp({}), document.getElementById('canvas'))
     setHoverCandidates(['no-bbox'])
-    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    const rings = document.querySelectorAll('#selection_local .selRing')
     expect(rings).toHaveLength(0)
   })
 })
@@ -358,7 +359,7 @@ describe('Overlay.localSelectionChanged', () => {
     }
     overlayInit(makeOverlayApp(bboxMap), document.getElementById('canvas'))
     localSelectionChanged(new Set(['el-1', 'el-2']))
-    const rings = document.querySelectorAll('#overlay-layer .selRing')
+    const rings = document.querySelectorAll('#selection_local .selRing')
     expect(rings).toHaveLength(2)
   })
 })

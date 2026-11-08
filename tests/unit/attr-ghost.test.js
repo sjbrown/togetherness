@@ -38,6 +38,7 @@ function makeOverlayDOM() {
       <defs></defs>
       <g id="drawing-layer"></g>
       <g id="overlay-layer"></g>
+      <g id="selection_local"></g>
     </svg>
   `
 }
@@ -70,11 +71,11 @@ beforeEach(() => {
 })
 
 describe('startGhost', () => {
-  test('clones the live element into #overlay-layer, stripping its id', () => {
+  test('clones the live element into #selection_local, stripping its id', () => {
     placeRect('shape1')
     startGhost('shape1')
 
-    const ghosts = [...document.querySelectorAll('#overlay-layer rect')]
+    const ghosts = [...document.querySelectorAll('#selection_local rect')]
     expect(ghosts).toHaveLength(1)
     expect(ghosts[0].hasAttribute('id')).toBe(false)
     expect(ghosts[0]).not.toBe(document.getElementById('shape1')) // a clone, not the real node
@@ -84,7 +85,7 @@ describe('startGhost', () => {
     placeRect('shape1')
     startGhost('shape1')
 
-    const use = document.querySelector('#overlay-layer use')
+    const use = document.querySelector('#selection_local use')
     expect(use).not.toBeNull()
     expect(use.getAttribute('href')).toBe('#shape1')
     expect(use.getAttribute('filter')).toBe('url(#drag-placeholder-filter)')
@@ -92,14 +93,14 @@ describe('startGhost', () => {
 
   test('is a no-op if the element cannot be found', () => {
     startGhost('does-not-exist')
-    expect(document.querySelectorAll('#overlay-layer *')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local *')).toHaveLength(0)
   })
 
   test('is idempotent — a second call for the same id does not add a second ghost', () => {
     placeRect('shape1')
     startGhost('shape1')
     startGhost('shape1')
-    expect(document.querySelectorAll('#overlay-layer rect')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_local rect')).toHaveLength(1)
   })
 })
 
@@ -110,7 +111,7 @@ describe('updateGhost', () => {
 
     updateGhost('shape1', (ghostEl) => ghostEl.setAttribute('stroke-width', 6))
 
-    const ghost = document.querySelector('#overlay-layer rect')
+    const ghost = document.querySelector('#selection_local rect')
     expect(ghost.getAttribute('stroke-width')).toBe('6')
     expect(document.getElementById('shape1').getAttribute('stroke-width')).toBe('1.5') // real element, unchanged
   })
@@ -120,15 +121,15 @@ describe('updateGhost', () => {
     let called = false
     expect(() => updateGhost('shape1', () => { called = true })).not.toThrow()
     expect(called).toBe(false)
-    expect(document.querySelectorAll('#overlay-layer *')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local *')).toHaveLength(0)
   })
 
   test('can be called many times in a row without re-adding DOM nodes (cheap per-tick update)', () => {
     placeRect('shape1')
     startGhost('shape1')
     for (const v of [2, 3, 4, 5, 6]) updateGhost('shape1', (ghostEl) => ghostEl.setAttribute('stroke-width', v))
-    expect(document.querySelectorAll('#overlay-layer rect')).toHaveLength(1)
-    expect(document.querySelector('#overlay-layer rect').getAttribute('stroke-width')).toBe('6')
+    expect(document.querySelectorAll('#selection_local rect')).toHaveLength(1)
+    expect(document.querySelector('#selection_local rect').getAttribute('stroke-width')).toBe('6')
   })
 })
 
@@ -140,7 +141,7 @@ describe('endGhost', () => {
 
     endGhost('shape1')
 
-    expect(document.querySelectorAll('#overlay-layer *')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local *')).toHaveLength(0)
   })
 
   test('is a no-op if no ghost is active for that id', () => {
@@ -152,6 +153,6 @@ describe('endGhost', () => {
     startGhost('shape1')
     endGhost('shape1')
     startGhost('shape1')
-    expect(document.querySelectorAll('#overlay-layer rect')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_local rect')).toHaveLength(1)
   })
 })

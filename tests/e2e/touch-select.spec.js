@@ -29,8 +29,8 @@ async function touchPageWithToy(browser, tool = 'd6') {
   return { page, x: toy.x + toy.width / 2, y: toy.y + toy.height / 2, box };
 }
 
-const selRing = (page) => page.locator('#overlay-layer .selRing');
-const handles = (page) => page.locator('#overlay-layer .handle');
+const selRing = (page) => page.locator('#selection_local .selRing');
+const handles = (page) => page.locator('#selection_local .handle');
 
 const launch = () => chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 

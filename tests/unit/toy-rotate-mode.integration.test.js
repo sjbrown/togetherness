@@ -79,6 +79,7 @@ function makeCanvasDOM() {
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
         <g id="overlay-layer" pointer-events="none"></g>
+        <g id="selection_local" pointer-events="none"></g>
         <g id="delight-layer" pointer-events="none"></g>
       </svg>
     </div>
@@ -251,7 +252,7 @@ describe('dragging a toy’s rotate handle', () => {
     App.startRotate(id, 2)
     App.rotate(id, 2, 50, 150)   // mid-drag — not yet committed
 
-    const ghost = svgEl.querySelector('#overlay-layer [opacity="0.85"][data-rotate]')
+    const ghost = svgEl.querySelector('#selection_local [opacity="0.85"][data-rotate]')
     expect(ghost).not.toBeNull()
     expect(ghost.getAttribute('transform')).toBe('rotate(90 100 100)')
     App.cancelRotate()

@@ -27,6 +27,9 @@
     <g id="toys-layer"></g>
     <g id="drawing-layer"></g>
     <g id="overlay-layer" pointer-events="none"></g>
+    <!-- #selection_local is drawn only from this client's own state, so
+         awareness updates never wipe it. -->
+    <g id="selection_local" pointer-events="none"></g>
     <!-- #delight-layer is NEVER wiped (unlike #overlay-layer, which
          Overlay.render() clears wholesale on every awareness update).
          The live bowstring gesture and its clones/sparks live here so a

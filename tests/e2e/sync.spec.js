@@ -165,7 +165,7 @@ test.describe('two-peer sync', () => {
 
     // page1 should show a local selection ring (solid, class="selRing")
     await expect(
-      page1.locator('#overlay-layer .selRing')
+      page1.locator('#selection_local .selRing')
     ).toHaveCount(1, { timeout: 3000 });
 
     // page2 should show a remote selection ring — the dashed ring is now

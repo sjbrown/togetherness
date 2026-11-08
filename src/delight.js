@@ -63,7 +63,7 @@ const DELIGHT_TRANSLATE_SCALE = 0.05;
 export const ACTION_SQUARE_SIDE = 22; // px; the handle rect and its resting square
 const HANDLE_HALF = ACTION_SQUARE_SIDE / 2;
 
-// Charge indicators, drawn on #overlay-layer from getBowstringState().
+// Charge indicators, drawn on #selection_local from getBowstringState().
 const CHARGE_FADE_MS = 500;        // toy clone fades in over this, then holds
 const CHARGE_RADIUS_RATIO = 0.10;  // circle radius as a fraction of pull distance
 export const MAX_CHARGE_RADIUS = 50; // screen px, hard cap
@@ -164,7 +164,7 @@ export function isDragging() {
 /**
  * The live gesture's ephemeral state, or null when idle.
  *
- * This is the whole bridge to overlay.js. #overlay-layer is wiped and
+ * This is the whole bridge to overlay.js. #selection_local is wiped and
  * rebuilt wholesale on every render(), so it cannot HOLD state across a
  * gesture — but it can READ it. Keeping the flow pull-based (overlay asks
  * delight at render time) rather than push-based (delight reaches into
@@ -329,7 +329,7 @@ function buildChrome(origin, scale) {
  * one value CSS can't originate (the pull parallax, via --drag-x/--drag-y).
  *
  * The ring clones go in #delight-layer rather than next to the real ring,
- * because the real ring lives in #overlay-layer and would take them with it
+ * because the real ring lives in #selection_local and would take them with it
  * on the next wipe.
  *
  * rot ({ deg, cx, cy } or null) is applied via a wrapping <g>, never as a

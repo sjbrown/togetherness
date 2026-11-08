@@ -410,6 +410,8 @@ function buildStageSVG(shapes) {
   drawing.id = 'drawing-layer';
   const overlayG = document.createElementNS(SVG_NS, 'g');
   overlayG.id = 'overlay-layer';
+  const selectionLocalG = document.createElementNS(SVG_NS, 'g');
+  selectionLocalG.id = 'selection_local';
 
   for (const { id, type, geom, fill } of shapes) {
     const el = shapeEl(type, geom, fill);
@@ -417,7 +419,7 @@ function buildStageSVG(shapes) {
     el.setAttribute('data-module', 'drawing');
     drawing.appendChild(el);
   }
-  svg.append(drawing, overlayG);
+  svg.append(drawing, overlayG, selectionLocalG);
   return svg;
 }
 

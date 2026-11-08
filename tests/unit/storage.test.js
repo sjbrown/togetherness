@@ -383,6 +383,7 @@ describe('buildExportSvg', () => {
       <g id="toys-layer"></g>
       <g id="drawing-layer"></g>
       <g id="overlay-layer" pointer-events="none"></g>
+      <g id="selection_local" pointer-events="none"></g>
       <g id="delight-layer"><g class="actionColorGroup"></g></g>
     </svg>`)
   }
@@ -391,6 +392,12 @@ describe('buildExportSvg', () => {
     const ydoc = new Y.Doc()
     const clone = buildExportSvg(liveCanvasSvg(), ydoc)
     expect(clone.querySelector('#overlay-layer')).toBeNull()
+  })
+
+  test('removes the selection_local layer', () => {
+    const ydoc = new Y.Doc()
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
+    expect(clone.querySelector('#selection_local')).toBeNull()
   })
 
   test('removes the delight layer', () => {

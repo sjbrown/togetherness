@@ -30,6 +30,7 @@ function makeOverlayDOM() {
     <svg id="canvas">
       <defs></defs>
       <g id="overlay-layer"></g>
+      <g id="selection_local"></g>
     </svg>
   `
 }
@@ -133,7 +134,7 @@ describe('requested indicator — independence from SelectionMode mode', () => {
     syncFromAwareness(states, 1)
 
     expect(SelectionMode.get('goblin-1')?.mode).toBe('local')
-    expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(1)
     expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
   })
 
@@ -220,7 +221,7 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     syncFromAwareness(states, 1)
 
     expect(SelectionMode.get('die-1')?.mode).toBe('local')
-    expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(1)
   })
 
   test('both sides of a symmetric conflict independently keep their own local ring', () => {
@@ -276,6 +277,8 @@ describe('request animation', () => {
   const grad = (id) => layer().querySelector(`linearGradient[id="${id}"]`)
   const stops = (g) => [...g.querySelectorAll('stop')]
   const strokeOf = (sel) => layer().querySelector(sel).getAttribute('stroke')
+  const localLayer = () => document.getElementById('selection_local')
+  const localStrokeOf = (sel) => localLayer().querySelector(sel).getAttribute('stroke')
 
   function observe({ requestAgeMs = 0, aliceUser = ALICE, baileyUser = BAILEY } = {}) {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
@@ -335,7 +338,7 @@ describe('request animation', () => {
       [2, { user: BAILEY, desired: bid('goblin-1', NOW) }],
     ]), 1)
 
-    expect(strokeOf('.selRing')).toBe('url(#grad-me)')
+    expect(localStrokeOf('.selRing')).toBe('url(#grad-me)')
     expect(strokeOf('.requestedRing')).toBe('url(#req-grow-goblin-1)')
   })
 
@@ -344,8 +347,9 @@ describe('request animation', () => {
     localSelectionChanged(new Set(['goblin-1']))
     syncFromAwareness(new Map([[1, { desired: held(['goblin-1']) }]]), 1)
 
-    expect(strokeOf('.selRing')).toBe('url(#grad-me)')
+    expect(localStrokeOf('.selRing')).toBe('url(#grad-me)')
     expect(layer().querySelectorAll('defs, linearGradient')).toHaveLength(0)
+    expect(localLayer().querySelectorAll('defs, linearGradient')).toHaveLength(0)
   })
 
   test('the moving stops carry looping animations over the request window plus its buffer', () => {
