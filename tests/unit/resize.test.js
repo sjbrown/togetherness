@@ -3,11 +3,11 @@ import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   addToyDom, computeResizeRect, applyResize,
-  RESIZE_CORNER_NW, RESIZE_CORNER_SE,
+  RESIZE_CORNER_SE,
   reparentToyDom,
   _clearSvgTextCache,
 } from '../../src/toys.js'
-import { resizeCorners, hitTestResizeCorner, PAD } from '../../src/overlay.js'
+import { resizeCorners, PAD } from '../../src/overlay.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -109,7 +109,7 @@ describe('applyResize', () => {
   })
 })
 
-describe('overlay.js — resizeCorners / hitTestResizeCorner', () => {
+describe('overlay.js — resizeCorners', () => {
   const geo = { x: 100, y: 100, width: 200, height: 150 }
 
   test('resizeCorners returns nw->sw padded out by PAD', () => {
@@ -120,29 +120,6 @@ describe('overlay.js — resizeCorners / hitTestResizeCorner', () => {
       { x: 300 + PAD,       y: 250 + PAD },
       { x: 100 - PAD,       y: 250 + PAD },
     ])
-  })
-
-  test('hitTestResizeCorner finds the nearest corner within its hit radius', () => {
-    const corners = resizeCorners(geo)
-    expect(hitTestResizeCorner(geo, corners[RESIZE_CORNER_NW].x, corners[RESIZE_CORNER_NW].y, 1)).toBe(RESIZE_CORNER_NW)
-    expect(hitTestResizeCorner(geo, corners[RESIZE_CORNER_SE].x, corners[RESIZE_CORNER_SE].y, 1)).toBe(RESIZE_CORNER_SE)
-  })
-
-  test('hitTestResizeCorner returns null for a point in the middle of the tray', () => {
-    expect(hitTestResizeCorner(geo, 200, 175, 1)).toBeNull()
-  })
-
-  test('hitTestResizeCorner returns null for a null geo (element not found)', () => {
-    expect(hitTestResizeCorner(null, 0, 0, 1)).toBeNull()
-  })
-
-  test('hit radius scales down (screen-space stays constant) as the view zooms in', () => {
-    const corners = resizeCorners(geo)
-    const nearCorner = { x: corners[RESIZE_CORNER_SE].x + 5, y: corners[RESIZE_CORNER_SE].y }
-    // At scale=1 a 5px canvas-space offset is within the default hit radius...
-    expect(hitTestResizeCorner(geo, nearCorner.x, nearCorner.y, 1)).toBe(RESIZE_CORNER_SE)
-    // ...but at scale=4 the same 5 CANVAS-space px is 20 SCREEN px away — outside it.
-    expect(hitTestResizeCorner(geo, nearCorner.x, nearCorner.y, 4)).toBeNull()
   })
 })
 

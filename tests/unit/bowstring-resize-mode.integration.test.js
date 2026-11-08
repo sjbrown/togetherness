@@ -23,6 +23,7 @@
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache } from '../../src/toys.js'
+import { cornerAt } from '../helpers/handle-at.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -143,17 +144,16 @@ describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () 
     expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(false)
   })
 
-  test('the resize-corner hit-test itself still recognizes the SE corner once in resize mode', async () => {
-    const { App } = await bootApp()
+  test('the SE resize handle answers a press there once in resize mode', async () => {
+    const { App, svgEl } = await bootApp()
     App.select('tray-1')
     App.nextSelectionMode('tray-1')
 
     const geo = App.getBBox('tray-1')
-    const corner = App.getResizeCorner('tray-1', geo.x + geo.width, geo.y + geo.height)
+    const corner = cornerAt(svgEl, 'resize', geo.x + geo.width, geo.y + geo.height)
 
-    // Overlay.hitTestResizeCorner returns an index into resizeCorners's
-    // [NW, NE, SE, SW] order — 2 is SE, the corner nearest the bowstring's
-    // resting spot.
+    // An index into resizeCorners's [NW, NE, SE, SW] order — 2 is SE, the
+    // corner nearest the bowstring's resting spot.
     expect(corner).toBe(2)
   })
 

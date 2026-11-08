@@ -6,7 +6,7 @@
  * and shows corner grab handles; dragging one and releasing commits a new
  * extent (regenerating the circle grid for a position set). This exercises
  * the whole path through the real App bus — the same generic
- * select/nextSelectionMode/getResizeCorner/startResize/resize/commitResize
+ * select/nextSelectionMode/startResize/resize/commitResize, with the corner
  * plumbing toys.js and drawing.js already use — to lock in that boun_pos.js
  * now plugs into it too.
  *
@@ -19,6 +19,7 @@ import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { pathToRect, translationOf } from '../../src/boun_pos.js'
 import { _clearSvgTextCache } from '../../src/toys.js'
+import { cornerAt } from '../helpers/handle-at.js'
 
 // Generic stand-in content for App.boot()'s toy-svg warm-cache fetch —
 // none of these tests place a toy, so only its shape (a valid toy svg)
@@ -132,7 +133,7 @@ describe('boundary resize mode', () => {
 
     const geo = App.getBBox(id)
     // SE corner sits just outside the shape, past the overlay's PAD.
-    const corner = App.getResizeCorner(id, geo.x + geo.width + 6, geo.y + geo.height + 6)
+    const corner = cornerAt(svgEl, 'resize', geo.x + geo.width + 6, geo.y + geo.height + 6)
     expect(corner).toBe(2) // SE — [NW, NE, SE, SW]
 
     App.startResize(id, corner)
@@ -150,7 +151,7 @@ describe('boundary resize mode', () => {
   })
 
   test('a plain click-drag on a resize-mode boundary that misses the handles still moves it', async () => {
-    const { App, ydoc } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.setLayer('boun_pos')
     App.commitBoundary({ x: 100, y: 100, w: 200, h: 150 })
     const id = App.getSelectedIds()[0]
@@ -158,7 +159,7 @@ describe('boundary resize mode', () => {
 
     // Center of the shape, nowhere near a corner handle.
     const geo = App.getBBox(id)
-    const corner = App.getResizeCorner(id, geo.x + geo.width / 2, geo.y + geo.height / 2)
+    const corner = cornerAt(svgEl, 'resize', geo.x + geo.width / 2, geo.y + geo.height / 2)
     expect(corner).toBeNull()
   })
 })
@@ -175,7 +176,7 @@ describe('position-set resize mode', () => {
     expect(App.getResizeModeId()).toBe(id)
 
     const geo = App.getBBox(id)
-    const corner = App.getResizeCorner(id, geo.x + geo.width + 6, geo.y + geo.height + 6)
+    const corner = cornerAt(svgEl, 'resize', geo.x + geo.width + 6, geo.y + geo.height + 6)
     expect(corner).toBe(2)
 
     App.startResize(id, corner)

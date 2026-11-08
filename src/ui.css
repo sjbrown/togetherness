@@ -128,12 +128,13 @@ html, body {
 .requestedRing { pointer-events: none; }
 .remote-sel     { pointer-events: none; }
 .handle    { pointer-events: auto; }
+.handleHit { pointer-events: auto; }
 /* Corner handles get their cursor inline, per render — a handle is drawn
    turned with its shape, so the direction it drags along turns too and no
    static rule per corner can be right at every angle. See overlay.js's
    handleCursor(). The radius handle is circles-only, and circles don't
    rotate, so it stays here. */
-.handle[data-corner="r"]  { cursor: ew-resize; }
+[data-handle="resize"][data-corner="r"] { cursor: ew-resize; }
 .rotateGlyph { pointer-events: none; }
 .pivotGlyph  { pointer-events: none; }
 .pivotHandle { pointer-events: auto; cursor: crosshair; }

@@ -1518,16 +1518,6 @@ const App = {
     App.addLog(`bowstring ${how} → ${key}${params ? ` ${JSON.stringify(params)}` : ''}`, 'local');
   },
 
-  // getResizeCorner   — hit-test a canvas-space point against id's corner
-  //                     handles; used by canvas.js on pointerdown to decide
-  //                     whether a click on an already-resize-mode container
-  //                     starts a resize gesture or falls through.
-  getResizeCorner: (id, cx, cy) => {
-    if (SelectionLocal.activeMode()?.id !== id || !RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) return null;
-    const geo = App.getBBox(id);
-    const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale());
-  },
 
   startResize: (id, corner) => {
     if (SelectionLocal.activeMode()?.id !== id || !RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;
@@ -1593,12 +1583,6 @@ const App = {
   getPivotSnapFraction: () => _pivotSnapFraction,
   setPivotSnapFraction: (f) => { _pivotSnapFraction = Number(f) || 0; },
 
-  getRotateHandle: (id, cx, cy) => {
-    if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) return null;
-    const geo = App.getBBox(id);
-    const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale());
-  },
 
   startRotate: (id, corner) => {
     if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;

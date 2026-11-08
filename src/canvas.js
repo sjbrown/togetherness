@@ -182,6 +182,14 @@ function handleUnder(e) {
   return e.target.closest?.('[data-handle]') ?? null;
 }
 
+// A corner handle's data-corner as the RESIZE_CORNER_* index (0-3, in
+// toys.js's NW, NE, SE, SW order), or 'r' for the single radius handle.
+const CORNERS = ['nw', 'ne', 'se', 'sw'];
+function cornerOf(handleEl) {
+  const c = handleEl.dataset.corner;
+  return c === 'r' ? 'r' : CORNERS.indexOf(c);
+}
+
 // ── Draw preview (rubber-band div) ────────────────────────────────────────────
 const _preview = {
   el: null,
@@ -267,7 +275,8 @@ function onPointerDown(e) {
 
   const hitEl = hitForActiveLayer(e);
   const hitId = hitEl?.dataset?.id ?? null;
-  const handle = handleUnder(e)?.dataset.handle ?? null;
+  const handleEl = handleUnder(e);
+  const handle = handleEl?.dataset.handle ?? null;
 
   if (ToolMode.tool === 'select') {
     // Resize mode: the corner handles are drawn just outside the tray's
@@ -288,20 +297,16 @@ function onPointerDown(e) {
     }
 
     const resizeId = App.getResizeModeId();
-    if (resizeId) {
-      const rp = toCanvas(e.clientX, e.clientY);
-      const corner = App.getResizeCorner(resizeId, rp.x, rp.y);
-      if (corner != null) {
-        ToolMode._gesture = 'resize';
-        ToolMode._moveRef = { id: resizeId, corner, moved: false };
-        App.startResize(resizeId, corner);
-        return;
-      }
+    if (resizeId && handle === 'resize') {
+      const corner = cornerOf(handleEl);
+      ToolMode._gesture = 'resize';
+      ToolMode._moveRef = { id: resizeId, corner, moved: false };
+      App.startResize(resizeId, corner);
+      return;
     }
 
-    // Rotate mode's corner handles sit exactly where resize mode's do, and
-    // are just as far outside the element's own hit-testable bounds, so
-    // they get the same pointer-position check rather than relying on hitId.
+    // Rotate mode: the pivot, or a rotate corner. Both, like the resize
+    // corners, mostly sit outside the element's own hit-testable bounds.
     const rotateId = App.getRotateModeId();
     if (rotateId) {
       if (handle === 'pivot') {
@@ -311,9 +316,8 @@ function onPointerDown(e) {
         App.startPivotDrag(rotateId);
         return;
       }
-      const rp = toCanvas(e.clientX, e.clientY);
-      const corner = App.getRotateHandle(rotateId, rp.x, rp.y);
-      if (corner != null) {
+      if (handle === 'rotate') {
+        const corner = cornerOf(handleEl);
         ToolMode._gesture = 'rotate';
         ToolMode._moveRef = { id: rotateId, corner, moved: false };
         App.startRotate(rotateId, corner);

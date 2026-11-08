@@ -133,50 +133,18 @@ export function resizeRHandle(geo) {
 }
 
 /**
- * Which resize corner (if any) canvas-space point (px, py) is within
- * grabbing distance of, for a toy with bounding box geo. Returns a
- * RESIZE_CORNER_* index (0-3) or null. scale is the current view scale —
- * the hit box is defined in screen-space (HANDLE_SIZE/2 + HANDLE_HIT_PAD
- * px) and converted to canvas-space so grabbing feels consistent at any
- * zoom level.
+ * An invisible square giving a corner handle its grab area: HANDLE_SIZE/2 +
+ * HANDLE_HIT_PAD screen px either side of (hx, hy), converted to canvas
+ * space so grabbing feels the same at any zoom. Drawn before the visible
+ * handle and carrying the same data-handle/data-corner, so a press on
+ * either is the same press to canvas.js.
  */
-export function hitTestResizeCorner(geo, px, py, scale) {
-  // TODO: this function is dumb.  The browser should be doing the hit-testing
-  if (!geo) return null;
-  const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
-  const corners = resizeCorners(geo);
-  for (let i = 0; i < corners.length; i++) {
-    const { x: hx, y: hy } = corners[i];
-    if (Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius) return i;
-  }
-  return null;
-}
-
-/**
- * Whether canvas-space point (px, py) is within grabbing distance of geo's
- * single radius-drag handle. Same screen-space hit box sizing as
- * hitTestResizeCorner. Returns a boolean rather than an index — there's
- * only ever one handle.
- */
-export function hitTestResizeRHandle(geo, px, py, scale) {
-  if (!geo) return false;
-  const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
-  const { x: hx, y: hy } = resizeRHandle(geo);
-  return Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius;
-}
-
-/**
- * Which handle of `mode`'s own decoration canvas-space point (px, py) is
- * within grabbing distance of, for bounding box geo
- */
-export function hitTestSelectionHandle(mode, geo, px, py, scale) {
-  switch (mode) {
-    case 'sel-resize':
-    case 'sel-rotate':
-    case 'sel-rotate-pivot': return hitTestResizeCorner(geo, px, py, scale);
-    case 'sel-resize-r': return hitTestResizeRHandle(geo, px, py, scale) ? 'r' : null;
-    default:             return null;
-  }
+function handleHit(hx, hy, scale, attrs) {
+  const half = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
+  return el('rect', {
+    x: hx - half, y: hy - half, width: half * 2, height: half * 2,
+    fill: 'transparent', class: 'handleHit', ...attrs,
+  });
 }
 
 // ── Selection modes ───────────────────────────────────────────────────────────
@@ -1090,6 +1058,10 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _sel
   const corners = ['nw', 'ne', 'se', 'sw'];
   for (let i = 0; i < resizeCorners(geo).length; i++) {
     const { x: hx, y: hy } = resizeCorners(geo)[i];
+    const cursor = handleCursor(corners[i], rot?.deg ?? 0, 'resize');
+    const hit = handleHit(hx, hy, scale, { 'data-handle': 'resize', 'data-corner': corners[i] });
+    hit.style.cursor = cursor;
+    parent.appendChild(hit);
     const handle = el('rect', {
       x: hx - side_len / 2,
       y: hy - side_len / 2,
@@ -1099,9 +1071,10 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _sel
       fill: 'var(--surface-solid)', stroke: 'var(--info)',
       'stroke-width': 1.5 / scale,
       class: 'handle',
+      'data-handle': 'resize',
       'data-corner': corners[i],
     });
-    handle.style.cursor = handleCursor(corners[i], rot?.deg ?? 0, 'resize');
+    handle.style.cursor = cursor;
     parent.appendChild(handle);
   }
 }
@@ -1158,16 +1131,17 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _sel
 
   // A shade larger than the resize squares — both because a disc reads
   // smaller than a square of the same span, and because the arrow inside
-  // needs the room to be legible. Still well inside hitTestResizeCorner's
-  // grab radius, which both modes share.
+  // needs the room to be legible. Still well inside handleHit's grab
+  // square, which both modes share.
   const r = (HANDLE_SIZE * 0.62) / scale;
   const corners = ['nw', 'ne', 'se', 'sw'];
   resizeCorners(geo).forEach(({ x: hx, y: hy }, i) => {
     // The disc and its glyph ride together in one <g> so the whole handle
     // is addressable as a unit (and so the glyph never takes the pointer
     // away from the disc under it).
-    const handle = el('g', { class: 'handle rotateHandle', 'data-corner': corners[i], 'data-rotate-handle': '' });
+    const handle = el('g', { class: 'handle rotateHandle', 'data-handle': 'rotate', 'data-corner': corners[i], 'data-rotate-handle': '' });
     handle.style.cursor = handleCursor(corners[i], rot?.deg ?? 0, 'rotate');
+    handle.appendChild(handleHit(hx, hy, scale, {}));
     handle.appendChild(el('circle', {
       cx: hx, cy: hy, r,
       fill: 'var(--surface-solid)', stroke: 'var(--info)',
@@ -1201,6 +1175,7 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _selectionLocal
 
   const side_len = HANDLE_SIZE / scale;
   const { x: hx, y: hy } = resizeRHandle(geo);
+  parent.appendChild(handleHit(hx, hy, scale, { 'data-handle': 'resize', 'data-corner': 'r' }));
   parent.appendChild(el('rect', {
     x: hx - side_len / 2,
     y: hy - side_len / 2,
@@ -1210,6 +1185,7 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _selectionLocal
     fill: 'var(--surface-solid)', stroke: 'var(--info)',
     'stroke-width': 1.5 / scale,
     class: 'handle',
+    'data-handle': 'resize',
     'data-corner': 'r',
   }));
 }

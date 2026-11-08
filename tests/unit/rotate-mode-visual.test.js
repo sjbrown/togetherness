@@ -14,7 +14,6 @@ import { describe, test, expect, beforeEach } from 'vitest'
 import {
   localSelectionChanged,
   setSelectionMode,
-  hitTestSelectionHandle,
   handleCursor,
   resizeCorners,
   setPivotPreview,
@@ -26,6 +25,7 @@ import {
   endResizeGhost,
   init as overlayInit,
 } from '../../src/overlay.js'
+import { handleAt } from '../helpers/handle-at.js'
 
 const BBOX = { x: 100, y: 100, width: 200, height: 100 }
 
@@ -43,12 +43,12 @@ function makeOverlayDOM() {
 // App.getRotation answers with a RESOLVED rotation — { deg, cx, cy } — so
 // overlay.js never derives a pivot itself. `centre` defaults to the middle
 // of BBOX; pass another to stand in for a pivot the user has moved.
-function boot({ rotation = 0, centre = { cx: 200, cy: 150 }, pivot = { fx: 0.5, fy: 0.5 } } = {}) {
+function boot({ rotation = 0, centre = { cx: 200, cy: 150 }, pivot = { fx: 0.5, fy: 0.5 }, scale = 1 } = {}) {
   makeOverlayDOM()
   setPivotPreview(null, null)   // module state — clear anything a prior test left
   overlayInit({
     user:         { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
-    getViewScale: () => 1,
+    getViewScale: () => scale,
     getBBox:      (id) => (id === 'rect1' ? BBOX : null),
     getRotation:  (id) => (id === 'rect1' && rotation ? { deg: rotation, ...centre } : null),
     getPivot:     (id) => (id === 'rect1'
@@ -125,21 +125,52 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
   })
 })
 
-describe('hitTestSelectionHandle in rotate mode', () => {
-  const scale = 1
+describe('corner handle hit areas', () => {
+  const svg = () => document.getElementById('canvas')
 
-  test('returns the corner index under the pointer, like resize mode does', () => {
+  test('each corner is a data-handle press target, in NW, NE, SE, SW order', () => {
     const corners = resizeCorners(BBOX)
-    for (const mode of ['sel-rotate', 'sel-rotate-pivot']) {
-      corners.forEach((c, i) => {
-        expect(hitTestSelectionHandle(mode, BBOX, c.x, c.y, scale)).toBe(i)
-      })
+    for (const [mode, handle] of [['sel-resize', 'resize'], ['sel-rotate', 'rotate'], ['sel-rotate-pivot', 'rotate']]) {
+      enter(mode)
+      corners.forEach((c, i) => expect(handleAt(svg(), c.x, c.y)).toEqual({ handle, corner: i }))
     }
   })
 
-  test('returns null well away from every corner', () => {
-    expect(hitTestSelectionHandle('sel-rotate', BBOX, 200, 150, scale)).toBeNull()
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, 200, 150, scale)).toBeNull()
+  test('the radius handle is a resize press target with corner r', () => {
+    enter('sel-resize-r')
+    expect(handleAt(svg(), BBOX.x + BBOX.width + 6, BBOX.y + BBOX.height / 2)).toEqual({ handle: 'resize', corner: 'r' })
+  })
+
+  test('nothing but the pivot answers in the middle', () => {
+    enter('sel-rotate')
+    expect(handleAt(svg(), 200, 150)).toBeNull()
+    enter('sel-rotate-pivot')
+    expect(handleAt(svg(), 200, 150)).toEqual({ handle: 'pivot', corner: undefined })
+  })
+
+  test('the grab area reaches HANDLE_SIZE / 2 + HANDLE_HIT_PAD (12px) past the corner, beyond the visible square', () => {
+    const [nw] = resizeCorners(BBOX)
+    enter('sel-resize')
+    expect(handleAt(svg(), nw.x - 11, nw.y - 11)).toEqual({ handle: 'resize', corner: 0 })
+    expect(handleAt(svg(), nw.x - 13, nw.y)).toBeNull()
+    enter('sel-rotate')
+    expect(handleAt(svg(), nw.x - 11, nw.y - 11)).toEqual({ handle: 'rotate', corner: 0 })
+  })
+
+  test('the grab area is fixed in screen px, so it shrinks in canvas space as the view zooms in', () => {
+    const [, , se] = resizeCorners(BBOX)
+    boot({ scale: 1 }); enter('sel-resize')
+    expect(handleAt(svg(), se.x + 5, se.y)).toEqual({ handle: 'resize', corner: 2 })
+    // At scale 4 the same 5 canvas px is 20 screen px away — outside it.
+    boot({ scale: 4 }); enter('sel-resize')
+    expect(handleAt(svg(), se.x + 5, se.y)).toBeNull()
+  })
+
+  test('on a rotated shape the grab areas turn with it', () => {
+    boot({ rotation: 90 }); enter('sel-resize')
+    // NW (94, 94) turned 90° about (200, 150) lands at (256, 44).
+    expect(handleAt(svg(), 256, 44)).toEqual({ handle: 'resize', corner: 0 })
+    expect(handleAt(svg(), 94, 94)).toBeNull()
   })
 })
 

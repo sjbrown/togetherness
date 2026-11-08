@@ -94,3 +94,48 @@ test('a pivot parked on a rotate corner is the one a press there grabs', async (
   await expect(rect).not.toHaveAttribute('data-rotate', /[1-9]/);
   await browser.close();
 });
+
+test('dragging a resize corner resizes, including from its grab margin outside the visible square', async () => {
+  const browser = await launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const { rect } = await rectInMode(page, 1);
+  await expect(page.locator('#selection_local [data-handle="resize"][data-corner="se"]')).not.toHaveCount(0, { timeout: 3000 });
+
+  // The SE handle is centred on (306, 306) and 12px square; press 10px out
+  // from its centre, past the square but inside its grab area. The corner
+  // follows the pointer, so releasing at (366, 366) makes a 266px square.
+  await drag(page, await toScreen(page, 316, 316), await toScreen(page, 366, 366));
+
+  await expect(rect).toHaveAttribute('width', '266');
+  await expect(rect).toHaveAttribute('height', '266');
+  await browser.close();
+});
+
+test('dragging a rotate corner turns the shape', async () => {
+  const browser = await launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const { rect } = await rectInMode(page, 2);
+  await expect(page.locator('#selection_local [data-handle="rotate"]')).toHaveCount(4, { timeout: 3000 });
+
+  // SE handle at (306, 306), 45° from the centre (200, 200); carry it to 135°.
+  await drag(page, await toScreen(page, 306, 306), await toScreen(page, 94, 306));
+
+  await expect(rect).toHaveAttribute('data-rotate', '90');
+  await browser.close();
+});
+
+test('on a rotated shape the resize corners are pressed where they are drawn', async () => {
+  const browser = await launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const { rect } = await rectInMode(page, 1, { rotate: 90 });
+  await expect(rect).toHaveAttribute('data-rotate', '90');
+
+  // Turned 90°, the SE handle is drawn at (94, 306). The shape's own x axis
+  // now runs down the screen, so dragging the handle down widens it: the
+  // release point (94, 356) is local (356, 306).
+  await drag(page, await toScreen(page, 94, 306), await toScreen(page, 94, 356));
+
+  await expect(rect).toHaveAttribute('width', '256');
+  await expect(rect).toHaveAttribute('height', '206');
+  await browser.close();
+});
