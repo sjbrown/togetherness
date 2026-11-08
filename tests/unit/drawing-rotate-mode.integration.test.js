@@ -173,9 +173,8 @@ describe('dragging a rotate handle', () => {
     // [NW, NE, SE, SW], each PAD outside its corner.
     expect(App.getRotateHandle(id, geo.x - 6, geo.y - 6)).toBe(0)
     expect(App.getRotateHandle(id, geo.x + geo.width + 6, geo.y + geo.height + 6)).toBe(2)
-    // The middle is the pivot handle's home, so it answers there now.
-    expect(App.getRotateHandle(id, geo.x + geo.width / 2, geo.y + geo.height / 2)).toBe('pivot')
-    // Somewhere on the shape that is neither a corner nor the pivot.
+    // Not a corner. (The pivot is a [data-handle] element, not a hit test.)
+    expect(App.getRotateHandle(id, geo.x + geo.width / 2, geo.y + geo.height / 2)).toBeNull()
     expect(App.getRotateHandle(id, geo.x + geo.width / 4, geo.y + geo.height / 2)).toBeNull()
   })
 
@@ -398,10 +397,11 @@ describe('placing the pivot', () => {
     return b
   }
 
-  test('the pivot handle is reported where the pivot is, and answers the hit test', async () => {
-    const { App, id } = await inPivotMode()
+  test('the pivot handle is drawn where the pivot is', async () => {
+    const { App, id, svgEl } = await inPivotMode()
     expect(App.getPivot(id)).toEqual({ fx: 0.5, fy: 0.5, cx: 200, cy: 200 })
-    expect(App.getRotateHandle(id, 200, 200)).toBe('pivot')
+    const hit = svgEl.querySelector('#selection_local [data-handle="pivot"] circle:not(.pivotGlyph)')
+    expect([hit.getAttribute('cx'), hit.getAttribute('cy')].map(Number)).toEqual([200, 200])
   })
 
   test('a drag writes fractions of the shape, snapped to a notable point', async () => {
@@ -412,6 +412,16 @@ describe('placing the pivot', () => {
 
     expect(rectEl(id).getAttribute('data-pivot-x')).toBe('0')
     expect(rectEl(id).getAttribute('data-pivot-y')).toBe('1')
+  })
+
+  test('after a commit the handle is drawn at the committed pivot, so the next press finds it there', async () => {
+    const { App, id, svgEl } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.movePivot(id, 104, 297)
+    App.commitPivot(id, 104, 297)
+
+    const hit = svgEl.querySelector('#selection_local [data-handle="pivot"] circle:not(.pivotGlyph)')
+    expect([hit.getAttribute('cx'), hit.getAttribute('cy')].map(Number)).toEqual([100, 300])
   })
 
   test('placing a pivot on an UNROTATED shape moves nothing', async () => {

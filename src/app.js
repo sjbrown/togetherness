@@ -1597,8 +1597,7 @@ const App = {
     if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) return null;
     const geo = App.getBBox(id);
     const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(
-      SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale(), App.getPivot(id));
+    return Overlay.hitTestSelectionHandle(SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale());
   },
 
   startRotate: (id, corner) => {
@@ -1679,8 +1678,10 @@ const App = {
     const p     = _toLocalPoint(id, px, py, _rotationOf(id));
     const pivot = _Layers[mtype].computePivot(startRect, p.x, p.y, _pivotSnapFraction);
     _pivotState = null;
-    Overlay.setPivotPreview(id, null);
     _writePivot(id, mtype, startRect, fromPivot, pivot, deg);
+    // After the write, same reasoning as commitResize: clearing the preview
+    // redraws the handle where the DOM now has the pivot.
+    Overlay.setPivotPreview(id, null);
   },
 
   cancelPivot: () => {

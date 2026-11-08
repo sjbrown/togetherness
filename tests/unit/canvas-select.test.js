@@ -670,22 +670,23 @@ describe('resize mode — reclick-to-toggle', () => {
 })
 
 describe('pivot drag gesture', () => {
-  // getRotateHandle answers 'pivot' instead of a corner index when the
-  // pointer is on the pivot handle; canvas.js routes that to its own gesture.
+  // A press on the [data-handle="pivot"] element starts its own gesture,
+  // even where a rotate corner would also answer.
   const pivotApp = (overrides = {}) => makeApp({
     getRotateModeId: () => 'rect-1',
-    getRotateHandle: () => 'pivot',
+    getRotateHandle: () => 1,
     ...overrides,
   })
+  const onPivot = () => addHandle({ 'data-handle': 'pivot' })
 
-  test("a handle answer of 'pivot' starts a pivot drag, not a rotate", () => {
+  test('a press on the pivot handle starts a pivot drag, not a rotate', () => {
     const started = [], rotated = []
     const app = pivotApp({ startPivotDrag: (id) => started.push(id), startRotate: () => rotated.push(true) })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
 
     document.getElementById('stage')
-      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
 
     expect(ToolMode._gesture).toBe('pivot')
     expect(started).toEqual(['rect-1'])
@@ -699,7 +700,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
 
     expect(moved).toEqual([['rect-1', 240, 260]])
@@ -712,7 +713,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 240, clientY: 260 }))
 
@@ -726,7 +727,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 200, clientY: 200 }))
 
     expect(cancelled).toHaveLength(1)
@@ -740,7 +741,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointermove',   { clientX: 240, clientY: 260 }))
     stage.dispatchEvent(makePointerEvent('pointercancel', { clientX: 240, clientY: 260 }))
 
@@ -1087,13 +1088,13 @@ describe('Pinch gesture', () => {
 
 describe('the pivot drag keeps its cursor while the pointer is captured', () => {
   test('#stage carries pivot-dragging for the duration of the drag, and not after', () => {
-    const app = makeApp({ getRotateModeId: () => 'rect-1', getRotateHandle: () => 'pivot' })
+    const app = makeApp({ getRotateModeId: () => 'rect-1' })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
     const stage = document.getElementById('stage')
 
     expect(stage.classList.contains('pivot-dragging')).toBe(false)
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: addHandle({ 'data-handle': 'pivot' }) }))
     expect(stage.classList.contains('pivot-dragging')).toBe(true)
     stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 240, clientY: 240 }))
     expect(stage.classList.contains('pivot-dragging')).toBe(false)
@@ -1133,6 +1134,16 @@ describe('handle dispatch', () => {
     document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
     expect(fired).toEqual([true])
     expect(ToolMode._gesture).toBeNull()
+  })
+
+  test('a press on a pivot handle outside rotate mode starts no pivot drag', () => {
+    const started = []
+    init(makeApp({ startPivotDrag: (id) => started.push(id) }), document.getElementById('canvas'))
+    setTool('select', {})
+    const target = addHandle({ 'data-handle': 'pivot' })
+    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
+    expect(started).toEqual([])
+    expect(ToolMode._gesture).not.toBe('pivot')
   })
 
   test('a press anywhere else never fires the group action', () => {

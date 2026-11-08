@@ -304,15 +304,15 @@ function onPointerDown(e) {
     // they get the same pointer-position check rather than relying on hitId.
     const rotateId = App.getRotateModeId();
     if (rotateId) {
-      const rp = toCanvas(e.clientX, e.clientY);
-      const corner = App.getRotateHandle(rotateId, rp.x, rp.y);
-      if (corner === 'pivot') {
+      if (handle === 'pivot') {
         ToolMode._gesture = 'pivot';
         ToolMode._moveRef = { id: rotateId, moved: false };
         _stageEl.classList.add('pivot-dragging');
         App.startPivotDrag(rotateId);
         return;
       }
+      const rp = toCanvas(e.clientX, e.clientY);
+      const corner = App.getRotateHandle(rotateId, rp.x, rp.y);
       if (corner != null) {
         ToolMode._gesture = 'rotate';
         ToolMode._moveRef = { id: rotateId, corner, moved: false };

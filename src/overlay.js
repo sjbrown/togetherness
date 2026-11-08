@@ -169,30 +169,14 @@ export function hitTestResizeRHandle(geo, px, py, scale) {
  * Which handle of `mode`'s own decoration canvas-space point (px, py) is
  * within grabbing distance of, for bounding box geo
  */
-export function hitTestSelectionHandle(mode, geo, px, py, scale, pivotPoint = null) {
+export function hitTestSelectionHandle(mode, geo, px, py, scale) {
   switch (mode) {
-    // The pivot is tested before the corners: once it has been dragged onto
-    // one, the two hit boxes overlap, and the pivot is the smaller and more
-    // deliberate target of the two.
-    case 'sel-rotate-pivot':
-      if (pivotPoint && hitTestPivot(pivotPoint, px, py, scale)) return 'pivot';
-      return hitTestResizeCorner(geo, px, py, scale);
     case 'sel-resize':
-    case 'sel-rotate':   return hitTestResizeCorner(geo, px, py, scale);
+    case 'sel-rotate':
+    case 'sel-rotate-pivot': return hitTestResizeCorner(geo, px, py, scale);
     case 'sel-resize-r': return hitTestResizeRHandle(geo, px, py, scale) ? 'r' : null;
     default:             return null;
   }
-}
-
-/**
- * Whether canvas-space (px, py) is within grabbing distance of the pivot
- * handle at pivotPoint ({ cx, cy }). Same screen-space sizing as the corner
- * handles, so it feels the same at any zoom.
- */
-export function hitTestPivot(pivotPoint, px, py, scale) {
-  if (!pivotPoint) return false;
-  const radius = (PIVOT_SIZE / 2 + HANDLE_HIT_PAD) / scale;
-  return Math.hypot(px - pivotPoint.cx, py - pivotPoint.cy) <= radius;
 }
 
 // ── Selection modes ───────────────────────────────────────────────────────────
@@ -1137,10 +1121,12 @@ function renderPivotHandle(elId, geo, scale, parent = _selectionLocalEl) {
     ? { fx: dragged.fx, fy: dragged.fy,
         cx: geo.x + dragged.fx * geo.width, cy: geo.y + dragged.fy * geo.height }
     : committed;
-  const g = el('g', { class: 'pivotHandle' });
-  // Invisible circle at hitTestPivot's own radius: the rays/dot below it
-  // opt out of pointer-events, and a <g> has no geometry of its own to
-  // hover, so without this nothing here ever shows the crosshair cursor.
+  // Drawn after the rotate handles, so a pivot parked on a corner is the
+  // one a press there lands on: it is the smaller, more deliberate target.
+  const g = el('g', { class: 'pivotHandle', 'data-handle': 'pivot' });
+  // Invisible circle giving the handle its grab radius: the rays/dot below
+  // it opt out of pointer-events, and a <g> has no geometry of its own to
+  // hover or press.
   g.appendChild(el('circle', {
     cx: pivot.cx, cy: pivot.cy, r: (PIVOT_SIZE / 2 + HANDLE_HIT_PAD) / scale,
     fill: 'transparent',
