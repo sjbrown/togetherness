@@ -2,7 +2,7 @@
  * ui.js — togetherness UI chrome
  *
  * Renders the chrome: pill, panel, toasts, idbar, popover, menu.
- * Reads ToolMode / SelectionMode only through the App bus.
+ * Reads ToolMode / the selection modes only through the App bus.
  *
  * Design rules that keep this file testable in stories.html:
  *   1. Render functions are PURE: renderX(data) -> htmlString. They take their

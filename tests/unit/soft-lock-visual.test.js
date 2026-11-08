@@ -6,9 +6,9 @@
  * soft_lock.js's getAllContestedElementIds, rendered via
  * Overlay.syncFromAwareness() → render().
  *
- * This indicator is deliberately NOT a SelectionMode `kind` — it's rendered
- * regardless of whether the element also has a 'local' or 'remote'
- * SelectionMode entry (or none at all), since contestedness is orthogonal
+ * This indicator is deliberately NOT a selection mode — it's rendered
+ * regardless of whether the element also has a SelectionModeLocal or
+ * SelectionModeShared entry (or none at all), since contestedness is orthogonal
  * to who currently holds the element. These tests verify that independence
  * directly, alongside the basic contested/uncontested render behavior.
  *
@@ -19,9 +19,11 @@
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  SelectionMode,
+  SelectionModeLocal,
+  SelectionModeShared,
   localSelectionChanged,
   syncFromAwareness,
+  render,
   init as overlayInit,
 } from '../../src/overlay.js'
 
@@ -60,7 +62,8 @@ function bid(elId, ts) {
 
 beforeEach(() => {
   makeOverlayDOM()
-  SelectionMode.clear()
+  SelectionModeLocal.clear()
+  SelectionModeShared.clear()
   // Reset the module-level _contestedIds by syncing against an empty
   // awareness snapshot — syncFromAwareness always recomputes it fresh.
   overlayInit(makeOverlayApp(), document.getElementById('canvas'))
@@ -124,7 +127,7 @@ describe('requested indicator — basic presence', () => {
   })
 })
 
-describe('requested indicator — independence from SelectionMode mode', () => {
+describe('requested indicator — independence from the selection modes', () => {
   test('coexists with a local selection ring when I am the contested holder', () => {
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['goblin-1'])) // I hold it locally
@@ -134,7 +137,7 @@ describe('requested indicator — independence from SelectionMode mode', () => {
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('goblin-1')?.mode).toBe('local')
+    expect(SelectionModeLocal.get('goblin-1')?.mode).toBe('local')
     expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(1)
     expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(1)
   })
@@ -147,14 +150,14 @@ describe('requested indicator — independence from SelectionMode mode', () => {
     ])
     syncFromAwareness(states, 999) // I'm neither Alice nor Bailey
 
-    expect(SelectionMode.get('goblin-1')?.mode).toBe('remote')
+    expect(SelectionModeShared.get('goblin-1')?.mode).toBe('remote')
     // Remote selection is now wrapped in <g class="remote-sel">; assert on
     // that group's presence rather than the individual ring/label children.
     expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1)
     expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(1)
   })
 
-  test('renders even when the element has no SelectionMode entry at all', () => {
+  test('renders even when the element has no selection-mode entry at all', () => {
     // e.g. neither the requester nor an observer has this element selected —
     // only the acquisition request itself exists.
     overlayInit(makeOverlayApp({ 'goblin-1': BBOX }), document.getElementById('canvas'))
@@ -163,15 +166,8 @@ describe('requested indicator — independence from SelectionMode mode', () => {
       [2, { desired: bid('goblin-1', 1000) }],
     ])
     syncFromAwareness(states, 999)
-    SelectionMode.delete('goblin-1') // simulate no SelectionMode entry
-    // (SelectionMode entries come from local/remote selection state, which
-    // is independent of _contestedIds — re-syncing without re-deriving
-    // SelectionMode shows the requestedRing still renders standalone.)
-
-    // Re-render is triggered by any Overlay call; syncFromAwareness both
-    // rebuilds SelectionMode remote entries AND re-renders, so call it again
-    // with the same states to exercise a fresh render after the manual delete.
-    syncFromAwareness(states, 999)
+    SelectionModeShared.delete('goblin-1') // simulate no selection-mode entry
+    render()
     expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(1)
   })
 })
@@ -197,55 +193,41 @@ describe('requested indicator — clears when no longer contested', () => {
   })
 })
 
-// ── Regression — local selection must never be clobbered by a conflicting
-//    remote broadcast for the same elId ─────────────────────────────────────
+// ── A conflicting claim — both peers briefly broadcast the same elId ───────
 //
-// Reproduces a visual bug observed live: two peers briefly, genuinely both
-// broadcast the same elId in their selection (e.g. mid soft-lock handoff,
-// before the data layer converges via computeTickActions). syncFromAwareness's
-// remote-selection loop previously overwrote an existing 'local' SelectionMode
-// entry unconditionally — so my own screen would show the OTHER peer's dashed
-// ring instead of my own, even though my own selection data still held it.
-// Both peers seeing "the other peer's dashed ring" simultaneously was exactly
-// the reported symptom. Fix mirrors the precedence rule setHoverCandidates
-// already applies for candidate-vs-local.
+// Happens mid soft-lock handoff, before computeTickActions converges. My own
+// ring and the peer's are drawn from separate maps into separate layers, so
+// neither can clobber the other: both show until the claims converge.
 
-describe('local selection precedence over a conflicting remote broadcast', () => {
-  test('local entry survives when a remote peer broadcasts the same elId', () => {
+describe('a peer claiming an element I also hold', () => {
+  test('shows my ring and the peer\'s ring', () => {
     overlayInit(makeOverlayApp({ 'die-1': BBOX }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['die-1'])) // I legitimately hold it
 
-    const states = new Map([
+    syncFromAwareness(new Map([
       [1 /* me */, { desired: held(['die-1']) }],
       [2 /* other peer, conflicting broadcast for the same elId */, { desired: held(['die-1']) }],
-    ])
-    syncFromAwareness(states, 1)
+    ]), 1)
 
-    expect(SelectionMode.get('die-1')?.mode).toBe('local')
+    expect(SelectionModeLocal.get('die-1')?.mode).toBe('local')
+    expect(SelectionModeShared.get('die-1')?.mode).toBe('remote')
     expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1)
   })
 
-  test('both sides of a symmetric conflict independently keep their own local ring', () => {
-    // Client 1's own view: sees itself as local, peer 2's claim as would-be
-    // remote but suppressed by precedence.
+  test('my ring survives the peer\'s claim arriving after it, and the peer\'s ring survives my deselect', () => {
     overlayInit(makeOverlayApp({ 'die-1': BBOX }), document.getElementById('canvas'))
     localSelectionChanged(new Set(['die-1']))
-    syncFromAwareness(new Map([
+    const conflict = new Map([
       [1, { desired: held(['die-1']) }],
       [2, { desired: held(['die-1']) }],
-    ]), 1)
-    expect(SelectionMode.get('die-1')?.mode).toBe('local')
+    ])
+    syncFromAwareness(conflict, 1)
+    expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(1)
 
-    // Client 2's own view (separate overlay instance state — SelectionMode
-    // is module-level, so simulate by clearing and reinitializing as if we
-    // were client 2): local takes precedence for THEM too, symmetrically.
-    SelectionMode.clear()
-    localSelectionChanged(new Set(['die-1']))
-    syncFromAwareness(new Map([
-      [1, { desired: held(['die-1']) }],
-      [2, { desired: held(['die-1']) }],
-    ]), 2)
-    expect(SelectionMode.get('die-1')?.mode).toBe('local')
+    localSelectionChanged(new Set())
+    expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1)
   })
 
   test('remote still renders normally for elIds with no local conflict', () => {
@@ -258,8 +240,9 @@ describe('local selection precedence over a conflicting remote broadcast', () =>
     ])
     syncFromAwareness(states, 1)
 
-    expect(SelectionMode.get('die-1')?.mode).toBe('local')
-    expect(SelectionMode.get('die-2')?.mode).toBe('remote')
+    expect(SelectionModeLocal.get('die-1')?.mode).toBe('local')
+    expect(SelectionModeShared.get('die-2')?.mode).toBe('remote')
+    expect(SelectionModeShared.has('die-1')).toBe(false)
   })
 })
 

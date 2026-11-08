@@ -442,11 +442,12 @@ function canvasStory(label, variant, shapes, selectionKind, selectedId, remoteCo
   story(label, variant, () => {
     const svg = buildStageSVG(shapes);
 
-    Overlay.SelectionMode.clear();
+    Overlay.SelectionModeLocal.clear();
+    Overlay.SelectionModeShared.clear();
     if (selectedId && selectionKind === 'local') {
-      Overlay.SelectionMode.set(selectedId, { kind: 'local', color: myGrad.c1, grad: myGrad });
+      Overlay.SelectionModeLocal.set(selectedId, { mode: 'local', color: myGrad.c1, grad: myGrad });
     } else if (selectedId && selectionKind === 'remote') {
-      Overlay.SelectionMode.set(selectedId, { kind: 'remote', peerName: 'Mara', color: remoteColor ?? '#5a7ea8' });
+      Overlay.SelectionModeShared.set(selectedId, { mode: 'remote', peerName: 'Mara', color: remoteColor ?? '#5a7ea8' });
     }
 
     Overlay.init(fakeOverlayApp(svg), svg, storiesUser);
@@ -480,8 +481,9 @@ function modeStory(variant, mode, rotation = 0, pivot = { fx: 0.5, fy: 0.5 }) {
       el.setAttribute('data-rotate', String(rotation));
       syncRotation(el);
     }
-    Overlay.SelectionMode.clear();
-    Overlay.SelectionMode.set('sm1', { mode, color: myGrad.c1, grad: myGrad });
+    Overlay.SelectionModeLocal.clear();
+    Overlay.SelectionModeShared.clear();
+    Overlay.SelectionModeLocal.set('sm1', { mode, color: myGrad.c1, grad: myGrad });
     const centre = {
       cx: rectGeom.x + pivot.fx * rectGeom.width,
       cy: rectGeom.y + pivot.fy * rectGeom.height,
@@ -516,9 +518,10 @@ story('Mixed', 'rect local · circle remote', () => {
     { id:'mx2', type:'circle', geom:{ cx:175, cy:90, r:50 },             fill:'#5ea88a' },
   ];
   const svg = buildStageSVG(shapes);
-  Overlay.SelectionMode.clear();
-  Overlay.SelectionMode.set('mx1', { kind:'local',  color: myGrad.c1,   grad: myGrad });
-  Overlay.SelectionMode.set('mx2', { kind:'remote', peerName:'Mara', color:'#5a7ea8' });
+  Overlay.SelectionModeLocal.clear();
+  Overlay.SelectionModeShared.clear();
+  Overlay.SelectionModeLocal.set('mx1', { mode:'local',  color: myGrad.c1,   grad: myGrad });
+  Overlay.SelectionModeShared.set('mx2', { mode:'remote', peerName:'Mara', color:'#5a7ea8' });
   Overlay.init(fakeOverlayApp(svg), svg, storiesUser);
   Overlay.render();
   return svg;

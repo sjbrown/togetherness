@@ -502,7 +502,7 @@ describe('updateRotateGhost', () => {
     document.getElementById('canvas').appendChild(liveEl)
     setPivotPreview(null, null)
     const id = liveEl.getAttribute('data-id')
-    // id-aware, not a blanket () => GEO: SelectionMode is overlay.js module
+    // id-aware, not a blanket () => GEO: SelectionModeLocal is overlay.js module
     // state that outlives any one test (earlier describe blocks in this file
     // leave a 'rect1' entry behind), so a fake that answered for EVERY id
     // would render an extra, geometry-less ghost/ring for that leftover

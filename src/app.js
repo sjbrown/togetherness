@@ -166,13 +166,6 @@ function _clearClaims() {
 }
 
 // Called whenever the held-id SET has changed (not just a bid or a mode).
-// Order matters: local SelectionMode must be updated BEFORE broadcasting,
-// because setLocalStateField fires 'change' synchronously, which can trigger
-// syncFromAwareness before this function returns. If a stale 'local' entry
-// for a just-released elId is still present at that moment, overlay's
-// local-takes-precedence guard will skip assigning 'remote' to it — and
-// nothing afterward re-triggers that decision, leaving the elId with no
-// SelectionMode entry at all. See overlay.js for the guard.
 function _afterClaimsChanged() {
   const claimedSet = new Set(_heldIds());
   const wasSelecting = _lastClaimedSetNonEmpty;

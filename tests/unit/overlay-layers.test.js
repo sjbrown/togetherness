@@ -10,7 +10,8 @@
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  SelectionMode,
+  SelectionModeLocal,
+  SelectionModeShared,
   localSelectionChanged,
   syncFromAwareness,
   render,
@@ -33,7 +34,8 @@ beforeEach(() => {
       <g id="selection_local"></g>
     </svg>
   `
-  SelectionMode.clear()
+  SelectionModeLocal.clear()
+  SelectionModeShared.clear()
   overlayInit({
     user:         { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
     getViewScale: () => 1,
