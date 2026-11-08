@@ -202,21 +202,6 @@ function el(tag, attrs) {
 }
 
 /**
- * Hit-test a canvas-space point against elId's resting bowstring square.
- * rot (the same { deg, cx, cy } App.getRotation returns, or null) rotates
- * the square along with the toy.
- */
-export function hitTestBowstring(geo, px, py, scale, rot = null) {
-  return hitTestBowstringAt(bowstringOrigin(geo, rot), px, py, scale);
-}
-
-/** Same hit-test for a square already anchored at origin. */
-export function hitTestBowstringAt(origin, px, py, scale) {
-  const half = ACTION_SQUARE_SIDE / scale / 2;
-  return Math.abs(px - origin.x) <= half && Math.abs(py - origin.y) <= half;
-}
-
-/**
  * The handle's resting anchor: whichever ring corner, after the toy's
  * rotation, lies furthest along the screen's south-east diagonal. Near-ties
  * (within SE_EPS) go to the corner lower on screen.
@@ -239,9 +224,10 @@ const PAD = 6; // keep in step with overlay.js's PAD
 // ── Gesture ───────────────────────────────────────────────────────────────
 
 /**
- * Begin a bowstring gesture on elId. Called from canvas.js's pointerdown
- * once hitTestBowstring passes. Takes over the pointer entirely: canvas.js
- * must not also start a move/select gesture for this pointer.
+ * Begin a bowstring gesture on elId. Called (through App.startBowstring)
+ * for a press on the resting square, overlay.js's [data-handle="bowstring"].
+ * Takes over the pointer entirely: canvas.js must not also start a
+ * move/select gesture for this pointer.
  */
 export function startBowstring(elId, e, stageEl) {
   if (_active) return false;

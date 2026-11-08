@@ -1394,16 +1394,15 @@ const App = {
   // ── Bowstring handle (delight.js) ─────────────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
   // first menu action now, or pull it back and release for the same action
-  // as a "charged" gesture. canvas.js calls startBowstringAt on pointerdown
-  // ahead of ordinary hit-testing; if it takes, the pointer belongs to the
-  // bowstring for the rest of the gesture.
+  // as a "charged" gesture. canvas.js calls startBowstring for a press on
+  // the square ahead of ordinary hit-testing; if it takes, the pointer
+  // belongs to the bowstring for the rest of the gesture.
 
   /**
-   * Try to begin a bowstring gesture at a canvas-space point. Returns true
-   * if the point landed on the affordance (and the gesture started), false
-   * to let canvas.js fall through to normal hit-testing.
+   * Try to begin a bowstring gesture on the sole selection. Returns true if
+   * it started, false to let canvas.js fall through to normal hit-testing.
    */
-  startBowstringAt: (e, canvasPoint) => {
+  startBowstring: (e) => {
     const id = _singleSelectedId();
     if (!id) return false;
     const { domEl, layer } = _layerFor(id);
@@ -1414,9 +1413,6 @@ const App = {
     // otherwise avoids intercepting a corner that no longer shows it.
     if (defaultMode !== 'sel-action' || SelectionLocal.activeMode()?.mode !== defaultMode) return false;
     if (!App.hasToyActions(id)) return false;
-    const geo = App.getBBox(id);
-    if (!geo) return false;
-    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
     return Delight.startBowstring(id, e, _svgEl);
   },
 

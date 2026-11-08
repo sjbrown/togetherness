@@ -1204,7 +1204,7 @@ function renderActionAffordance(origin, scale, groupClass = 'bowstring') {
 
 // The data-handle each clickable square carries, read by canvas.js's
 // pointerdown.
-const ACTION_SQUARE_HANDLES = { groupAction: 'group-action' };
+const ACTION_SQUARE_HANDLES = { bowstring: 'bowstring', groupAction: 'group-action' };
 
 function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _selectionLocalEl) {
   const handle = ACTION_SQUARE_HANDLES[groupClass];

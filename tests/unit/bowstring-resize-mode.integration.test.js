@@ -8,11 +8,14 @@
  * render() already stops drawing the action square the moment the id
  * enters 'sel-resize'/'sel-resize-r' mode (see its `entry.mode === 'local'`
  * guard), but
- * App.startBowstringAt — which canvas.js's pointerdown consults BEFORE
- * ordinary/resize hit-testing — never checked resize mode itself, so the
- * live gesture kept firing even though nothing was drawn there any more.
+ * the bowstring's hit test — which canvas.js's pointerdown consulted
+ * BEFORE ordinary/resize hit-testing — never checked resize mode itself,
+ * so the live gesture kept firing even though nothing was drawn there any
+ * more.
  *
- * Fix: App.startBowstringAt bails out as soon as `_resizeModeId === id`.
+ * Fix: App.startBowstring only starts while the selection is still in its
+ * default 'sel-action' mode, and a press is now dispatched by the drawn
+ * square itself, so no square means no bowstring.
  *
  * Same boot fixture as soft-lock.integration.test.js / undo-selection.
  * integration.test.js: a single real App instance, real Yjs doc, real
@@ -23,7 +26,7 @@
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache } from '../../src/toys.js'
-import { cornerAt } from '../helpers/handle-at.js'
+import { cornerAt, pressBowstring } from '../helpers/handle-at.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -119,19 +122,19 @@ async function bootApp() {
 
 describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () => {
   test('plain selection still offers the bowstring at the SE corner', async () => {
-    const { App } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.select('tray-1')
 
     const geo = App.getBBox('tray-1')
     // Mirrors delight.js's bowstringOrigin: SE corner + PAD(6).
     const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
+    expect(pressBowstring(App, svgEl, point)).toBe(true)
     App.endBowstring({ pointerId: 1 })
   })
 
   test('entering resize mode stops the SE corner from starting a bowstring gesture', async () => {
-    const { App } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.select('tray-1')
     App.nextSelectionMode('tray-1')
     expect(App.getResizeModeId()).toBe('tray-1')
@@ -141,7 +144,7 @@ describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () 
 
     // Same point that fired the bowstring before resize mode — now it must
     // decline, so canvas.js falls through to the resize-corner hit-test.
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(false)
+    expect(pressBowstring(App, svgEl, point)).toBe(false)
   })
 
   test('the SE resize handle answers a press there once in resize mode', async () => {

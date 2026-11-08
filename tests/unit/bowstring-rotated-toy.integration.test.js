@@ -6,17 +6,18 @@
  * draws the resting square at the shape's UNROTATED SE corner and wraps
  * the whole selection decor group in a `rotate(deg cx cy)` transform (see
  * overlay.js's decorGroup/render()) — so on screen, the square ends up at
- * the ROTATED position. But App.startBowstringAt (which canvas.js's
- * pointerdown consults before ordinary hit-testing) and delight.js's own
+ * the ROTATED position. But the bowstring's hit test (which canvas.js's
+ * pointerdown consulted before ordinary hit-testing) and delight.js's own
  * live-gesture chrome both measured against the raw UNROTATED corner, with
  * no rotation compensation at all. A click on the visible (rotated) square
  * landed on empty canvas; a click on the old (rotated-away) corner would
  * have hit it, but nothing draws there any more.
  *
- * Fix: delight.js's bowstringOrigin/hitTestBowstring/startBowstring all
- * take the same { deg, cx, cy } App.getRotation returns and rotate the SE
- * corner the same way overlay.js's decorGroup does; App.startBowstringAt
- * passes it through.
+ * Fix: delight.js's bowstringOrigin and startBowstring take the same
+ * { deg, cx, cy } App.getRotation returns and place the square at the
+ * rotated SE-most corner. A press is now dispatched by the drawn square
+ * itself ([data-handle="bowstring"]); pressBowstring stands in for the
+ * browser's hit test.
  *
  * Same boot fixture as bowstring-resize-mode.integration.test.js: a single
  * real App instance, real Yjs doc, real Awareness, real DOM. ui.js and
@@ -28,6 +29,7 @@ import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, applyRotate, _clearSvgTextCache } from '../../src/toys.js'
 import { bowstringOrigin } from '../../src/delight.js'
+import { handleAt, pressBowstring } from '../helpers/handle-at.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -120,13 +122,13 @@ async function bootApp() {
 
 describe('bowstring handle on a rotated toy (chip-like)', () => {
   test('unrotated: the bowstring still fires at the plain SE corner (sanity)', async () => {
-    const { App } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.select('chip-1')
 
     const geo = App.getBBox('chip-1')
     const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
+    expect(pressBowstring(App, svgEl, point)).toBe(true)
     App.endBowstring({ pointerId: 1 })
   })
 
@@ -146,11 +148,11 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
       x: 2 * rot.cx - (geo.x + geo.width + 6),
       y: 2 * rot.cy - (geo.y + geo.height + 6),
     }
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, ownSE)).toBe(false)
+    expect(pressBowstring(App, svgEl, ownSE)).toBe(false)
 
     const seMost = bowstringOrigin(geo, rot)
     expect(seMost.x).toBeGreaterThan(ownSE.x)
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, seMost)).toBe(true)
+    expect(pressBowstring(App, svgEl, seMost)).toBe(true)
     App.endBowstring({ pointerId: 1 })
   })
 
@@ -169,8 +171,17 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     // screen — this is what the user actually clicks on.
     const onScreenPoint = bowstringOrigin(geo, rot)
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
+    expect(pressBowstring(App, svgEl, onScreenPoint)).toBe(true)
     App.endBowstring({ pointerId: 1 })
+  })
+
+  test('the square is pressable across its whole 22px side, centred on bowstringOrigin, and no further', async () => {
+    const { App, svgEl } = await bootApp()
+    App.select('chip-1')
+    const origin = bowstringOrigin(App.getBBox('chip-1'), null)
+    expect(handleAt(svgEl, origin.x, origin.y)?.handle).toBe('bowstring')
+    expect(handleAt(svgEl, origin.x + 10, origin.y + 10)?.handle).toBe('bowstring')
+    expect(handleAt(svgEl, origin.x + 12, origin.y)?.handle).not.toBe('bowstring')
   })
 
   test('with no applicable menu action, no square is drawn and its corner is not claimed', async () => {
@@ -181,7 +192,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     expect(svgEl.querySelector('#selection_local .bowstring')).toBeNull()
     const geo = App.getBBox('chip-1')
     const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(false)
+    expect(pressBowstring(App, svgEl, point)).toBe(false)
   })
 
   test('rotated 180°: the resting square is upright, outside any rotated group, at bowstringOrigin', async () => {
@@ -220,7 +231,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     const rot = App.getRotation('chip-1')
     const onScreenPoint = bowstringOrigin(geo, rot)
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
+    expect(pressBowstring(App, svgEl, onScreenPoint)).toBe(true)
 
     // delight.js draws its live handle chrome at the gesture's own origin —
     // find the handle group it just built and check it landed on the same
@@ -243,7 +254,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     const rot = App.getRotation('chip-1')
     const onScreenPoint = bowstringOrigin(geo, rot)
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
+    expect(pressBowstring(App, svgEl, onScreenPoint)).toBe(true)
 
     // The clone (cloneNode of the toy's own <svg>) carries no rotation of
     // its own — spawnDelights has to wrap it in a <g rotate(...)>, the
@@ -263,7 +274,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
 
     const geo = App.getBBox('chip-1')
     const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
+    expect(pressBowstring(App, svgEl, point)).toBe(true)
 
     const delightLayer = svgEl.querySelector('#delight-layer')
     const toyDelight = delightLayer.querySelector('.toy-delight')

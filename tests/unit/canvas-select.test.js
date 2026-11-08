@@ -75,7 +75,7 @@ function makeApp(overrides = {}) {
     // pointerdown to it before ordinary hit-testing. Declining by default
     // keeps these tests exercising the normal select/move/resize paths.
     fireGroupAction:    () => false,
-    startBowstringAt:   () => false,
+    startBowstring:     () => false,
     moveBowstring:      () => {},
     endBowstring:       () => {},
     nextSelectionMode:  () => {},
@@ -1153,6 +1153,24 @@ describe('handle dispatch', () => {
     const target = addHandle({ 'data-handle': 'resize', 'data-corner': 'r' })
     document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
     expect(started).toEqual([['c-1', 'r']])
+  })
+
+  test('a press on the bowstring square starts a bowstring gesture, with the event', () => {
+    const started = []
+    init(makeApp({ startBowstring: (e) => { started.push(e.type); return true } }), document.getElementById('canvas'))
+    setTool('select', {})
+    const target = addHandle({ 'data-handle': 'bowstring' })
+    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
+    expect(started).toEqual(['pointerdown'])
+    expect(ToolMode._gesture).toBe('bowstring')
+  })
+
+  test('a bowstring square App declines falls through to ordinary hit-testing', () => {
+    init(makeApp({ startBowstring: () => false }), document.getElementById('canvas'))
+    setTool('select', {})
+    const target = addHandle({ 'data-handle': 'bowstring' })
+    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
+    expect(ToolMode._gesture).not.toBe('bowstring')
   })
 
   test('a press anywhere else never fires the group action', () => {

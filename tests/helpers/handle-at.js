@@ -50,3 +50,9 @@ export function cornerAt(svgEl, handle, x, y) {
   const h = handleAt(svgEl, x, y)
   return h?.handle === handle ? h.corner : null
 }
+
+// What canvas.js does with a press at canvas (x, y): App.startBowstring(e)
+// if it lands on the bowstring square, else nothing (false).
+export function pressBowstring(App, svgEl, { x, y }, e = { pointerId: 1, clientX: 0, clientY: 0 }) {
+  return handleAt(svgEl, x, y)?.handle === 'bowstring' && App.startBowstring(e)
+}

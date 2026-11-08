@@ -279,19 +279,16 @@ function onPointerDown(e) {
   const handle = handleEl?.dataset.handle ?? null;
 
   if (ToolMode.tool === 'select') {
-    // Resize mode: the corner handles are drawn just outside the tray's
-    // own hit-testable bounds (overlay PAD — see overlay.js), so a click on
-    // one of them often lands on nothing hitForActiveLayer() can see
-    // Check the pointer position against the resize-mode tray's corners FIRST,
-    // independent of hitId, before falling through to ordinary hit-testing.
-    // The bowstring handle (delight.js) sits on the selection ring's SE
-    // corner, outside the toy's own hit-testable bounds — same problem the
-    // resize corners have, so it gets the same treatment: check the pointer
-    // against it FIRST, independent of hitId. A bowstring gesture takes over
-    // the pointer completely; no move/select gesture starts for it.
+    // A press on a selection handle (overlay.js's [data-handle] elements in
+    // #selection_local) is that handle's gesture, ahead of ordinary
+    // hit-testing: the handles mostly sit just outside the element's own
+    // hit-testable bounds, so hitId alone would miss them. Each App call
+    // still checks that the selection is in the mode the handle belongs
+    // to. A bowstring gesture (delight.js) takes over the pointer
+    // completely; no move/select gesture starts for it.
     if (handle === 'group-action' && App.fireGroupAction()) return;
 
-    if (App.startBowstringAt(e, toCanvas(e.clientX, e.clientY))) {
+    if (handle === 'bowstring' && App.startBowstring(e)) {
       ToolMode._gesture = 'bowstring';
       return;
     }
@@ -305,8 +302,7 @@ function onPointerDown(e) {
       return;
     }
 
-    // Rotate mode: the pivot, or a rotate corner. Both, like the resize
-    // corners, mostly sit outside the element's own hit-testable bounds.
+    // Rotate mode: the pivot, or a rotate corner.
     const rotateId = App.getRotateModeId();
     if (rotateId) {
       if (handle === 'pivot') {
