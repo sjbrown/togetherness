@@ -65,7 +65,9 @@ export function init(appBus, svgElement) {
     '#boun_pos-layer',
     '#toys-layer',
     '#drawing-layer',
-    '#overlay-layer',
+    '#selection_shared',
+    '#awareness',
+    '#selection_local',
     '#delight-layer',
     '#attention-layer',
   ].map(sel => svgElement.querySelector(sel)).filter(Boolean);

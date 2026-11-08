@@ -57,8 +57,8 @@ async function supplyWithChip(page) {
   const s = await page.locator(`[data-id="${supplyId}"]`).boundingBox();
   await page.waitForTimeout(400);
   await page.mouse.click(s.x + s.width / 2, s.y + s.height * 0.7);
-  await expect(page.locator('#overlay-layer .bowstring')).toHaveCount(1, { timeout: 3000 });
-  const sq = await page.locator('#overlay-layer .bowstring .actionSquare').boundingBox();
+  await expect(page.locator('#selection_local .bowstring')).toHaveCount(1, { timeout: 3000 });
+  const sq = await page.locator('#selection_local .bowstring .actionSquare').boundingBox();
   return { supplyId, chipId, square: { x: sq.x + sq.width / 2, y: sq.y + sq.height / 2 } };
 }
 

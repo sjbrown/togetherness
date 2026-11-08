@@ -408,8 +408,12 @@ function buildStageSVG(shapes) {
 
   const drawing = document.createElementNS(SVG_NS, 'g');
   drawing.id = 'drawing-layer';
-  const overlayG = document.createElementNS(SVG_NS, 'g');
-  overlayG.id = 'overlay-layer';
+  const selectionSharedG = document.createElementNS(SVG_NS, 'g');
+  selectionSharedG.id = 'selection_shared';
+  const awarenessG = document.createElementNS(SVG_NS, 'g');
+  awarenessG.id = 'awareness';
+  const selectionLocalG = document.createElementNS(SVG_NS, 'g');
+  selectionLocalG.id = 'selection_local';
 
   for (const { id, type, geom, fill } of shapes) {
     const el = shapeEl(type, geom, fill);
@@ -417,7 +421,7 @@ function buildStageSVG(shapes) {
     el.setAttribute('data-module', 'drawing');
     drawing.appendChild(el);
   }
-  svg.append(drawing, overlayG);
+  svg.append(drawing, selectionSharedG, awarenessG, selectionLocalG);
   return svg;
 }
 
@@ -559,9 +563,9 @@ function buildDragStageSVG(shapes) {
   });
   svg.appendChild(layer);
 
-  // Overlay layer
+  // Hand-drawn ghosts for the stories below; overlay.js isn't involved
   const overlay = document.createElementNS(SVGNS, 'g');
-  overlay.id = 'overlay-layer';
+  overlay.id = 'drag_ghosts';
   overlay.setAttribute('pointer-events', 'none');
   svg.appendChild(overlay);
 
@@ -573,7 +577,7 @@ story('Drag ghost', 'placeholder at committed · ghost at drag pos', () => {
   const shapes = [{ id:'dg1', type:'rect', geom:{ x:20, y:60, width:90, height:60 }, fill:'#c8941e' }];
   const svg = buildDragStageSVG(shapes);
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const overlay = svg.querySelector('#overlay-layer');
+  const overlay = svg.querySelector('#drag_ghosts');
 
   // Dim placeholder at committed position
   const ph = document.createElementNS(SVGNS, 'use');
@@ -604,7 +608,7 @@ story('Drag ghost', 'remote peer dragging · dashed ring + label', () => {
   const shapes = [{ id:'dg2', type:'rect', geom:{ x:20, y:60, width:90, height:60 }, fill:'#5a7ea8' }];
   const svg = buildDragStageSVG(shapes);
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const overlay = svg.querySelector('#overlay-layer');
+  const overlay = svg.querySelector('#drag_ghosts');
   const peerColor = '#8a5ea8';
 
   // Dim placeholder
@@ -649,7 +653,7 @@ story('Drag ghost', 'local + remote simultaneous', () => {
   ];
   const svg = buildDragStageSVG(shapes);
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const overlay = svg.querySelector('#overlay-layer');
+  const overlay = svg.querySelector('#drag_ghosts');
   const peerColor = '#8a5ea8';
 
   // Local drag: rect (dg3) shifted right

@@ -73,7 +73,7 @@ test.describe('multi-select', () => {
     await page.waitForTimeout(100);
 
     const ringCount = () =>
-      page.locator('#overlay-layer .selRing').count();
+      page.locator('#selection_local .selRing').count();
 
     // ── 2. Single-click A ────────────────────────────────────────────────────
     // Click the centre of rect A
@@ -83,7 +83,7 @@ test.describe('multi-select', () => {
     await page.mouse.up();
     await page.waitForTimeout(100);
 
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(1, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 3000 });
 
     const selectedAfterA = await page.evaluate(() => window.App.getSelectedIds());
     expect(selectedAfterA).toHaveLength(1);
@@ -102,7 +102,7 @@ test.describe('multi-select', () => {
     await page.mouse.up();
     await page.waitForTimeout(150);
 
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(2, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
 
     const selectedAfterBC = await page.evaluate(() => window.App.getSelectedIds());
     expect(selectedAfterBC).toHaveLength(2);
@@ -131,7 +131,7 @@ test.describe('multi-select', () => {
     await page.mouse.up();
     await page.waitForTimeout(150);
 
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(3, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(3, { timeout: 3000 });
 
     const selectedAfterAll = await page.evaluate(() => window.App.getSelectedIds());
     expect(selectedAfterAll).toHaveLength(3);
@@ -146,7 +146,7 @@ test.describe('multi-select', () => {
     await page.mouse.up();
     await page.waitForTimeout(150);
 
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(2, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
 
     // ── 5. Shift-click B to add A — wait, B is already selected, so shift-B
     //       would remove it. Instead shift-click A to add it to {B, C}.
@@ -158,7 +158,7 @@ test.describe('multi-select', () => {
     await page.keyboard.up('Shift');
     await page.waitForTimeout(150);
 
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(3, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(3, { timeout: 3000 });
 
     const selectedAfter5 = await page.evaluate(() => window.App.getSelectedIds());
     expect(selectedAfter5).toHaveLength(3);
@@ -175,7 +175,7 @@ test.describe('multi-select', () => {
     await page.keyboard.up('Shift');
     await page.waitForTimeout(150);
 
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(2, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
 
     const selectedAfterRemoveB = await page.evaluate(() => window.App.getSelectedIds());
     expect(selectedAfterRemoveB).not.toContain(idB);
@@ -196,7 +196,7 @@ test.describe('multi-select', () => {
     await page.waitForTimeout(200);
 
     // Rings should still show for A and C at their new positions
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(2, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
 
     // Read committed positions from the DOM
     const positions = await page.evaluate(({ idA, idB, idC }) => {
@@ -233,7 +233,7 @@ test.describe('multi-select', () => {
     await page.mouse.up();
     await page.waitForTimeout(100);
 
-    await expect(page.locator('#overlay-layer .selRing')).toHaveCount(0, { timeout: 3000 });
+    await expect(page.locator('#selection_local .selRing')).toHaveCount(0, { timeout: 3000 });
 
     const selectedAfterDeselect = await page.evaluate(() => window.App.getSelectedIds());
     expect(selectedAfterDeselect).toHaveLength(0);

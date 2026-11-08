@@ -382,15 +382,24 @@ describe('buildExportSvg', () => {
       <g id="boun_pos-layer"></g>
       <g id="toys-layer"></g>
       <g id="drawing-layer"></g>
-      <g id="overlay-layer" pointer-events="none"></g>
+      <g id="selection_shared" pointer-events="none"></g>
+      <g id="awareness" pointer-events="none"></g>
+      <g id="selection_local" pointer-events="none"></g>
       <g id="delight-layer"><g class="actionColorGroup"></g></g>
     </svg>`)
   }
 
-  test('removes the overlay layer', () => {
+  test('removes the selection_shared and awareness layers', () => {
     const ydoc = new Y.Doc()
     const clone = buildExportSvg(liveCanvasSvg(), ydoc)
-    expect(clone.querySelector('#overlay-layer')).toBeNull()
+    expect(clone.querySelector('#selection_shared')).toBeNull()
+    expect(clone.querySelector('#awareness')).toBeNull()
+  })
+
+  test('removes the selection_local layer', () => {
+    const ydoc = new Y.Doc()
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
+    expect(clone.querySelector('#selection_local')).toBeNull()
   })
 
   test('removes the delight layer', () => {
@@ -409,7 +418,7 @@ describe('buildExportSvg', () => {
     const live = liveCanvasSvg()
     const ydoc = new Y.Doc()
     buildExportSvg(live, ydoc)
-    expect(live.querySelector('#overlay-layer')).not.toBeNull()
+    expect(live.querySelector('#selection_shared')).not.toBeNull()
   })
 
   test('writes hoisted scripts once at document root, not per-toy', async () => {

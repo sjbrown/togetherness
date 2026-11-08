@@ -35,7 +35,7 @@ async function tripleTap(page, x, y) {
   for (let i = 0; i < 3; i++) { await page.touchscreen.tap(x, y); await page.waitForTimeout(40); }
 }
 
-const selRing = (page) => page.locator('#overlay-layer .selRing');
+const selRing = (page) => page.locator('#selection_local .selRing');
 const origin  = (page) => page.locator('#attention-layer .attention-fx circle[fill^="url"]');
 
 test('tapping a toy in attention mode does not select it', async () => {

@@ -1,10 +1,14 @@
 /**
  * overlay.js — togetherness overlay renderer
  *
- * Renders into #overlay-layer SVG group.
+ * Renders into three SVG groups:
+ *   #selection_shared — peers' claims: their rings and request rings
+ *   #awareness        — peers' movement: drags, bowstring charges, add-cursors
+ *   #selection_local  — drawn from this client's own state
  * Owns SelectionMode: the per-shape decoration map.
- * Called by App after doc changes (renderDoc pipeline) and
- * after awareness changes (renderPresence pipeline).
+ * Called by App after doc changes (renderDoc pipeline, all three) and
+ * after awareness changes (renderPresence pipeline, the two peer groups;
+ * #selection_shared only when peers' claims or requests changed).
  *
  * SelectionMode modes (the `.mode` property on each Map entry):
  *   'none'         — no decoration
@@ -226,17 +230,21 @@ let _requests = new Map();
 let _remoteBowstrings = new Map();
 let _remoteChargeRafId = null;
 
-let App       = null;
-let _layerEl  = null;   // #overlay-layer <g>
-let _svgEl    = null;   // root <svg> — used to look up live toy DOM nodes for resize ghost cloning
-let _myUserId = null;   // this player's user.id — see user.js's grad-{id} convention
+let App               = null;
+let _selectionLocalEl = null;   // #selection_local <g>
+let _selectionSharedEl = null;  // #selection_shared <g>
+let _awarenessEl       = null;  // #awareness <g>
+let _svgEl            = null;   // root <svg> — used to look up live toy DOM nodes for resize ghost cloning
+let _myUserId         = null;   // this player's user.id — see user.js's grad-{id} convention
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 export function init(appBus, svgElement, myUser = null) {
-  App       = appBus;
-  _svgEl    = svgElement;
-  _layerEl  = svgElement.querySelector('#overlay-layer') || svgElement.querySelector('#overlay');
-  _myUserId = myUser?.id ?? null;
+  App               = appBus;
+  _svgEl            = svgElement;
+  _selectionLocalEl = svgElement.querySelector('#selection_local');
+  _selectionSharedEl = svgElement.querySelector('#selection_shared');
+  _awarenessEl       = svgElement.querySelector('#awareness');
+  _myUserId         = myUser?.id ?? null;
 
   // #local-action-filter: same colorMatrixValues() trick toy artwork uses,
   // tinting the action-affordance icon squares (see renderActionAffordance)
@@ -418,7 +426,8 @@ export function syncFromAwareness(awarenessStates, myClientId) {
   });
   _remoteBowstrings = nextRemoteBowstrings;
   _requests = collectRequests(awarenessStates, myClientId);
-  render();
+  renderSelectionShared();
+  renderAwareness();
   _pumpRemoteCharge();
 }
 
@@ -429,7 +438,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
  * No-op if a ghost for this elId already exists.
  */
 export function startDragPlaceholder(elId) {
-  if (!_layerEl || _dragGhosts.has(elId)) return;
+  if (!_selectionLocalEl || _dragGhosts.has(elId)) return;
 
   const href = `#${elId}`;
 
@@ -460,7 +469,7 @@ export function startDragPlaceholder(elId) {
  */
 export function updateLocalDragGhost(elId, dx, dy) {
   const entry = _dragGhosts.get(elId);
-  if (!entry || !_layerEl) return;
+  if (!entry || !_selectionLocalEl) return;
   entry.dx = dx;
   entry.dy = dy;
   entry.ghostEl.setAttribute('transform', `translate(${dx}, ${dy})`);
@@ -502,7 +511,7 @@ const _resizeGhosts = new Map();
  * exists, or if the element can't be found/cloned.
  */
 export function startResizeGhost(elId) {
-  if (!_layerEl || _resizeGhosts.has(elId)) return;
+  if (!_selectionLocalEl || _resizeGhosts.has(elId)) return;
   const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
   if (!liveEl) return;
 
@@ -625,7 +634,7 @@ const _ghosts = new Map();
  * committed state and a live clone to preview changes into.
  */
 export function startGhost(elId) {
-  if (!_layerEl || _ghosts.has(elId)) return;
+  if (!_selectionLocalEl || _ghosts.has(elId)) return;
   const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
   if (!liveEl) return;
 
@@ -776,32 +785,36 @@ function buildVanishGradient(defs, id, spec, ts) {
 
 // ── Render ────────────────────────────────────────────────────────────────────
 export function render() {
-  if (!_layerEl) return;
-  _layerEl.innerHTML = '';
+  renderSelectionLocal();
+  _selectionSharedKey = null;
+  renderSelectionShared();
+  renderAwareness();
+}
+
+const REMOTE_MODES = new Set(['remote', 'locked']);
+
+// #selection_local: everything drawn from this client's own state. Awareness
+// ticks never reach here, so its nodes are rebuilt only on local or doc change.
+function renderSelectionLocal() {
+  if (!_selectionLocalEl) return;
+  _selectionLocalEl.innerHTML = '';
 
   const scale = App.getViewScale();
-  const requestDefs = el('defs', {});   // attached only if a request filled it
 
-  // ── 1. Dim placeholders — z-bottom (local then remote) ────────────────────
+  // ── Dim placeholders — z-bottom ────────────────────────────────────────
   for (const entry of _dragGhosts.values()) {
-    _layerEl.appendChild(entry.placeholderEl);
+    _selectionLocalEl.appendChild(entry.placeholderEl);
   }
   for (const entry of _resizeGhosts.values()) {
-    _layerEl.appendChild(entry.placeholderEl);
+    _selectionLocalEl.appendChild(entry.placeholderEl);
   }
   for (const entry of _ghosts.values()) {
-    _layerEl.appendChild(entry.placeholderEl);
-  }
-  for (const [elId] of _remoteDrags) {
-    const ph = el('use', {});
-    ph.setAttribute('href',   `#${elId}`);
-    ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
-    _layerEl.appendChild(ph);
+    _selectionLocalEl.appendChild(entry.placeholderEl);
   }
 
   // ── Selection rings  ───────────────────────────────
   for (const [elId, entry] of SelectionMode) {
-    if (entry.mode === 'none') continue;
+    if (entry.mode === 'none' || REMOTE_MODES.has(entry.mode)) continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
     // getBBox is UNROTATED; furniture rides the element's own rotation so
@@ -813,10 +826,6 @@ export function render() {
       case 'candidate':
       case 'sel-move':
         renderLocalSelection(geo, entry, scale, parent);
-        break;
-      case 'remote':
-      case 'locked':
-        renderRemoteSelection(geo, entry, scale, rot);
         break;
       case 'sel-resize':
         renderLocalResizeSelection(geo, entry, scale, rot, parent);
@@ -842,6 +851,60 @@ export function render() {
   const group = App.getGroupAction?.();
   if (group) renderActionAffordance(group.origin, scale, 'groupAction');
 
+  // ── Drop-target hover — highlight on the el under the drop point
+  if (_dropTargetId) {
+    const geo = App.getBBox(_dropTargetId);
+    if (geo) renderDropTargetHover(geo, scale);
+  }
+
+  // ── Local drag ghosts + rings — z-top ──────────────────────────────────
+  for (const [elId, entry] of _dragGhosts) {
+    _selectionLocalEl.appendChild(entry.ghostEl);
+    _selectionLocalEl.appendChild(entry.ringEl);
+    _updateDragRing(entry, elId, scale);
+  }
+
+  // ── Local resize ghosts + rings — z-top ────────────────────────────────
+  for (const entry of _resizeGhosts.values()) {
+    _selectionLocalEl.appendChild(entry.ghostEl);
+    _selectionLocalEl.appendChild(entry.ringEl);
+  }
+
+  // ── Local edit-preview ghosts — z-top ──────────────────────────────────
+  for (const entry of _ghosts.values()) {
+    _selectionLocalEl.appendChild(entry.ghostEl);
+  }
+
+  const local = getBowstringState();
+  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale, _selectionLocalEl);
+
+  // Re-appended: it survives the wipe above, same as the drag/resize ghosts.
+  if (_localAddCursor) _selectionLocalEl.appendChild(_localAddCursor.groupEl);
+}
+
+// What #selection_shared was last drawn from. Awareness ticks that change
+// only peers' movement leave it equal, so the layer and its request
+// animations are left in place. render() clears it to force a redraw.
+let _selectionSharedKey = null;
+
+// #selection_shared: peers' claims and every open request.
+function renderSelectionShared() {
+  if (!_selectionSharedEl) return;
+  const scale = App.getViewScale();
+  const remote = [...SelectionMode].filter(([, entry]) => REMOTE_MODES.has(entry.mode));
+  const key = JSON.stringify([scale, remote, [..._requests]]);
+  if (key === _selectionSharedKey) return;
+  _selectionSharedKey = key;
+  _selectionSharedEl.innerHTML = '';
+
+  const requestDefs = el('defs', {});   // attached only if a request filled it
+
+  for (const [elId, entry] of remote) {
+    const geo = App.getBBox(elId);
+    if (!geo) continue;
+    renderRemoteSelection(geo, entry, scale, App.getRotation?.(elId) ?? null, _selectionSharedEl);
+  }
+
   // ── Requested/contested indicator — independent of SelectionMode kind ──
   // Drawn regardless of whether the element is 'local', 'remote', or has no
   // SelectionMode entry at all — contestedness is orthogonal to who (if
@@ -851,7 +914,23 @@ export function render() {
     if (!geo) continue;
     renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, requestDefs);
   }
-  if (requestDefs.firstChild) _layerEl.appendChild(requestDefs);
+  if (requestDefs.firstChild) _selectionSharedEl.appendChild(requestDefs);
+}
+
+// #awareness: peers' movement. Rebuilt on every awareness tick.
+function renderAwareness() {
+  if (!_awarenessEl) return;
+  _awarenessEl.innerHTML = '';
+
+  const scale = App.getViewScale();
+
+  // ── Remote drag placeholders — z-bottom ────────────────────────────────
+  for (const [elId] of _remoteDrags) {
+    const ph = el('use', {});
+    ph.setAttribute('href',   `#${elId}`);
+    ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
+    _awarenessEl.appendChild(ph);
+  }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [elId, drag] of _remoteDrags) {
@@ -863,41 +942,19 @@ export function render() {
     const ghostEl = el('use', { opacity: '0.85' });
     ghostEl.setAttribute('href', `#${elId}`);
     ghostEl.setAttribute('transform', `translate(${tdx}, ${tdy})`);
-    _layerEl.appendChild(ghostEl);
+    _awarenessEl.appendChild(ghostEl);
 
     renderRemoteSelection(
       { x: drag.bboxX, y: drag.bboxY, width: bbox.width, height: bbox.height },
       { color: drag.color, gradId: drag.gradId, peerName: drag.peerName },
       scale,
+      null,
+      _awarenessEl,
     );
   }
 
-  // ── Drop-target hover — highlight on the el under the drop point
-  if (_dropTargetId) {
-    const geo = App.getBBox(_dropTargetId);
-    if (geo) renderDropTargetHover(geo, scale);
-  }
-
-  // ── Local drag ghosts + rings — z-top ──────────────────────────────────
-  for (const [elId, entry] of _dragGhosts) {
-    _layerEl.appendChild(entry.ghostEl);
-    _layerEl.appendChild(entry.ringEl);
-    _updateDragRing(entry, elId, scale);
-  }
-
-  // ── Local resize ghosts + rings — z-top ────────────────────────────────
-  for (const entry of _resizeGhosts.values()) {
-    _layerEl.appendChild(entry.ghostEl);
-    _layerEl.appendChild(entry.ringEl);
-  }
-
-  // ── Local edit-preview ghosts — z-top ──────────────────────────────────
-  for (const entry of _ghosts.values()) {
-    _layerEl.appendChild(entry.ghostEl);
-  }
-
-  renderBowstringCharge(scale);
-  renderAddCursors();
+  renderRemoteBowstringCharges(scale);
+  renderRemoteAddCursors();
 }
 
 // ── Bowstring charge indicators ──────────────────────────────────────────────
@@ -911,16 +968,13 @@ export function render() {
 // manipulating a toy right now, not what the toy is, so they stay out of
 // the document entirely.
 
-function renderBowstringCharge(scale) {
-  const local = getBowstringState();
-  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale);
-
-  // Peers' charges are drawn identically, in their own colour, with the
-  // fade timed from when this client first saw the charge rather than from
-  // the sender's clock.
+// Peers' charges are drawn like the local one (see renderSelectionLocal), in
+// their own colour, with the fade timed from when this client first saw the
+// charge rather than from the sender's clock.
+function renderRemoteBowstringCharges(scale) {
   const now = performance.now();
   for (const bs of _remoteBowstrings.values()) {
-    drawCharge(bs.elId, bs.pull, now - bs.firstSeenAt, `url(#${bs.gradId})`, scale);
+    drawCharge(bs.elId, bs.pull, now - bs.firstSeenAt, `url(#${bs.gradId})`, scale, _awarenessEl);
   }
 }
 
@@ -936,13 +990,13 @@ function _pumpRemoteCharge() {
   const step = () => {
     _remoteChargeRafId = null;
     if (_remoteBowstrings.size === 0) return;
-    render();
+    renderAwareness();
     _remoteChargeRafId = requestAnimationFrame(step);
   };
   _remoteChargeRafId = requestAnimationFrame(step);
 }
 
-function drawCharge(elId, pull, heldMs, stroke, scale) {
+function drawCharge(elId, pull, heldMs, stroke, scale, layerEl) {
   const geo = App.getBBox(elId);
   if (!geo) return;
   const rot = App.getRotation?.(elId) ?? null;
@@ -970,9 +1024,9 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
     if (rot) {
       const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})` });
       wrap.appendChild(clone);
-      _layerEl.appendChild(wrap);
+      layerEl.appendChild(wrap);
     } else {
-      _layerEl.appendChild(clone);
+      layerEl.appendChild(clone);
     }
   }
 
@@ -982,7 +1036,7 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
   //    layer draws in and the circle looks identical at any zoom.
   const r = chargeRadiusFor(pull);
   if (r > 0) {
-    _layerEl.appendChild(el('circle', {
+    layerEl.appendChild(el('circle', {
       cx: origin.x,
       cy: origin.y,
       r:  r / scale,
@@ -1026,9 +1080,9 @@ function _updateDragRing(entry, elId, scale) {
  * everything below takes the untransformed path unchanged.
  */
 function decorGroup(rot) {
-  if (!rot) return _layerEl;
+  if (!rot) return _selectionLocalEl;
   const g = el('g', { transform: rotationTransform(rot) });
-  _layerEl.appendChild(g);
+  _selectionLocalEl.appendChild(g);
   return g;
 }
 
@@ -1059,7 +1113,7 @@ export function handleCursor(corner, deg, kind) {
   return `${COMPASS[(COMPASS.indexOf(axis) + steps % 8 + 8) % 8]}-resize`;
 }
 
-function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
+function renderLocalSelection(geo, entry, scale, parent = _selectionLocalEl) {
   const { x, y, width, height } = geo;
   const stroke = _localGradUrl();
   const ring = el('rect', {
@@ -1077,7 +1131,7 @@ function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
 
 }
 
-function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _layerEl) {
+function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _selectionLocalEl) {
   const { x, y, width, height } = geo;
   const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
@@ -1120,7 +1174,7 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _lay
  * which keeps the handle legible against the rotate handles: a pivot
  * dragged into a corner has already dropped every ray pointing at it.
  */
-function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
+function renderPivotHandle(elId, geo, scale, parent = _selectionLocalEl) {
   const committed = App.getPivot?.(elId);
   if (!committed) return;
   // Mid-drag: the shape itself never moves, so the handle is all there is to preview.
@@ -1147,7 +1201,7 @@ function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
  * squares — the one visual cue that says this drag spins the shape rather
  * than stretching it. Shared by both 'sel-rotate' and 'sel-rotate-pivot'.
  */
-function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _layerEl) {
+function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _selectionLocalEl) {
   const { x, y, width, height } = geo;
   const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   parent.appendChild(el('rect', {
@@ -1189,7 +1243,7 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _lay
  * radius-drag handle centered on the right edge instead of four corner
  * handles — used for the 'sel-resize-r' mode (currently: circles).
  */
-function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
+function renderLocalResizeRSelection(geo, entry, scale, parent = _selectionLocalEl) {
   const { x, y, width, height } = geo;
   const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
@@ -1229,10 +1283,10 @@ function renderActionAffordance(origin, scale, groupClass = 'bowstring') {
   // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
   // wrapper makes square plus glyph one unit; this layer is wiped each render(),
   // while the live gesture lives in #delight-layer.
-  drawActionSquare(origin, side, scale, groupClass, _layerEl);
+  drawActionSquare(origin, side, scale, groupClass, _selectionLocalEl);
 }
 
-function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _layerEl) {
+function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _selectionLocalEl) {
   const parent = groupClass ? el('g', { class: groupClass }) : host;
   parent.appendChild(el('rect', {
     x: cx - side / 2, y: cy - side / 2,
@@ -1246,7 +1300,7 @@ function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _lay
   if (parent !== host) host.appendChild(parent);
 }
 
-function renderRemoteSelection(geo, entry, scale, rot = null) {
+function renderRemoteSelection(geo, entry, scale, rot, layerEl) {
   const { x, y, width, height } = geo;
   const group = el('g', { class: 'remote-sel' });
 
@@ -1293,7 +1347,7 @@ function renderRemoteSelection(geo, entry, scale, rot = null) {
   txt.textContent = name;
   group.appendChild(txt);
 
-  _layerEl.appendChild(group);
+  layerEl.appendChild(group);
 }
 
 // Contested/"requested" indicator — a dashed ring on the element's own
@@ -1320,7 +1374,7 @@ function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
     class:              'requestedRing',
   });
   if (rot) ring.setAttribute('transform', rotationTransform(rot));
-  _layerEl.appendChild(ring);
+  _selectionSharedEl.appendChild(ring);
 }
 
 function renderDropTargetHover(geo, scale) {
@@ -1336,7 +1390,7 @@ function renderDropTargetHover(geo, scale) {
     'stroke-width':     2.5 / scale,
     class:              'dropTargetRing',
   });
-  _layerEl.appendChild(ring);
+  _selectionLocalEl.appendChild(ring);
 }
 
 // ── SVG element factory ─────────────────────────────────────────────────────
@@ -1420,7 +1474,7 @@ function _buildAddCursorGroup(tool, color, initArgs) {
  * repositions the existing one.
  */
 export function updateLocalAddCursor(x, y, tool) {
-  if (!_layerEl) return;
+  if (!_selectionLocalEl) return;
   const def = App.getTool(tool);
   const initArgs = def?.toyType ? toolInitArgs(def, App.getToolParams(tool), App.user.color) : null;
   const key = JSON.stringify(initArgs);
@@ -1428,7 +1482,7 @@ export function updateLocalAddCursor(x, y, tool) {
     _localAddCursor?.groupEl.remove();
     const groupEl = _buildAddCursorGroup(tool, App.user.color, initArgs);
     _localAddCursor = { tool, key, groupEl };
-    _layerEl.appendChild(groupEl);
+    _selectionLocalEl.appendChild(groupEl);
   }
   _localAddCursor.groupEl.setAttribute('transform', `translate(${x}, ${y})`);
 }
@@ -1440,16 +1494,14 @@ export function clearLocalAddCursor() {
   _localAddCursor = null;
 }
 
-// Re-appends the local add-cursor group (survives the innerHTML wipe at the
-// top of render(), same as the drag/resize ghosts) and draws one group per
-// remote peer currently in an add-tool, from _remoteAddCursors. Called at
-// the end of render() — z-top, like the bowstring charge.
-function renderAddCursors() {
-  if (_localAddCursor) _layerEl.appendChild(_localAddCursor.groupEl);
+// Draws one group per remote peer currently in an add-tool, from
+// _remoteAddCursors. Called at the end of renderAwareness() — z-top, like the
+// bowstring charge.
+function renderRemoteAddCursors() {
   for (const cursor of _remoteAddCursors.values()) {
     const groupEl = _buildAddCursorGroup(cursor.tool, cursor.color);
     groupEl.setAttribute('transform', `translate(${cursor.x}, ${cursor.y})`);
-    _layerEl.appendChild(groupEl);
+    _awarenessEl.appendChild(groupEl);
   }
 }
 

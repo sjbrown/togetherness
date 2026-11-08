@@ -70,7 +70,9 @@ function makeCanvasDOM() {
         <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
-        <g id="overlay-layer" pointer-events="none"></g>
+        <g id="selection_shared" pointer-events="none"></g>
+        <g id="awareness" pointer-events="none"></g>
+        <g id="selection_local" pointer-events="none"></g>
         <g id="delight-layer" pointer-events="none"></g>
       </svg>
     </div>
@@ -176,7 +178,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     App.hasToyActions.mockReturnValue(false)
     App.select('chip-1')
 
-    expect(svgEl.querySelector('#overlay-layer .bowstring')).toBeNull()
+    expect(svgEl.querySelector('#selection_local .bowstring')).toBeNull()
     const geo = App.getBBox('chip-1')
     const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
     expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(false)
@@ -194,7 +196,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     const rot = App.getRotation('chip-1')
     const origin = bowstringOrigin(geo, rot)
 
-    const layer = svgEl.querySelector('#overlay-layer')
+    const layer = svgEl.querySelector('#selection_local')
     const group = layer.querySelector('.bowstring')
     expect(group).toBeTruthy()
     expect(group.parentElement).toBe(layer)

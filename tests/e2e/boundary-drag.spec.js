@@ -154,7 +154,7 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.waitForTimeout(100);
 
     const dxInGap = await page.evaluate((id) => {
-      const ghost = [...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)].find(el => el.hasAttribute("transform"));
+      const ghost = [...document.querySelectorAll(`#selection_local use[href="#${id}"]`)].find(el => el.hasAttribute("transform"));
       const m = ghost?.getAttribute('transform')?.match(/translate\(([-\d.]+)/);
       return m ? Number(m[1]) : null;
     }, toyId);
@@ -168,7 +168,7 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.waitForTimeout(100);
 
     const dxInB = await page.evaluate((id) => {
-      const ghost = [...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)].find(el => el.hasAttribute("transform"));
+      const ghost = [...document.querySelectorAll(`#selection_local use[href="#${id}"]`)].find(el => el.hasAttribute("transform"));
       const m = ghost?.getAttribute('transform')?.match(/translate\(([-\d.]+)/);
       return m ? Number(m[1]) : null;
     }, toyId);
@@ -182,7 +182,7 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.waitForTimeout(100);
 
     const dxPastB = await page.evaluate((id) => {
-      const ghost = [...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)].find(el => el.hasAttribute("transform"));
+      const ghost = [...document.querySelectorAll(`#selection_local use[href="#${id}"]`)].find(el => el.hasAttribute("transform"));
       const m = ghost?.getAttribute('transform')?.match(/translate\(([-\d.]+)/);
       return m ? Number(m[1]) : null;
     }, toyId);
@@ -195,7 +195,7 @@ test.describe('boundary-constrained toy dragging', () => {
     await page.waitForTimeout(200);
 
     const ghostGone = await page.evaluate((id) =>
-      ![...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)].find(el => el.hasAttribute("transform")),
+      ![...document.querySelectorAll(`#selection_local use[href="#${id}"]`)].find(el => el.hasAttribute("transform")),
       toyId
     );
     expect(ghostGone).toBe(true);
@@ -244,7 +244,7 @@ test.describe('boundary-constrained toy dragging', () => {
       window.App.startDrag(id);
       window.App.move(id, 400, 300);   // anchor 100,100 -> 400,300
       const orig  = document.querySelector(`#boun_pos-layer [data-id="${id}"]`).getBoundingClientRect();
-      const ghost = [...document.querySelectorAll(`#overlay-layer use[href="#${id}"]`)]
+      const ghost = [...document.querySelectorAll(`#selection_local use[href="#${id}"]`)]
         .find(el => el.hasAttribute('transform') && el.getAttribute('opacity'));
       const g = ghost.getBoundingClientRect();
       return { dx: g.left - orig.left, dy: g.top - orig.top };

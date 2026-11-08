@@ -65,7 +65,9 @@ function makeCanvasDOM() {
         <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
-        <g id="overlay-layer" pointer-events="none"></g>
+        <g id="selection_shared" pointer-events="none"></g>
+        <g id="awareness" pointer-events="none"></g>
+        <g id="selection_local" pointer-events="none"></g>
         <g id="delight-layer" pointer-events="none"></g>
       </svg>
     </div>
@@ -140,7 +142,7 @@ describe('soft-lock e2e — clicking a held element (real App.select, real DOM)'
     App.select('die-1') // the REAL function — this is Bailey clicking Alice's die
 
     expect(App.getSelectedIds()).toEqual([]) // request, not a select
-    const rings = document.querySelectorAll('#overlay-layer .requestedRing')
+    const rings = document.querySelectorAll('#selection_shared .requestedRing')
     expect(rings).toHaveLength(1)
   })
 
@@ -153,7 +155,7 @@ describe('soft-lock e2e — clicking a held element (real App.select, real DOM)'
 
     // No local drag ring (drag-ring class) should appear — startDrag's own
     // isHeldByOther guard should have no-op'd.
-    expect(document.querySelectorAll('#overlay-layer .drag-ring')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .drag-ring')).toHaveLength(0)
     expect(awareness.getLocalState()?.drag).toBeUndefined()
   })
 })
@@ -188,8 +190,8 @@ describe('soft-lock e2e — local cleanup must precede broadcast (ordering regre
     App.select(null)
 
     expect(App.getSelectedIds()).toEqual([])
-    expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(0) // no longer local
-    expect(document.querySelectorAll('#overlay-layer .remote-sel')).toHaveLength(1) // correctly shows Alice's ring
+    expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(0) // no longer local
+    expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1) // correctly shows Alice's ring
   })
 
   test('toggleSelection deselect-to-empty also correctly reveals the remote ring', async () => {
@@ -201,7 +203,7 @@ describe('soft-lock e2e — local cleanup must precede broadcast (ordering regre
     App.toggleSelection('die-1') // toggling off my only selected id
 
     expect(App.getSelectedIds()).toEqual([])
-    expect(document.querySelectorAll('#overlay-layer .remote-sel')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1)
   })
 })
 

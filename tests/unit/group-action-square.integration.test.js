@@ -48,7 +48,7 @@ async function bootApp(toys) {
   document.body.innerHTML = `
     <div id="stage"><svg id="canvas" xmlns="http://www.w3.org/2000/svg"><defs></defs>
       <g id="background-layer"></g><g id="boun_pos-layer"></g><g id="toys-layer"></g>
-      <g id="drawing-layer"></g><g id="overlay-layer"></g><g id="delight-layer"></g></svg></div>`
+      <g id="drawing-layer"></g><g id="selection_shared"></g><g id="awareness"></g><g id="selection_local"></g><g id="delight-layer"></g></svg></div>`
   const svgEl = document.getElementById('canvas')
   const { addToy, activateAllToyScriptsDom } = await import('../../src/toys.js')
   const { boot, App } = await import('../../src/app.js')
@@ -90,7 +90,7 @@ describe('group action square', () => {
     App.select('a'); App.toggleSelection('b'); App.toggleSelection('c')
     const { render } = await import('../../src/overlay.js')
     render()
-    expect(svgEl.querySelectorAll('#overlay-layer .groupAction .actionSquare').length).toBe(1)
+    expect(svgEl.querySelectorAll('#selection_local .groupAction .actionSquare').length).toBe(1)
   })
 
   test('clicking the square invokes the action on every die', async () => {
