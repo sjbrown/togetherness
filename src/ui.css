@@ -737,6 +737,7 @@ svg.tt-icon-letter {
 /* The resting affordance in #selection_local. The live handle is built in
  * #delight-layer on pointerdown and is a separate DOM tree entirely. */
 .bowstring { pointer-events: auto; cursor: grab; }
+.groupAction { pointer-events: auto; cursor: pointer; }
 #delight-layer { pointer-events: none; }
 
 /* Press-scale lives on its own transform layer, separate from the

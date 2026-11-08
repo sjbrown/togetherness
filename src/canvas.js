@@ -176,6 +176,12 @@ function hitForActiveLayer(e) {
   return el.dataset.module === App.getActiveLayer() ? el : null;
 }
 
+// The #selection_local handle under the pointer, or null. Each one carries
+// data-handle naming what a press on it does (see overlay.js).
+function handleUnder(e) {
+  return e.target.closest?.('[data-handle]') ?? null;
+}
+
 // ── Draw preview (rubber-band div) ────────────────────────────────────────────
 const _preview = {
   el: null,
@@ -261,6 +267,7 @@ function onPointerDown(e) {
 
   const hitEl = hitForActiveLayer(e);
   const hitId = hitEl?.dataset?.id ?? null;
+  const handle = handleUnder(e)?.dataset.handle ?? null;
 
   if (ToolMode.tool === 'select') {
     // Resize mode: the corner handles are drawn just outside the tray's
@@ -273,7 +280,7 @@ function onPointerDown(e) {
     // resize corners have, so it gets the same treatment: check the pointer
     // against it FIRST, independent of hitId. A bowstring gesture takes over
     // the pointer completely; no move/select gesture starts for it.
-    if (App.fireGroupActionAt(toCanvas(e.clientX, e.clientY))) return;
+    if (handle === 'group-action' && App.fireGroupAction()) return;
 
     if (App.startBowstringAt(e, toCanvas(e.clientX, e.clientY))) {
       ToolMode._gesture = 'bowstring';

@@ -1446,13 +1446,12 @@ const App = {
   },
 
   /**
-   * Fire the group action if canvasPoint lands on its square. Returns true
-   * when it did, so canvas.js can swallow the click.
+   * Fire the group action, if the selection has one. canvas.js calls this
+   * for a press on its square; true means it fired and the press is spent.
    */
-  fireGroupActionAt: (canvasPoint) => {
+  fireGroupAction: () => {
     const group = App.getGroupAction();
     if (!group) return false;
-    if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
     App.invokeToyMenuActions(group.ids, group.namespace, group.key);
     App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
     return true;

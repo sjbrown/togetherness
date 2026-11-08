@@ -75,7 +75,7 @@ function makeApp(overrides = {}) {
     // Bowstring handle (delight.js) — canvas.js offers every select-tool
     // pointerdown to it before ordinary hit-testing. Declining by default
     // keeps these tests exercising the normal select/move/resize paths.
-    fireGroupActionAt:  () => false,
+    fireGroupAction:    () => false,
     startBowstringAt:   () => false,
     moveBowstring:      () => {},
     endBowstring:       () => {},
@@ -1106,5 +1106,42 @@ describe('the pivot drag keeps its cursor while the pointer is captured', () => 
     const stage = document.getElementById('stage')
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
     expect(stage.classList.contains('pivot-dragging')).toBe(false)
+  })
+})
+
+// ── #selection_local handles ──────────────────────────────────────────────────
+// A press is routed by the [data-handle] element under it, never by where it
+// lands geometrically.
+
+// A handle in #selection_local, with an inner child as the press target, so
+// the routing has to look up through closest().
+function addHandle(attrs) {
+  const handle = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+  for (const [k, v] of Object.entries(attrs)) handle.setAttribute(k, v)
+  const inner = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  handle.appendChild(inner)
+  document.getElementById('selection_local').appendChild(handle)
+  return inner
+}
+
+describe('handle dispatch', () => {
+  test('a press on the group action square fires it and starts no gesture', () => {
+    const fired = []
+    init(makeApp({ fireGroupAction: () => { fired.push(true); return true } }), document.getElementById('canvas'))
+    setTool('select', {})
+    const target = addHandle({ 'data-handle': 'group-action' })
+    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
+    expect(fired).toEqual([true])
+    expect(ToolMode._gesture).toBeNull()
+  })
+
+  test('a press anywhere else never fires the group action', () => {
+    const fired = []
+    init(makeApp({ fireGroupAction: () => { fired.push(true); return true } }), document.getElementById('canvas'))
+    setTool('select', {})
+    addHandle({ 'data-handle': 'group-action' })
+    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown'))
+    expect(fired).toEqual([])
+    expect(ToolMode._gesture).toBe('pan-or-deselect')
   })
 })
