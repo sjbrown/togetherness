@@ -81,6 +81,7 @@
  */
 
 import * as SoftLock from './soft_lock.js';
+import * as SelectionShared from './selection_shared.js';
 import { gradientVector } from './entity_gradient.js';
 import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
@@ -197,7 +198,8 @@ export function hitTestPivot(pivotPoint, px, py, scale) {
 // ── Selection modes ───────────────────────────────────────────────────────────
 // Map<elId, { mode, color, grad }>, written by the local setters below.
 export const SelectionModeLocal = new Map();
-// Map<elId, { mode, peerName, color, gradId }>, rebuilt by syncFromAwareness.
+// Map<elId, { mode, peerName, color, gradId }>, rebuilt by syncFromAwareness
+// from selection_shared.js's derive().
 export const SelectionModeShared = new Map();
 
 // ── Drag ghost state ──────────────────────────────────────────────────────────
@@ -220,8 +222,7 @@ let _localAddCursor = null;
 
 // Soft-lock "requested" indicator — Map<elId, { ts, requesterGrad }>
 // for every element with an outstanding acquisition request, rebuilt on each
-// syncFromAwareness() call. ts is the earliest request's start; requesterGrad
-// is { c1, c2, angle } or null when that player's gradient isn't known.
+// syncFromAwareness() call from selection_shared.js's derive().
 // Deliberately independent of the selection modes: an element can be
 // contested regardless of whether it's mine, a peer's, or unselected from
 // this client's point of view, so it's rendered as its own decoration
@@ -330,7 +331,11 @@ export function clearHoverCandidates() {
 
 // Called by App when awareness changes — rebuilds remote selection + drag entries
 export function syncFromAwareness(awarenessStates, myClientId) {
+  const shared = SelectionShared.derive(awarenessStates, myClientId, App.user?.gradient);
   SelectionModeShared.clear();
+  for (const [elId, entry] of shared.holders) SelectionModeShared.set(elId, entry);
+  _requests = shared.requests;
+
   _remoteDrags.clear();
   _remoteAddCursors.clear();
 
@@ -346,21 +351,6 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     const peerName = peer?.name ?? String(clientId);
     const color    = peer?.color ?? '#888';
     const gradId   = peer?.gradient?.c1 ? `grad-${peer.id}` : null;
-
-    // Remote selection rings — one per held (holding:true) key in
-    // `desired`. A holding:false entry is a bid, rendered instead via
-    // the contested/'requested' ring below.
-    if (state?.desired && typeof state.desired === 'object') {
-      const elIds = Object.keys(state.desired).filter((elId) => state.desired[elId].holding);
-      for (const elId of elIds) {
-        SelectionModeShared.set(elId, {
-          mode: 'remote',
-          peerName,
-          color,
-          gradId,
-        });
-      }
-    }
 
     // Remote single drag ghost
     if (state?.drag?.elId) {
@@ -414,7 +404,6 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     }
   });
   _remoteBowstrings = nextRemoteBowstrings;
-  _requests = collectRequests(awarenessStates, myClientId);
   renderSelectionShared();
   renderAwareness();
   _pumpRemoteCharge();
@@ -701,26 +690,6 @@ export function setDropTargetHover(containerElId) {
   if (_dropTargetId === containerElId) return;
   _dropTargetId = containerElId;
   renderSelectionLocal();
-}
-
-function gradientSpecOf(clientId, awarenessStates, myClientId) {
-  const g = clientId === myClientId ? App.user?.gradient : awarenessStates.get(clientId)?.user?.gradient;
-  return g?.c1 ? { c1: g.c1, c2: g.c2 ?? g.c1, angle: g.angle ?? 90 } : null;
-}
-
-// The earliest request per element is the one animated, matching the one
-// resolveElementWinner would pick.
-function collectRequests(awarenessStates, myClientId) {
-  const requests = new Map();
-  for (const elId of SoftLock.getAllContestedElementIds(awarenessStates)) {
-    const first = SoftLock.getAcquirersOf(elId, awarenessStates)
-      .sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
-    requests.set(elId, {
-      ts:            first.ts,
-      requesterGrad: gradientSpecOf(first.clientId, awarenessStates, myClientId),
-    });
-  }
-  return requests;
 }
 
 function reducedMotion() {
