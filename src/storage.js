@@ -206,8 +206,8 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
     if (id === 'toys-layer' || id === 'drawing-layer') continue;
     if (id === 'background-layer') continue;
     if (id === 'boun_pos-layer') continue; // handled above
-    // overlay-layer and selection_local are UI-only and stripped on export
-    if (id === 'overlay-layer' || id === 'selection_local') continue;
+    // The overlay groups are UI-only and stripped on export
+    if (id === 'selection_shared' || id === 'awareness' || id === 'selection_local') continue;
     drawScratch.appendChild(parseDrawingEl(el));
     drawCount++;
   }
@@ -248,7 +248,7 @@ export function buildExportSvg(liveSvgEl, ydoc) {
 
   const clone = liveSvgEl.cloneNode(true);
   clone.removeAttribute('id');
-  ['#overlay-layer', '#selection_local', '#draw-preview', '#delight-layer'].forEach(sel => {
+  ['#selection_shared', '#awareness', '#selection_local', '#draw-preview', '#delight-layer'].forEach(sel => {
     clone.querySelector(sel)?.remove();
   });
 

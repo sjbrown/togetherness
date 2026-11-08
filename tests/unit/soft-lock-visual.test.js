@@ -29,7 +29,8 @@ function makeOverlayDOM() {
   document.body.innerHTML = `
     <svg id="canvas">
       <defs></defs>
-      <g id="overlay-layer"></g>
+      <g id="selection_shared"></g>
+      <g id="awareness"></g>
       <g id="selection_local"></g>
     </svg>
   `
@@ -75,7 +76,7 @@ describe('requested indicator — basic presence', () => {
     ])
     syncFromAwareness(states, 999) // 999 = "me", an uninvolved observer
 
-    const rings = document.querySelectorAll('#overlay-layer .requestedRing')
+    const rings = document.querySelectorAll('#selection_shared .requestedRing')
     expect(rings).toHaveLength(1)
   })
 
@@ -84,7 +85,7 @@ describe('requested indicator — basic presence', () => {
     const states = new Map([[1, { desired: held(['goblin-1']) }]])
     syncFromAwareness(states, 999)
 
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(0)
   })
 
   test('a holder with only a claim timestamp (no bid entry) renders no requestedRing', () => {
@@ -97,7 +98,7 @@ describe('requested indicator — basic presence', () => {
     ])
     syncFromAwareness(states, 999)
 
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(0)
   })
 
   test('an element with null bbox is skipped without throwing', () => {
@@ -107,7 +108,7 @@ describe('requested indicator — basic presence', () => {
       [2, { desired: bid('goblin-1', 1000) }],
     ])
     expect(() => syncFromAwareness(states, 999)).not.toThrow()
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(0)
   })
 
   test('multiple independently contested elements each get their own ring', () => {
@@ -119,7 +120,7 @@ describe('requested indicator — basic presence', () => {
     ])
     syncFromAwareness(states, 999)
 
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(2)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(2)
   })
 })
 
@@ -135,7 +136,7 @@ describe('requested indicator — independence from SelectionMode mode', () => {
 
     expect(SelectionMode.get('goblin-1')?.mode).toBe('local')
     expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(1)
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(1)
   })
 
   test('coexists with a remote selection ring when someone else holds the contested element', () => {
@@ -149,8 +150,8 @@ describe('requested indicator — independence from SelectionMode mode', () => {
     expect(SelectionMode.get('goblin-1')?.mode).toBe('remote')
     // Remote selection is now wrapped in <g class="remote-sel">; assert on
     // that group's presence rather than the individual ring/label children.
-    expect(document.querySelectorAll('#overlay-layer .remote-sel')).toHaveLength(1)
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(1)
   })
 
   test('renders even when the element has no SelectionMode entry at all', () => {
@@ -171,7 +172,7 @@ describe('requested indicator — independence from SelectionMode mode', () => {
     // rebuilds SelectionMode remote entries AND re-renders, so call it again
     // with the same states to exercise a fresh render after the manual delete.
     syncFromAwareness(states, 999)
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(1)
   })
 })
 
@@ -183,7 +184,7 @@ describe('requested indicator — clears when no longer contested', () => {
       [2, { desired: bid('goblin-1', 1000) }],
     ])
     syncFromAwareness(contested, 999)
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(1)
 
     // Request resolved (promoted or aborted) — client 2 no longer has a
     // bid entry for it.
@@ -192,7 +193,7 @@ describe('requested indicator — clears when no longer contested', () => {
       [2, { desired: held(['goblin-1']) }],
     ])
     syncFromAwareness(resolved, 999)
-    expect(document.querySelectorAll('#overlay-layer .requestedRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_shared .requestedRing')).toHaveLength(0)
   })
 })
 
@@ -273,7 +274,7 @@ describe('request animation', () => {
   const NOW = 1_700_000_000_000
   const ALICE = { id: 'alice', name: 'Alice', color: '#2f80f0', gradient: { c1: '#2f80f0', c2: '#12b5c4', angle: 45 } }
   const BAILEY = { id: 'bailey', name: 'Bailey', color: '#ee4a82', gradient: { c1: '#ee4a82', c2: '#9a45f2', angle: 45 } }
-  const layer = () => document.getElementById('overlay-layer')
+  const layer = () => document.getElementById('selection_shared')
   const grad = (id) => layer().querySelector(`linearGradient[id="${id}"]`)
   const stops = (g) => [...g.querySelectorAll('stop')]
   const strokeOf = (sel) => layer().querySelector(sel).getAttribute('stroke')

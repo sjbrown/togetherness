@@ -34,7 +34,8 @@ function makeOverlayDOM() {
   document.body.innerHTML = `
     <svg id="canvas">
       <defs></defs>
-      <g id="overlay-layer"></g>
+      <g id="selection_shared"></g>
+      <g id="awareness"></g>
       <g id="selection_local"></g>
     </svg>
   `
@@ -493,7 +494,8 @@ describe('updateRotateGhost', () => {
     document.body.innerHTML = `
       <svg id="canvas">
         <defs></defs>
-        <g id="overlay-layer"></g>
+        <g id="selection_shared"></g>
+        <g id="awareness"></g>
         <g id="selection_local"></g>
       </svg>
     `

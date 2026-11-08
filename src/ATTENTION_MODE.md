@@ -478,14 +478,15 @@ leaves every piece of attention DOM owned by attention_mode.js.
 ## 6. The attention layer and animation
 
 Attention draws on `<g id="attention-layer" pointer-events="none">`, the last
-layer in the SVG and so above everything else, including `#overlay-layer`
-and `#delight-layer`. It pans and zooms with the rest (canvas.js's
-transformed layers). Only attention_mode.js writes to it.
+layer in the SVG and so above everything else, including the overlay layers
+(`#selection_shared`, `#awareness`, `#selection_local`) and `#delight-layer`.
+It pans and zooms with the rest (canvas.js's transformed layers). Only
+attention_mode.js writes to it.
 
-It is not `#overlay-layer` because `Overlay.render()` starts with
-`_layerEl.innerHTML = ''` and rebuilds every node, on every awareness change
-from any peer. Drawing attention there would mean a full overlay rebuild on
-every animation frame for as long as any attention was live.
+It is not `#awareness` because overlay.js rebuilds every node there, on
+every awareness change from any peer. Drawing attention there would mean a
+full rebuild of that layer on every animation frame for as long as any
+attention was live.
 
 attention_mode.js rebuilds its own effects group each frame instead, so the
 same constraints apply to it:

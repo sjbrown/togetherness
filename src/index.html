@@ -26,12 +26,15 @@
     <g id="boun_pos-layer"></g>
     <g id="toys-layer"></g>
     <g id="drawing-layer"></g>
-    <g id="overlay-layer" pointer-events="none"></g>
+    <!-- #selection_shared redraws only when peers' claims or requests change;
+         #awareness on every awareness update. -->
+    <g id="selection_shared" pointer-events="none"></g>
+    <g id="awareness" pointer-events="none"></g>
     <!-- #selection_local is drawn only from this client's own state, so
          awareness updates never wipe it. -->
     <g id="selection_local" pointer-events="none"></g>
-    <!-- #delight-layer is NEVER wiped (unlike #overlay-layer, which
-         Overlay.render() clears wholesale on every awareness update).
+    <!-- #delight-layer is NEVER wiped (unlike the overlay groups above,
+         which Overlay.render() clears wholesale).
          The live bowstring gesture and its clones/sparks live here so a
          peer's cursor moving can't destroy an in-flight pull. -->
     <g id="delight-layer" pointer-events="none"></g>

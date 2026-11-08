@@ -8,7 +8,7 @@
  *
  * These five scenarios are chosen specifically to cover the layer the
  * Vitest suites structurally cannot see — real pointerdown gesture wiring
- * in canvas.js, real z-order rendering in #overlay-layer, and real
+ * in canvas.js, real z-order rendering in the overlay layers, and real
  * cross-browser awareness propagation. Three of the live bugs found during
  * development (the phantom drag ghost occluding the requested ring, the
  * multi-drag defending only the leader element, and the blank-instead-of-
@@ -103,8 +103,8 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     // The requested ring appears on the requester's own page (no round-trip needed)
     // and on the holder's page (after propagation).
-    await expect(page2.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
-    await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
+    await expect(page2.locator('#selection_shared .requestedRing')).toHaveCount(1, { timeout: 2000 });
+    await expect(page1.locator('#selection_shared .requestedRing')).toHaveCount(1, { timeout: 2000 });
 
     // A request is not a selection: B must have no local ring of its own.
     await expect(page2.locator('#selection_local .selRing')).toHaveCount(0);
@@ -128,13 +128,13 @@ test.describe('soft-lock: two-peer element requests', () => {
     await clickToy(page2, id);                     // B requests
 
     // B's request ring is stroked by the growing gradient; A's own ring keeps A's gradient.
-    await expect(page2.locator('#overlay-layer .requestedRing')).toHaveAttribute('stroke', /url\(#req-grow-/, { timeout: 2000 });
-    await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
+    await expect(page2.locator('#selection_shared .requestedRing')).toHaveAttribute('stroke', /url\(#req-grow-/, { timeout: 2000 });
+    await expect(page1.locator('#selection_shared .requestedRing')).toHaveCount(1, { timeout: 2000 });
     await expect(page1.locator('#selection_local .selRing')).not.toHaveAttribute('stroke', /req-/);
 
     // The moving stop's live offset (stop index 1 of the gradient).
     const offset = (page, kind) => page.evaluate((k) => {
-      const stop = document.querySelector(`#overlay-layer linearGradient[id^="req-${k}-"]`)?.querySelectorAll('stop')[1];
+      const stop = document.querySelector(`#selection_shared linearGradient[id^="req-${k}-"]`)?.querySelectorAll('stop')[1];
       return stop ? stop.offset.animVal : null;
     }, kind);
 
@@ -159,11 +159,11 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     // After the window elapses: B holds it locally...
     await expect(page2.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 6000 });
-    await expect(page2.locator('#overlay-layer .requestedRing')).toHaveCount(0, { timeout: 2000 });
+    await expect(page2.locator('#selection_shared .requestedRing')).toHaveCount(0, { timeout: 2000 });
 
     // ...and A — this is the ordering-bug regression at its visible layer —
     // must show B's dashed remote ring, not a blank.
-    await expect(page1.locator('#overlay-layer .remote-sel')).toHaveCount(1, { timeout: 3000 });
+    await expect(page1.locator('#selection_shared .remote-sel')).toHaveCount(1, { timeout: 3000 });
     await expect(page1.locator('#selection_local .selRing')).toHaveCount(0);
 
     await browser.close();
@@ -178,20 +178,20 @@ test.describe('soft-lock: two-peer element requests', () => {
 
     await clickToy(page1, id);                     // A holds
     await clickToy(page2, id);                     // B requests
-    await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(1, { timeout: 2000 });
+    await expect(page1.locator('#selection_shared .requestedRing')).toHaveCount(1, { timeout: 2000 });
 
     await clickToy(page1, id);                     // A defends (the "bathroom" rebuttal)
 
     // The requested ring clears on both pages once B's client observes the
     // rebuttal and drops its own request...
-    await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(0, { timeout: 6000 });
-    await expect(page2.locator('#overlay-layer .requestedRing')).toHaveCount(0, { timeout: 6000 });
+    await expect(page1.locator('#selection_shared .requestedRing')).toHaveCount(0, { timeout: 6000 });
+    await expect(page2.locator('#selection_shared .requestedRing')).toHaveCount(0, { timeout: 6000 });
 
     // ...and well past the original deadline, A still holds it.
     await page1.waitForTimeout(3500);
     await expect(page1.locator('#selection_local .selRing')).toHaveCount(1);
     await expect(page2.locator('#selection_local .selRing')).toHaveCount(0);
-    await expect(page2.locator('#overlay-layer .remote-sel')).toHaveCount(1);
+    await expect(page2.locator('#selection_shared .remote-sel')).toHaveCount(1);
 
     await browser.close();
   });
@@ -239,7 +239,7 @@ test.describe('soft-lock: two-peer element requests', () => {
     await expect(page2.locator('[data-toy-type]')).toHaveCount(2, { timeout: 5000 });
 
     await clickToy(page2, id1);                    // B holds toy 1
-    await expect(page1.locator('#overlay-layer .remote-sel')).toHaveCount(1, { timeout: 3000 });
+    await expect(page1.locator('#selection_shared .remote-sel')).toHaveCount(1, { timeout: 3000 });
 
     // A rubber-bands over both toys (shift-drag from empty canvas corner).
     await page1.evaluate(() => window.UI.pillTap('select'));
@@ -255,7 +255,7 @@ test.describe('soft-lock: two-peer element requests', () => {
     // A ends holding only toy 2 — the held toy was silently excluded, no
     // request was queued (no requested ring anywhere), B's holding untouched.
     await expect(page1.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 3000 });
-    await expect(page1.locator('#overlay-layer .requestedRing')).toHaveCount(0);
+    await expect(page1.locator('#selection_shared .requestedRing')).toHaveCount(0);
     await expect(page2.locator('#selection_local .selRing')).toHaveCount(1);
 
     await browser.close();

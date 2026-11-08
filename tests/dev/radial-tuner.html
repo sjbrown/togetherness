@@ -213,7 +213,6 @@
         </filter>
       </defs>
       <g id="canvas-layer"></g>
-      <g id="overlay-layer"></g>
       <g id="selection_local"></g>
       <g id="radial-layer"></g>
       <g id="delight-layer"></g>
@@ -524,7 +523,7 @@ const SCENARIOS = [
 
 const svg = document.getElementById('svg');
 const canvasLayer = document.getElementById('canvas-layer');
-const overlayLayer = document.getElementById('overlay-layer');
+const selectionLocalLayer = document.getElementById('selection_local');
 const radialLayer = document.getElementById('radial-layer');
 const delightLayer = document.getElementById('delight-layer');
 
@@ -582,7 +581,7 @@ function layoutToy() {
   const cy = { center: h / 2, right: h / 2, bottom: h - th / 2 - 30, corner: h - th / 2 - 30 }[pos];
 
   canvasLayer.innerHTML = '';
-  overlayLayer.innerHTML = '';
+  selectionLocalLayer.innerHTML = '';
   const g = el('g', { transform: `translate(${cx} ${cy}) rotate(${rot}) scale(${zoom})` }, canvasLayer);
   toyEl = el('g', { class: 'toy' }, g);
   if (document.getElementById('has-below').checked) toyEl.setAttribute('data-below', 'proto-1');
@@ -595,7 +594,7 @@ function layoutToy() {
 
   // Selection ring, rotated with the toy, in screen space.
   const ringW = tw + PAD * 2, ringH = th + PAD * 2;
-  const ring = el('g', { transform: `translate(${cx} ${cy}) rotate(${rot})` }, overlayLayer);
+  const ring = el('g', { transform: `translate(${cx} ${cy}) rotate(${rot})` }, selectionLocalLayer);
   el('rect', { x: -ringW / 2, y: -ringH / 2, width: ringW, height: ringH, rx: 6,
                fill: 'none', stroke: 'url(#player-grad)', 'stroke-width': 2 }, ring);
 
@@ -607,7 +606,7 @@ function layoutToy() {
     return { x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos };
   });
   square = corners.reduce((best, c) => (c.x + c.y > best.x + best.y ? c : best));
-  drawSquare(overlayLayer, square.x, square.y, 'actionSquare');
+  drawSquare(selectionLocalLayer, square.x, square.y, 'actionSquare');
 }
 
 function drawSquare(parent, x, y, cls) {

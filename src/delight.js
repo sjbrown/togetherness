@@ -7,10 +7,10 @@
  *
  * ── Why this is its own module, and its own layer ─────────────────────────
  *
- * Overlay.render() does `_layerEl.innerHTML = ''` and is called from
- * syncFromAwareness() — i.e. on every awareness update, which includes peer
- * cursors, peer drags, and soft-lock ticks. A bowstring pull lasts seconds.
- * Anything live that lived in #overlay-layer would be destroyed mid-gesture:
+ * Overlay.render() rebuilds each of its layers with `innerHTML = ''`, and
+ * #selection_local, where the resting square lives, is rebuilt on every
+ * local selection, ghost or doc change. A bowstring pull lasts seconds.
+ * Anything live that lived in an overlay layer would be destroyed mid-gesture:
  * the rAF spin loop's target node, the CSS transition on the handle group,
  * the pending transitionend listener that fires the sparks, and the delight
  * clones.

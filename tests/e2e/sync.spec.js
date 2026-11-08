@@ -171,7 +171,7 @@ test.describe('two-peer sync', () => {
     // page2 should show a remote selection ring — the dashed ring is now
     // wrapped in <g class="remote-sel"> (added during soft-lock work).
     await expect(
-      page2.locator('#overlay-layer .remote-sel')
+      page2.locator('#selection_shared .remote-sel')
     ).toHaveCount(1, { timeout: 3000 });
 
     await browser.close();
