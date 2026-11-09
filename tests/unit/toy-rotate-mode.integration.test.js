@@ -22,7 +22,7 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, _clearSvgTextCache } from '../../src/toys.js'
+import { addToy, _clearSvgTextCache } from '../../src/layer_toys.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),

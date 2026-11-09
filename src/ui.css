@@ -760,7 +760,7 @@ svg.tt-icon-letter {
   animation: tt-icon-pulse 1.2s ease-in-out infinite;
 }
 
-/* ── Bowstring handle (delight.js / #delight-layer) ───────────────────────── */
+/* ── Bowstring handle (layer_delight.js / #delight-layer) ─────────────────── */
 
 /* The resting affordance in #selection_local. The live handle is built in
  * #delight-layer on pointerdown and is a separate DOM tree entirely. */

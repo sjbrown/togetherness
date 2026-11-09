@@ -50,7 +50,7 @@ async function bootApp(toys) {
       <g id="background-layer"></g><g id="boun_pos-layer"></g><g id="toys-layer"></g>
       <g id="drawing-layer"></g><g id="selection_shared"></g><g id="awareness"></g><g id="selection_local"></g><g id="delight-layer"></g></svg></div>`
   const svgEl = document.getElementById('canvas')
-  const { addToy, activateAllToyScriptsDom } = await import('../../src/toys.js')
+  const { addToy, activateAllToyScriptsDom } = await import('../../src/layer_toys.js')
   const { boot, App } = await import('../../src/app.js')
   const { tablesAPI } = await import('../../src/tables.js')
   const ydoc = tablesAPI.makeDoc()

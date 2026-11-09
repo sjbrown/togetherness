@@ -26,18 +26,18 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
   addToy, getGeom, applyMove, runGesture, activateAllToyScriptsDom,
   getSnapPoints, departingPositionEvents, arrivingPositionEvents,
   promoteZOrder, moveToyAndStack,
   makeLayerAPI, listToysDom, _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import { getOps } from '../../src/op_dag.js'
 import {
   BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI, getSnapPoints as getBoundarySnapPoints,
   computeBoundaryRects, gridFillExtent,
-} from '../../src/boun_pos.js'
+} from '../../src/layer_boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'

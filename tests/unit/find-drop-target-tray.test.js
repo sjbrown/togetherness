@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
   addToyDom, findDropTarget, _clearSvgTextCache,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 // A 200x150 container at (0,0)-(200,150) in table space with a .tt_contents.

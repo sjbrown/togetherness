@@ -16,10 +16,10 @@ import {
   buildLayerForkSeed, pruneAfterCheckpoint, receiveLayerOp, resolveBranchConflict, resolveOrphanedTips, settleBranchConflict,
 } from '../../src/op_layer.js'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
   placeToy, makeLayerAPI, activateAllToyScriptsDom, _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import {
   getOps, getContent, appendOp, appendCheckpoint, ancestors, ancestorsInclusive,
   isOrphan, sharedTips, heads, lca, pathFrom, totalOrder, labelBranches,
@@ -30,7 +30,7 @@ import {
   PRUNE_AGE_MS, _setPruneAgeForTests, noteSeen, noteAllSeen, resetFirstSeen, ageOf, assertPrunable, prune,
 } from '../../src/op_prune.js'
 import {
-  canUndoToyGesture, undoToyGesture, } from '../../src/toys.js'
+  canUndoToyGesture, undoToyGesture, } from '../../src/layer_toys.js'
 import { RECEIVED_CONFLICT, RECEIVED_ORPHAN } from '../../src/op_replay.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
 

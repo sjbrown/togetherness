@@ -4,10 +4,10 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { TOYS_LAYER } from '../../src/toys.js'
-import * as Toys from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
+import * as Toys from '../../src/layer_toys.js'
 import { addToy, activateAllToyScriptsDom, reparentToyDom, undoToyGesture, _clearSvgTextCache,
-         _resetToyScriptState, getNamespacesForType } from '../../src/toys.js'
+         _resetToyScriptState, getNamespacesForType } from '../../src/layer_toys.js'
 import { getOps } from '../../src/op_dag.js'
 
 const TABLE  = 'test-table'
@@ -58,9 +58,9 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.unstubAllGlobals()
-  // Restore the real toys.js-bridged lookup — one test below intentionally
+  // Restore the real layer_toys.js-bridged lookup — one test below intentionally
   // overrides globalThis.getNamespacesForType to isolate evaluate_sub_element,
-  // and since toys.js only installs the real one once at module load, it
+  // and since layer_toys.js only installs the real one once at module load, it
   // would otherwise stay stubbed for every later test in this file.
   globalThis.getNamespacesForType = getNamespacesForType
 })

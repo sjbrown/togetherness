@@ -10,7 +10,7 @@ import {
   findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
   findDropTarget, runGesture, getLandingPosition, toyCloneToy,
   _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const TABLE   = 'test-table'

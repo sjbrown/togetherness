@@ -2,19 +2,19 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { HEAD_MARKER } from '../../src/op_layer.js'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import { ensureLayerId, getOpLayer } from '../../src/op_layers.js'
 import { populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
 import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
-import * as Toys from '../../src/toys.js'
-import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
-import { DRAWING_LAYER } from '../../src/drawing.js'
+import * as Toys from '../../src/layer_toys.js'
+import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/layer_toys.js'
+import { DRAWING_LAYER } from '../../src/layer_drawing.js'
 import { getOps, getContent } from '../../src/op_dag.js'
 import { isCheckpoint } from '../../src/op_checkpoint.js'
 import { ensureLayerId, LAYER_MARKER } from '../../src/op_layers.js'
-import * as BounPos from '../../src/boun_pos.js'
-import { BOUN_POS_LAYER } from '../../src/boun_pos.js'
+import * as BounPos from '../../src/layer_boun_pos.js'
+import { BOUN_POS_LAYER } from '../../src/layer_boun_pos.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -52,7 +52,7 @@ const VALID_TOY_G = `<g class="toy" data-id="t1" data-toy-type="dice_d6">
     <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
   </g>`
 
-// isForeignToyG / parseForeignToy now live entirely in toys.js — see
+// isForeignToyG / parseForeignToy now live entirely in layer_toys.js — see
 // tests/unit/node-identity.test.js. storage.js no longer knows the toy
 // contract, so it has nothing of its own to test here.
 

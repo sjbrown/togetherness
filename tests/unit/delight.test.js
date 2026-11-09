@@ -10,7 +10,7 @@ import {
   chargeOpacityFor,
   chargeRadiusFor,
   MAX_CHARGE_RADIUS,
-} from '../../src/delight.js'
+} from '../../src/layer_delight.js'
 
 describe('spinSpeedFor — fast at the origin, stopped at max pull', () => {
   it('is at full speed (4 rot/sec) sitting on the origin', () => {

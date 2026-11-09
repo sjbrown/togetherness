@@ -28,7 +28,7 @@ import {
   selectModes, nextSelectMode, computeResize, applyResize, previewResize,
   // Drag context
   computeBoundaryRects, getSnapPoints,
-} from '../../src/boun_pos.js';
+} from '../../src/layer_boun_pos.js';
 import { ensureLayerId } from '../../src/op_layers.js';
 import { getOps } from '../../src/op_dag.js';
 
@@ -428,7 +428,7 @@ describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
 
 describe('previewEdit', () => {
   // This is the function that used to live as overlay.js's
-  // updatePosSetGhost — moved here so boun_pos.js is the only file that
+  // updatePosSetGhost — moved here so layer_boun_pos.js is the only file that
   // knows a pos-set's circles are derived from spacing/snapRadius, not a
   // plain attribute. ghostEl mirrors the detached clone overlay.js's
   // startGhost hands it — same shape as attr-ghost.test.js's harness, but
@@ -692,10 +692,10 @@ describe('selectModes / nextSelectMode', () => {
 });
 
 describe('computeResize', () => {
-  // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW — same order as drawing.js/toys.js.
+  // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW — same order as layer_drawing.js/layer_toys.js.
   // Full corner-by-corner coverage of the shared corner-opposite-fixed
   // algorithm (same fixture numbers) lives in tests/unit/geometry.test.js
-  // now — this just checks boun_pos.js wires MIN_BOUNPOS_RESIZE_SIZE
+  // now — this just checks layer_boun_pos.js wires MIN_BOUNPOS_RESIZE_SIZE
   // through as the clamp floor.
   const startRect = { x: 100, y: 100, width: 200, height: 150 }; // right=300, bottom=250
 

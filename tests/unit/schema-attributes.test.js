@@ -9,11 +9,11 @@
  */
 
 import { describe, test, expect } from 'vitest';
-import { DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI } from '../../src/drawing.js';
+import { DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI } from '../../src/layer_drawing.js';
 import { ensureLayerId } from '../../src/op_layers.js';
 import {
   BOUN_POS_LAYER, BOUNPOS_TYPES, makeLayerAPI as makeBounPosAPI, toolParamsToCreateParams,
-} from '../../src/boun_pos.js';
+} from '../../src/layer_boun_pos.js';
 import { tablesAPI } from '../../src/tables.js';
 
 const { makeDoc } = tablesAPI;

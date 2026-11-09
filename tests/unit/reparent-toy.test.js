@@ -4,10 +4,10 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import * as Toys from '../../src/toys.js'
+import * as Toys from '../../src/layer_toys.js'
 import {
   addToy, _clearSvgTextCache, reparentToyDom,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))

@@ -4,7 +4,7 @@ import { getOps } from '../../src/op_dag.js'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache,
          _resetToyScriptState, activateToyScripts, getMenuActions, getRadialItems,
-         invokeMenuAction, invokeMenuActionOn, TOYS_LAYER } from '../../src/toys.js'
+         invokeMenuAction, invokeMenuActionOn, TOYS_LAYER } from '../../src/layer_toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 

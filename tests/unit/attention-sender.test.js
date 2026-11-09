@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect, beforeEach } from 'vitest'
-import { T, createSender, anchoredAge, makeAnchor, clickLifeMs } from '../../src/attention_mode.js'
+import { T, createSender, anchoredAge, makeAnchor, clickLifeMs } from '../../src/layer_attention.js'
 
 let clock, writes, sender
 

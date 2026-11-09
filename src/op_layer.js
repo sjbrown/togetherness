@@ -27,7 +27,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
  * No re-rendering anywhere in this: the DOM stays authoritative and
  * current for every step, and nothing is committed until that final call.
  *
- * This is the shared machinery behind toys.js's invokeMenuAction/
+ * This is the shared machinery behind layer_toys.js's invokeMenuAction/
  * initializeToy — also exported directly for a caller whose
  * gesture isn't a toy handler at all (see app.js's)
  * but still needs the exact same "one atomic operation, cascade included"

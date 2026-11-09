@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache,
-         _resetToyScriptState, activateToyScripts, initializeToy } from '../../src/toys.js'
+         _resetToyScriptState, activateToyScripts, initializeToy } from '../../src/layer_toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 

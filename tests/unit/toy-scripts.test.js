@@ -8,13 +8,13 @@ import {
   _resetToyScriptState,
   _getScriptsFragment,
   addToy, activateAllToyScriptsDom, _clearSvgTextCache,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 
 // ── low-level fixture: a "foreign" toyType's scripts, hoisted by hand ──────
 //
 // Scripts hoisted into the document are how a toyType with no local
 // TOY_TYPES entry (a different deployment's custom toy, or one since
-// removed/renamed here) recovers its behavior — see toys.js, "Script
+// removed/renamed here) recovers its behavior — see layer_toys.js, "Script
 // hoisting". Seeding the scripts fragment directly here simulates "this
 // namespace was already hoisted by whichever session first placed an
 // instance of it" without needing a real toyType/file on disk.

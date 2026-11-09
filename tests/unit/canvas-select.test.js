@@ -73,7 +73,7 @@ function makeApp(overrides = {}) {
     commitMultiMove:    () => {},
     cancelMultiMove:    () => {},
     getResizeModeId:    () => null,
-    // Bowstring handle (delight.js) — canvas.js offers every select-tool
+    // Bowstring handle (layer_delight.js) — canvas.js offers every select-tool
     // pointerdown to it before ordinary hit-testing. Declining by default
     // keeps these tests exercising the normal select/move/resize paths.
     fireGroupAction:    () => false,

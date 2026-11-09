@@ -11,7 +11,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, test, expect } from 'vitest'
 import * as SelectionLocal from '../../src/selection_local.js'
-import { awarenessFields as attentionFields } from '../../src/attention_mode.js'
+import { awarenessFields as attentionFields } from '../../src/layer_attention.js'
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src')
 const read = (f) => fs.readFileSync(path.join(SRC, f), 'utf8')

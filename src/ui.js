@@ -10,8 +10,9 @@
  *      wrappers (openSheet etc.) gather data from App and call the pure fn.
  *   2. ui.js knows exactly ONE tool by name: 'select'. Every other tool comes
  *      from a registry via App.getTools(layer) / App.getToolSchema(tool).
- *   3. Tool-options are rendered generically from ttStateSchema (see drawing.js
- *      SHAPE_TYPES). ui.js does not know what 'corner-r' means.
+ *   3. Tool-options are rendered generically from ttStateSchema (see
+ *      layer_drawing.js SHAPE_TYPES). ui.js does not know what 'corner-r'
+ *      means.
  *
  * Depends on: icons.js (icon()), ui.css, App (bus). No Yjs, no pointer events.
  */
@@ -20,7 +21,7 @@ import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
 import * as Trace from './trace.js';
 import { networkStatusBarHTML } from './external_services_status.js';
-import { buildToyPreviewSvg, toolInitArgs } from './toys.js';
+import { buildToyPreviewSvg, toolInitArgs } from './layer_toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 

@@ -19,10 +19,10 @@
 
 import { initIcons }                              from './icons.js';
 import { rotatePoint }                            from './geometry.js';
-import * as Background                            from './background.js';
-import * as BounPos                               from './boun_pos.js';
-import * as Drawing                               from './drawing.js';
-import * as Toys                                  from './toys.js';
+import * as Background                            from './layer_background.js';
+import * as BounPos                               from './layer_boun_pos.js';
+import * as Drawing                               from './layer_drawing.js';
+import * as Toys                                  from './layer_toys.js';
 import { tablesAPI }                              from './tables.js';
 import * as OpDag                                 from './op_dag.js';
 import * as OpHead                                from './op_head.js';
@@ -38,9 +38,9 @@ import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
-import * as Delight                               from './delight.js';
+import * as Delight                               from './layer_delight.js';
 import * as Radial                                from './ui_radial.js';
-import * as Attention                             from './attention_mode.js';
+import * as Attention                             from './layer_attention.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
@@ -1052,7 +1052,7 @@ const App = {
 
   /**
    * The selected toy's currently-applicable menu actions, as plain data for
-   * the Edit panel to render as buttons — see toys.js's getMenuActions.
+   * the Edit panel to render as buttons — see layer_toys.js's getMenuActions.
    * [] for non-toy selections, multi-selections, or nothing selected.
    */
   getToyMenuActions: () => {
@@ -1384,7 +1384,7 @@ const App = {
   // there an active mode".
   getResizeModeId: () => (SelectionLocal.activeMode() && RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) ? SelectionLocal.activeMode().id : null,
 
-  // ── Bowstring handle (delight.js) ─────────────────────────────────────────
+  // ── Bowstring handle (layer_delight.js) ───────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
   // first menu action now, or pull it back and release for the same action
   // as a "charged" gesture. canvas.js calls startBowstring for a press on
@@ -1447,9 +1447,9 @@ const App = {
   },
 
   /**
-   * Repaint the overlay. Called from delight.js's rAF loop so the bowstring
-   * charge indicators keep advancing while the pointer holds still (heldMs
-   * changes with no pointer event to hang a repaint off).
+   * Repaint the overlay. Called from layer_delight.js's rAF loop so the
+   * bowstring charge indicators keep advancing while the pointer holds still
+   * (heldMs changes with no pointer event to hang a repaint off).
    */
   requestOverlayRender: () => Overlay.render(),
 
@@ -1489,7 +1489,7 @@ const App = {
   endBowstring:  (e)              => Delight.endBowstring(e),
 
   /**
-   * Called by delight.js when a bowstring resolves — on click, or on the
+   * Called by layer_delight.js when a bowstring resolves — on click, or on the
    * far end of a charged pull's snap-back. A release on a radial spoke
    * names its action and params; otherwise the default action (the first
    * applicable one) runs with its radial defaults.

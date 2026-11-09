@@ -1,5 +1,5 @@
 /**
- * background.js — the background layer: one image tiled across the whole
+ * layer_background.js — the background layer: one image tiled across the whole
  * canvas, chosen per table and kept in the doc's meta map (bg_url,
  * bg_width, bg_height). Not an op layer: a change is a plain Yjs write and
  * the last writer wins.

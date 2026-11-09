@@ -12,7 +12,7 @@ import {
   sparkDistFor, ringR1For, originRadius, receiverIntroR0, originPhase, originSettled, dotRing,
   trailSegmentStyle, clickRng, clickSparks, clickFlash, clickRingStyle,
   clickLifeMs, exitFade, trimAttention, acceptsSample, insideOrigin,
-} from '../../src/attention_mode.js'
+} from '../../src/layer_attention.js'
 
 const ageAt = (now) => (t) => now - t
 

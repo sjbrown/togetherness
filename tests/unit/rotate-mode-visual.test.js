@@ -455,7 +455,7 @@ describe('drag ghost ring on a rotated shape', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // updateRotateGhost — the live-drag ghost's own rotation, shared by every
 // rotatable layer's resize/rotate ghost pair (_resizeGhosts). Reads/writes
-// data-rotate directly and resolves the transform via drawing.js's
+// data-rotate directly and resolves the transform via layer_drawing.js's
 // resolveRotation called WITH an explicit geom, which is pure
 // attribute-plus-arithmetic with zero dependency on the ghost's tagName —
 // true of a cloned <rect> (drawing) exactly as much as a cloned <g> wrapping
@@ -512,8 +512,8 @@ describe('updateRotateGhost', () => {
   })
 
   test('a toy-shaped <g> ghost ALSO rotates about the explicit geom’s centre — the bug this generalization fixes', () => {
-    // Before the fix, this delegated to drawing.js's previewRotate, which
-    // falls back to drawing.js's own shape-keyed getGeom() when no geom is
+    // Before the fix, this delegated to layer_drawing.js's previewRotate, which
+    // falls back to layer_drawing.js's own shape-keyed getGeom() when no geom is
     // given — undefined for a <g>, collapsing the pivot to (0, 0) instead
     // of the toy's actual centre.
     const g = document.createElementNS(SVGNS, 'g')

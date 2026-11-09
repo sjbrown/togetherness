@@ -183,7 +183,7 @@ function handleUnder(e) {
 }
 
 // A corner handle's data-corner as the RESIZE_CORNER_* index (0-3, in
-// toys.js's NW, NE, SE, SW order), or 'r' for the single radius handle.
+// layer_toys.js's NW, NE, SE, SW order), or 'r' for the single radius handle.
 const CORNERS = ['nw', 'ne', 'se', 'sw'];
 function cornerOf(handleEl) {
   const c = handleEl.dataset.corner;
@@ -252,7 +252,7 @@ function onPointerDown(e) {
     // hit-testing: the handles mostly sit just outside the element's own
     // hit-testable bounds, so hitId alone would miss them. Each App call
     // still checks that the selection is in the mode the handle belongs
-    // to. A bowstring gesture (delight.js) takes over the pointer
+    // to. A bowstring gesture (layer_delight.js) takes over the pointer
     // completely; no move/select gesture starts for it.
     if (handle === 'group-action' && App.fireGroupAction()) return;
 

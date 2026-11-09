@@ -10,7 +10,7 @@
  *
  * Same boot fixture as soft-lock.integration.test.js: a single real App
  * instance, real Yjs doc, real Awareness, real DOM. ui.js and canvas.js
- * are mocked — this isn't a gesture test, just app.js/overlay.js/toys.js
+ * are mocked — this isn't a gesture test, just app.js/overlay.js/layer_toys.js
  * wiring for the claim-clearing behaviour itself.
  */
 
@@ -20,7 +20,7 @@ import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   addToy, findEl, applyMove, runGesture, _clearSvgTextCache,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),

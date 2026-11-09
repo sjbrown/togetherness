@@ -67,15 +67,15 @@
  */
 
 import * as SelectionShared from './selection_shared.js';
-import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './toys.js';
-import { previewResize as previewBounPosResize } from './boun_pos.js';
+import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './layer_toys.js';
+import { previewResize as previewBounPosResize } from './layer_boun_pos.js';
 import {
   previewResize     as previewDrawingResize,
   pivotRayOpacities,
-} from './drawing.js';
+} from './layer_drawing.js';
 import { normalizeAngle, resolveRotation as elementRotation, rotationTransform } from './geometry.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
-import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin, ACTION_SQUARE_SIDE } from './delight.js';
+import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin, ACTION_SQUARE_SIDE } from './layer_delight.js';
 import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -95,8 +95,8 @@ const SELECTION_MODES = new Set([
  */
 export function resizeCorners(geo) {
   const { x, y, width, height } = geo;
-  // order is [NW, NE, SE, SW] -- matching toys.js's RESIZE_CORNER_* constants
-  // and drawing.js's corner-drag geometry
+  // order is [NW, NE, SE, SW] -- matching layer_toys.js's RESIZE_CORNER_*
+  // constants and layer_drawing.js's corner-drag geometry
   return [
     { x: x - PAD,          y: y - PAD },          //NW
     { x: x + width + PAD,  y: y - PAD },          //NE
@@ -465,8 +465,8 @@ export function updateResizeGhost(elId, x, y, width, height) {
     }
   } else if (entry.ghostEl.getAttribute?.('data-module') === 'drawing') {
     // Drawing-layer shapes have no embedded <svg> to resize — the ghost
-    // clone IS the shape. drawing.js owns which attributes that means, and
-    // re-derives a rotated shape's pivot from the new geometry.
+    // clone IS the shape. layer_drawing.js owns which attributes that means,
+    // and re-derives a rotated shape's pivot from the new geometry.
     previewDrawingResize(entry.ghostEl, x, y, width, height);
   } else if (entry.ghostEl.getAttribute?.('data-module') === 'boun_pos') {
     // A boundary/pos-set ghost is a <g> with <path>/<text>(/<circle>...)
@@ -818,11 +818,11 @@ function renderAwareness() {
 }
 
 // ── Bowstring charge indicators ──────────────────────────────────────────────
-// Read (never written) from delight.js's live gesture state. Pull-based on
-// purpose: the charge is redrawn every frame, so it reads from a source that
-// outlives any one render. delight.js's rAF loop calls
-// App.requestOverlayRender() to keep this ticking even when the pointer
-// isn't moving.
+// Read (never written) from layer_delight.js's live gesture state. Pull-based
+// on purpose: the charge is redrawn every frame, so it reads from a source that
+// outlives any one render. layer_delight.js's rAF loop calls
+// App.requestOverlayRender() to keep this ticking even when the pointer isn't
+// moving.
 //
 // Nothing here is persisted: pull and heldMs describe how someone is
 // manipulating a toy right now, not what the toy is, so they stay out of
@@ -1152,9 +1152,9 @@ function renderLocalResizeRSelection(geo, entry, scale, parent) {
 function renderActionAffordance(origin, scale, groupClass, layerEl, key) {
   const side = ACTION_SQUARE_SIDE / scale;
   // Drawn in the layer, not the rotated decorGroup, so it stays upright at
-  // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
-  // wrapper makes square plus glyph one unit; the live gesture lives in
-  // #delight-layer.
+  // layer_delight.js's bowstringOrigin like the live handle. The
+  // <g class="bowstring"> wrapper makes square plus glyph one unit; the live
+  // gesture lives in #delight-layer.
   drawActionSquare(origin, side, scale, groupClass, layerEl, key);
 }
 

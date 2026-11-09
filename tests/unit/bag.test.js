@@ -8,7 +8,7 @@ import { ensureLayerId } from '../../src/op_layers.js'
 import {
   TOYS_LAYER, addToyDom, activateAllToyScriptsDom, reparentToyDom, findEl,
   getRadialItems, invokeMenuAction, _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import { buildSpokes } from '../../src/ui_radial.js'
 import { getOps } from '../../src/op_dag.js'
 

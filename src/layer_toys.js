@@ -1,5 +1,5 @@
 /**
- * toys.js — the toys layer: tool registry, DOM operations, and the toy
+ * layer_toys.js — the toys layer: tool registry, DOM operations, and the toy
  * behaviour contract (script activation, menu actions, lifecycle hooks).
  *
  * Data model — the live #toys-layer is the document. Gestures mutate it in
@@ -31,8 +31,8 @@ import { runInEnvelope, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
 import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
-// geometry.js is shape-agnostic geometry, shared with drawing.js and
-// boun_pos.js.
+// geometry.js is shape-agnostic geometry, shared with layer_drawing.js and
+// layer_boun_pos.js.
 import * as Geometry from './geometry.js';
 import { ROTATE_ATTR, CENTER_PIVOT, getRotation, rotationCenter } from './geometry.js';
 import { defaultParams } from './ui_radial.js';
@@ -257,7 +257,7 @@ export function isForeignToyG(el) {
 
 /**
  * The whole toy-import contract for one #toys-layer child, in one call —
- * this is the only thing a caller outside toys.js needs to know about a
+ * this is the only thing a caller outside layer_toys.js needs to know about a
  * reimported toy.
  *
  * Returns { parsedNode, scripts }. parsedNode is null when el doesn't
@@ -1251,7 +1251,7 @@ function clampResizeDim(value) {
 /**
  * A toy's own corner-drag resize, at the toy's own minimum size. The
  * shared corner-opposite-fixed algorithm lives in geometry.js; this is
- * just toys.js's own MIN_RESIZE_SIZE threaded through.
+ * just layer_toys.js's own MIN_RESIZE_SIZE threaded through.
  */
 export function computeResizeRect(startRect, corner, px, py) {
   return Geometry.computeResizeCornerRect(startRect, corner, px, py, MIN_RESIZE_SIZE)
@@ -1579,8 +1579,8 @@ export function editEl(toyEl, editData) {
 /**
  * Preview an edit on a detached ghost clone (see overlay.js's ghost
  * system, used via App.previewEdit) — mutates ghostEl's own attributes
- * directly, never the live layer. Unlike drawing.js's shapes, toy editData
- * keys map straight onto DOM attributes with no aliasing, so this is a
+ * directly, never the live layer. Unlike layer_drawing.js's shapes, toy
+ * editData keys map straight onto DOM attributes with no aliasing, so this is a
  * plain attribute-per-key loop.
  */
 export function previewEdit(ghostEl, editData) {

@@ -7,13 +7,13 @@
  * the whole selection decor group in a `rotate(deg cx cy)` transform (see
  * overlay.js's decorGroup/render()) — so on screen, the square ends up at
  * the ROTATED position. But the bowstring's hit test (which canvas.js's
- * pointerdown consulted before ordinary hit-testing) and delight.js's own
+ * pointerdown consulted before ordinary hit-testing) and layer_delight.js's own
  * live-gesture chrome both measured against the raw UNROTATED corner, with
  * no rotation compensation at all. A click on the visible (rotated) square
  * landed on empty canvas; a click on the old (rotated-away) corner would
  * have hit it, but nothing draws there any more.
  *
- * Fix: delight.js's bowstringOrigin and startBowstring take the same
+ * Fix: layer_delight.js's bowstringOrigin and startBowstring take the same
  * { deg, cx, cy } App.getRotation returns and place the square at the
  * rotated SE-most corner. A press is now dispatched by the drawn square
  * itself ([data-handle="bowstring"]), so where it is drawn is where it is
@@ -27,8 +27,8 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, applyRotate, _clearSvgTextCache } from '../../src/toys.js'
-import { bowstringOrigin } from '../../src/delight.js'
+import { addToy, applyRotate, _clearSvgTextCache } from '../../src/layer_toys.js'
+import { bowstringOrigin } from '../../src/layer_delight.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -55,7 +55,7 @@ vi.mock('../../src/canvas.js', () => ({
 
 // A stand-in for chip.svg — real toyType (so TOY_TYPES[toyType] exists and
 // addToy's fetch resolves), pared down to the one thing this test cares
-// about: the tt_able_rotate class that makes toys.js's selectModes()
+// about: the tt_able_rotate class that makes layer_toys.js's selectModes()
 // report 'sel-rotate' alongside 'sel-action'.
 const ROTATABLE_TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" class="chip tt_able_rotate" id="chip">
@@ -167,7 +167,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
 
     expect(App.startBowstring({ pointerId: 1, clientX: 0, clientY: 0 })).toBe(true)
 
-    // delight.js draws its live handle chrome at the gesture's own origin —
+    // layer_delight.js draws its live handle chrome at the gesture's own origin —
     // find the handle group it just built and check it landed on the same
     // rotated point, not the stale unrotated one.
     const delightLayer = svgEl.querySelector('#delight-layer')

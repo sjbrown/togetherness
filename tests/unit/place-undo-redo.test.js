@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
-import * as Toys from '../../src/toys.js'
+import * as Toys from '../../src/layer_toys.js'
 import * as OpLayer from '../../src/op_layer.js'
 
 const { TOYS_LAYER, placeToy, activateToyScripts, initializeToy, _clearSvgTextCache, _resetToyScriptState } = Toys

@@ -6,7 +6,7 @@
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, agoLabel, onToolChanged, editBody, showDragBox, hideDragBox } from '../../src/ui.js'
-import { SHAPE_TYPES } from '../../src/drawing.js'
+import { SHAPE_TYPES } from '../../src/layer_drawing.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },

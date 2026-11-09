@@ -15,7 +15,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
-import * as Toys from '../../src/toys.js'
+import * as Toys from '../../src/layer_toys.js'
 import * as Events from '../../src/events.js'
 import { getOps } from '../../src/op_dag.js'
 

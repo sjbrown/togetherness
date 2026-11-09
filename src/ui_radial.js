@@ -1,11 +1,11 @@
 /**
  * ui_radial.js — the bowstring's radial menu
  *
- * Dragging the action square (delight.js) opens a radial menu centred on the
- * square's resting position. Every toy menu action that declares a `radial`
- * property gets a spoke; releasing on a spoke fires that action, with the
- * value under the pointer as its parameter. A tap, or a release anywhere
- * that isn't an applicable spoke, still fires the default action.
+ * Dragging the action square (layer_delight.js) opens a radial menu centred on
+ * the square's resting position. Every toy menu action that declares a `radial`
+ * property gets a spoke; releasing on a spoke fires that action, with the value
+ * under the pointer as its parameter. A tap, or a release anywhere that isn't
+ * an applicable spoke, still fires the default action.
  *
  * Spokes are 45° wedges in the six spots from North clockwise to West (the
  * NW quadrant is where the toy sits). They fill spots in SPOT_ORDER, in menu
@@ -360,7 +360,7 @@ function render(state) {
  * On a release that picked a spoke: copy the picked segment onto hostEl,
  * under the bowstring chrome, and fly it. The shape goes home with the
  * handle like an arrow on the string — the same translation, duration and
- * overshoot curve as delight.js's snap-back, so the point under the
+ * overshoot curve as layer_delight.js's snap-back, so the point under the
  * pointer lands on the centre — shrinking about that point and fading over
  * the last stretch. The text drifts the other way, a quarter as far,
  * easing to a stop as it grows and fades.

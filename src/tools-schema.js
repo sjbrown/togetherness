@@ -1,12 +1,12 @@
 /**
  * tools-schema.js — the contract between tool registries and the UI
  *
- * A registry (toys.js, boun_pos.js) exports a TOOLS array. Each entry is a
- * ToolDef. ui.js renders these generically — it never hard-codes a tool name
- * beyond 'select', and it never knows what options a given tool has.
+ * A registry (layer_toys.js, layer_boun_pos.js) exports a TOOLS array. Each
+ * entry is a ToolDef. ui.js renders these generically — it never hard-codes a
+ * tool name beyond 'select', and it never knows what options a given tool has.
  *
  * Drawing tools (rect, circle) no longer use this file for their schema —
- * that now lives in SHAPE_TYPES in drawing.js.
+ * that now lives in SHAPE_TYPES in layer_drawing.js.
  *
  * ── ToolDef ──────────────────────────────────────────────────────────────────
  *   {
@@ -19,7 +19,7 @@
  *
  * ── OptionField ──────────────────────────────────────────────────────────────
  * Discriminated by `kind`. Each field also carries a `show` array (see
- * drawing.js SHAPE_TYPES for the full `show` semantics):
+ * layer_drawing.js SHAPE_TYPES for the full `show` semantics):
  *
  *   { kind:'color-hsl',  key, label, show? }   — opaque color picker
  *   { kind:'color-hslo', key, label, show? }   — color picker + 'none' option

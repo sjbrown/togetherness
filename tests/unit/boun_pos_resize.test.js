@@ -1,13 +1,13 @@
 /**
  * tests/unit/boun_pos-resize-mode.integration.test.js
  *
- * Boundaries and Positions (boun_pos.js) elements are resizable: a second
+ * Boundaries and Positions (layer_boun_pos.js) elements are resizable: a second
  * click on a sole-selected boundary or position-set cycles into 'sel-resize'
  * and shows corner grab handles; dragging one and releasing commits a new
  * extent (regenerating the circle grid for a position set). This exercises
  * the whole path through the real App bus — the same generic
  * select/nextSelectionMode/startResize/resize/commitResize
- * plumbing toys.js and drawing.js already use — to lock in that boun_pos.js
+ * plumbing layer_toys.js and layer_drawing.js already use — to lock in that layer_boun_pos.js
  * now plugs into it too.
  *
  * Same boot fixture as bowstring-resize-mode.integration.test.js: a single
@@ -17,8 +17,8 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { pathToRect, translationOf } from '../../src/boun_pos.js'
-import { _clearSvgTextCache } from '../../src/toys.js'
+import { pathToRect, translationOf } from '../../src/layer_boun_pos.js'
+import { _clearSvgTextCache } from '../../src/layer_toys.js'
 
 // Generic stand-in content for App.boot()'s toy-svg warm-cache fetch —
 // none of these tests place a toy, so only its shape (a valid toy svg)

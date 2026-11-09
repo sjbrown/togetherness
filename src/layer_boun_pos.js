@@ -1,6 +1,6 @@
 /**
- * boun_pos.js — complete module for the Boundaries and Positions layer, an op
- * layer (BOUN_POS_LAYER).
+ * layer_boun_pos.js — complete module for the Boundaries and Positions layer,
+ * an op layer (BOUN_POS_LAYER).
  *
  * Both element types are <g> siblings in #boun_pos-layer.
  * data-bounpos-type="boundary" | "pos-set" distinguishes them. Every write is
@@ -30,7 +30,7 @@
  */
 
 import { computeResizeCornerRect } from './geometry.js';
-import { selectorMatchesToy } from './toys.js';
+import { selectorMatchesToy } from './layer_toys.js';
 import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
 

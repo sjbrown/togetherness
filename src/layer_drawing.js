@@ -1,5 +1,5 @@
 /**
- * drawing.js — the drawing layer, an op layer (DRAWING_LAYER).
+ * layer_drawing.js — the drawing layer, an op layer (DRAWING_LAYER).
  *
  * Every write is a DOM operation on the live #drawing-layer, run inside a
  * gesture (OpLayer.runGesture) so the envelope captures it as one operation.

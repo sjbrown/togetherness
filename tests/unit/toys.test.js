@@ -12,7 +12,7 @@ import {
   newToyId, _getScriptsFragment, initializeToy,
   syncRotation, resolveRotation, applyRotate,
   applyMove, applyResize, ROTATE_SNAP_DEG,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import { getRotation } from '../../src/geometry.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -127,7 +127,7 @@ describe('svgTextToDom — namespacing, url rewriting, viewBox synthesis', () =>
     const inlineScript = scripts.find(s => s.namespace === 'token_solidcolor')
     expect(inlineScript.code).toContain('token_solidcolor')
 
-    // Never in the toy's own subtree itself, live or at rest — see toys.js,
+    // Never in the toy's own subtree itself, live or at rest — see layer_toys.js,
     // "Script hoisting".
     expect(findAll(importRoot(TOY_SVG, 'P__'), 'script').length).toBe(0)
   })
@@ -472,13 +472,13 @@ describe('selectModes / nextSelectMode', () => {
 // Rotation. Only chip/single_poker_card (tt_able_rotate) rotate, always
 // about their own fixed centre -- no placeable pivot the way a rect's
 // sel-rotate-pivot has, so this is deliberately the simple half of
-// drawing.js's rotation design: a degree count and nothing else.
+// layer_drawing.js's rotation design: a degree count and nothing else.
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('rotation (toys)', () => {
   // getRotation/syncRotation/resolveRotation/applyRotate all key off the
   // toy's OUTER <g> (data-id lives there), never the embedded <svg> --
-  // mirrors drawing.js's rule that a shape's geometry (here: the embedded
+  // mirrors layer_drawing.js's rule that a shape's geometry (here: the embedded
   // svg's x/y/width/height) never reflects its own rotation.
   function makeRotatableToyDom({ x = 50, y = 50, width = 100, height = 100, rotate } = {}) {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g')
@@ -494,7 +494,7 @@ describe('rotation (toys)', () => {
     return g
   }
 
-  test('chips/cards turn in 45° steps, not drawing.js\'s 15°', () => {
+  test('chips/cards turn in 45° steps, not layer_drawing.js\'s 15°', () => {
     expect(ROTATE_SNAP_DEG).toBe(45)
   })
 
@@ -741,7 +741,7 @@ describe('tray_sum: color option + editable name (real assets)', () => {
 // initArgs, as a plain { color, ...options } object (color always present,
 // even though chip's own initialize doesn't read it — see app.js's
 // commitToy) — untested directly here (see this project's convention of
-// exercising toys.js's own lifecycle contract instead of importing app.js).
+// exercising layer_toys.js's own lifecycle contract instead of importing app.js).
 // This covers chip.svg's side of that contract: options.value on placement
 // overwrites the template's default tspan text; the clone path (which
 // calls initialize with no initArgs at all — see supply.test.js) must keep
@@ -865,7 +865,7 @@ describe('token_glass: value from the Tools panel range slider (real assets)', (
 // option as one { color, ...options } object — single_poker_card just
 // reads two keys (suit, rank) off it instead of one. This block covers
 // single_poker_card's own side of that contract, plus its
-// editableFields/applyEdit hooks — toys.js's generic
+// editableFields/applyEdit hooks — layer_toys.js's generic
 // getTtStateSchema/editEl/previewEdit delegate any non-color/name field
 // to whichever namespace declares them.
 describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real assets)', () => {

@@ -17,14 +17,14 @@ import {
   adoptBranch, buildLayerForkSeed, resolveBranchConflict,
 } from '../../src/op_layer.js'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
   makeLayerAPI, projectLayer, placeToy, addToy, activateAllToyScriptsDom,
   undoToyGesture, redoToyGesture,
   canUndoToyGesture, canRedoToyGesture,
   getGeom, reparentToyDom, applyMove, runGesture,
   _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead, setHead } from '../../src/op_head.js'

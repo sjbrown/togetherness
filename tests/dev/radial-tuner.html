@@ -236,7 +236,7 @@ const MAX_PULL = 200;
 
 // ── Spoke model ──────────────────────────────────────────────────────────
 // Pure: menu definition + element in, ordered spoke descriptors (or an
-// authoring error) out. This is the part that would move into toys.js.
+// authoring error) out. This is the part that would move into layer_toys.js.
 
 function paramSpec(radial) {
   if (radial === true) return { ok: true, param: null };
@@ -725,7 +725,7 @@ function formatValue(v, p) {
   return Number(v).toFixed(decimalsOf(p.step));
 }
 
-// ── Bowstring (simplified delight.js) ────────────────────────────────────
+// ── Bowstring (simplified layer_delight.js) ──────────────────────────────
 // Drawn in #delight-layer, above the radial.
 
 function startGesture(e) {
@@ -835,7 +835,7 @@ function endGesture(e) {
   };
   if (res.how === 'tap') { fire(); return; }
 
-  // Snap back, then fire, as delight.js does.
+  // Snap back, then fire, as layer_delight.js does.
   const dist = Math.hypot(g.cur.x - square.x, g.cur.y - square.y);
   const ms = (260 + Math.min(dist, MAX_PULL * 1.4) * 1.2) / 1.6;
   g.handle.style.transition = `transform ${ms}ms cubic-bezier(0.34, 1.56, 0.64, 1)`;

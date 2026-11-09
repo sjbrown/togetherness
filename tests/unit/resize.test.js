@@ -6,7 +6,7 @@ import {
   RESIZE_CORNER_SE,
   reparentToyDom,
   _clearSvgTextCache,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import { resizeCorners, PAD } from '../../src/overlay.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -40,10 +40,10 @@ beforeEach(() => {
   _clearSvgTextCache()
 })
 
-describe('computeResizeRect — toys.js’s own wrapper around the shared corner algorithm', () => {
+describe('computeResizeRect — layer_toys.js’s own wrapper around the shared corner algorithm', () => {
   // Full corner-by-corner coverage of the algorithm itself (same fixture
   // numbers) lives in tests/unit/geometry.test.js now — this just checks
-  // toys.js wires MIN_TOY_SIZE through as the clamp floor.
+  // layer_toys.js wires MIN_TOY_SIZE through as the clamp floor.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
   test('delegates to computeResizeCornerRect with MIN_TOY_SIZE as the floor', () => {

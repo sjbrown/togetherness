@@ -1,5 +1,5 @@
 /**
- * attention_mode.js — pointing at the table without touching it
+ * layer_attention.js — pointing at the table without touching it
  *
  * A triple-click with the select tool enters attention mode. While in it,
  * pointer input never reaches the table layers: it is written to awareness

@@ -2,8 +2,8 @@
  * geometry.test.js
  *
  * Direct tests for geometry.js's pure functions — rotation-angle
- * arithmetic and corner-drag resize math shared by drawing.js, toys.js,
- * and boun_pos.js. No DOM, no Yjs; run with: npx vitest run
+ * arithmetic and corner-drag resize math shared by layer_drawing.js, layer_toys.js,
+ * and layer_boun_pos.js. No DOM, no Yjs; run with: npx vitest run
  */
 
 import { describe, test, expect } from 'vitest'
@@ -109,7 +109,7 @@ describe('computeRotate', () => {
 
 describe('computeResizeCornerRect — corner-opposite-fixed resize', () => {
   // Same fixture as tests/unit/resize.test.js's computeResizeRect
-  // (toys.js's own thin wrapper around this), so the numbers are already
+  // (layer_toys.js's own thin wrapper around this), so the numbers are already
   // independently verified.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
   const minSize = 30

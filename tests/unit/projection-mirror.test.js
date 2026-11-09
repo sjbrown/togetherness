@@ -20,11 +20,11 @@ import {
   TOYS_LAYER, makeLayerAPI as makeToysAPI, activateAllToyScriptsDom, runGesture,
   reparentToyDom, applyMove, getMenuActions, invokeMenuAction,
   _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
-import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/drawing.js'
+} from '../../src/layer_toys.js'
+import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/layer_drawing.js'
 import {
   BOUN_POS_LAYER, makeLayerAPI as makeBounPosAPI, toolParamsToCreateParams,
-} from '../../src/boun_pos.js'
+} from '../../src/layer_boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import * as OpLayer from '../../src/op_layer.js'
 import { getOps, getContent } from '../../src/op_dag.js'

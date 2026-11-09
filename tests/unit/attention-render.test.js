@@ -7,7 +7,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach } from 'vitest'
-import { T, FANCY, createRenderer, sceneAnimating, dotRing } from '../../src/attention_mode.js'
+import { T, FANCY, createRenderer, sceneAnimating, dotRing } from '../../src/layer_attention.js'
 
 let layer, r
 

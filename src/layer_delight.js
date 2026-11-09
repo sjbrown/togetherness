@@ -1,5 +1,5 @@
 /**
- * delight.js — the Bowstring Handle
+ * layer_delight.js — the Bowstring Handle
  *
  * A drag-to-fire control attached to the SE action square of the locally
  * selected toy. Click it for an immediate action; pull it back like a
@@ -23,12 +23,12 @@
  * upsertUserGradient).
  *
  * Division of labour with overlay.js:
- *   overlay.js  — draws the RESTING affordance (the SE square, wrapped in
- *                 <g class="bowstring">), and nothing else. It may be
- *                 redrawn freely.
- *   delight.js  — owns the LIVE gesture. On pointerdown it builds its own
- *                 handle chrome in #delight-layer and drives it to
- *                 completion, independent of any overlay re-render.
+ *   overlay.js        — draws the RESTING affordance (the SE square, wrapped
+ *                       in <g class="bowstring">), and nothing else. It may
+ *                       be redrawn freely.
+ *   layer_delight.js  — owns the LIVE gesture. On pointerdown it builds its
+ *                       own handle chrome in #delight-layer and drives it to
+ *                       completion, independent of any overlay re-render.
  *
  * ── CSS/JS split ──────────────────────────────────────────────────────────
  * Anything whose start and end states are both known when it begins is a CSS

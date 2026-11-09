@@ -4,7 +4,7 @@
  * Run with: npx vitest run
  *
  * The drawing layer is an op layer: every write is a DOM operation on the
- * live layer, recorded as a gesture. These tests drive drawing.js directly
+ * live layer, recorded as a gesture. These tests drive layer_drawing.js directly
  * (DOM functions and the LayerAPI) against a jsdom layer.
  */
 
@@ -20,7 +20,7 @@ import {
   snapPivot, computePivot, pivotShift, pivotRayOpacities, PIVOT_RAYS,
   reconcileImportedTransform, parseTransformList, reconcileTransform,
   PIVOT_SNAP_FRACTION,
-} from '../../src/drawing.js'
+} from '../../src/layer_drawing.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import { getRotation, rotationCenter, rotationTransform, getPivot } from '../../src/geometry.js'
 import { getOps } from '../../src/op_dag.js'

@@ -7,10 +7,10 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { getOps, appendOp } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead, setHead } from '../../src/op_head.js'
-import * as Toys from '../../src/toys.js'
+import * as Toys from '../../src/layer_toys.js'
 import { addToy, activateAllToyScriptsDom, _clearSvgTextCache,
          _resetToyScriptState, getMenuActions, invokeMenuAction,
-         getNamespacesForType } from '../../src/toys.js'
+         getNamespacesForType } from '../../src/layer_toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))

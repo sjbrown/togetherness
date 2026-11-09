@@ -1,14 +1,14 @@
 /**
  * tests/unit/background.test.js
  *
- * background.js: the table's background in the doc's meta map, and the
+ * layer_background.js: the table's background in the doc's meta map, and the
  * tiled pattern drawn from it into #background-layer.
  */
 
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
-import * as Background from '../../src/background.js'
+import * as Background from '../../src/layer_background.js'
 
 let ydoc, yMeta, svgEl
 
