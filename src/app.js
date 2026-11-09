@@ -214,16 +214,14 @@ let _previewCache = { key: null, states: null }; // getOpPreview's last result
 let _offline      = false;
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
-// Awareness state: drag: { elId, dx, dy }
-// local awareness schema: { id, color, grad, cursor, desired, drag? }
-// desired: { [elId]: { ts: number, holding: boolean } }
+// Broadcast as the awareness `drag` field (see AWARENESS.md).
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
 
 // Active multi-element drag — set by App.startMultiDrag,
 // cleared by commitMultiMove / cancelMultiMove.
-// Awareness: multidrag: { elIds: [...], offsets: [{bboxX, bboxY}] }
+// Broadcast as the awareness `multidrag` field (see AWARENESS.md).
 // No boundary/snap constraints — those are per-toy and don't compose cleanly for a group.
 let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bboxX, bboxY }],
                              //   leaderEl, boundsRects, snapPoints,
@@ -863,7 +861,7 @@ const App = {
     return ids;
   },
   // Broadcast the current rubber-band candidate set via awareness.
-  // Uses its own `candidates` awareness field, separate from `selection`,
+  // Uses its own `candidates` awareness field, separate from `desired`,
   // so that committed holdings are never clobbered during a sweep
   broadcastCandidates: (ids) => {
     _awareness.setLocalStateField('candidates', ids.length ? ids : null);

@@ -39,28 +39,14 @@
  *
  * Requested/contested indicator (soft_lock.js): a separate, independent
  * decoration drawn on any element with an outstanding acquisition request.
- * It is a ring in the requester's own gradient that grows from the
- * bottom-left corner (see soft_lock.js), repeating until the request
+ * It is a ring in the requester's own gradient that draws itself on around
+ * the element (see renderRequestedIndicator), repeating until the request
  * resolves. The holder's ring is left as it is.
  *
  * Drop-target hover indicator: another independent decoration,
  * driven by App.move() during a toy drag
  *
- * Awareness desired schema: { [elId]: { ts: number, holding: boolean } }
- *   One record per elId a peer wants; `holding: true` entries are the
- *   held selection, rendered here as remote rings.
- *
- * Awareness candidates field: string[] | null
- *   The ids currently under a rubber-band sweep, broadcast separately from
- *   `desired` so that committed holdings are never clobbered mid-sweep.
- *   Remote peers' candidate sweeps are not currently rendered (there is no
- *   visual for "someone else is sweeping over these"), but the field is
- *   wire-present so it can be added without a schema change.
- *
- * Awareness mode field: string | null, e.g. 'sel-resize'
- *   Already carries its own `sel-` prefix. Explicit modes only — an
- *   automatic default is never broadcast unless a click entered it.
- *   Purely advisory; local rendering doesn't read this field.
+ * The awareness fields read here are listed in AWARENESS.md.
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
