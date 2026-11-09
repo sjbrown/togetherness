@@ -6,6 +6,7 @@
  */
 import * as Toys     from './toys.js';
 import * as Drawing  from './drawing.js';
+import * as Background from './background.js';
 import { BOUN_POS_LAYER } from './boun_pos.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
@@ -100,11 +101,9 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const bgImg = bgPattern?.querySelector('image');
   const bgUrl = bgImg?.getAttribute('href') || bgImg?.getAttribute('xlink:href') || '';
   if (bgUrl) {
-    yMeta.set('bg_url', bgUrl);
     const w = Number(bgPattern.getAttribute('width'))  || 0;
     const h = Number(bgPattern.getAttribute('height')) || 0;
-    if (w) yMeta.set('bg_width',  w);
-    if (h) yMeta.set('bg_height', h);
+    Background.write(ydoc, yMeta, { url: bgUrl, ...(w && { width: w }), ...(h && { height: h }) });
   }
 
   // Document-root scripts — our own export format (buildExportSvg): one

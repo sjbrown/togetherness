@@ -53,8 +53,6 @@ import * as ExternalServices                      from './external_services.js';
 const DEBUG = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('debug') === '1';
 
-const svgNS = 'http://www.w3.org/2000/svg'
-const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
