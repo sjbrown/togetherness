@@ -39,6 +39,7 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './layer_delight.js';
+import * as Landing                               from './delight_landing.js';
 import * as Radial                                from './ui_radial.js';
 import * as Attention                             from './layer_attention.js';
 import * as Events                                from './events.js';
@@ -121,6 +122,23 @@ function _rotationOf(id) {
 function _rotationCenterOf(id, geom) {
   const { domEl, layer } = _layerFor(id);
   return layer?.rotationCenter?.(domEl, geom) ?? null;
+}
+
+// A detached stand-in for the toy a press is about to place, centred on
+// (x, y) and initialized like the real one will be, for the landing squash
+// to show until the real toy exists. Null until the tool's SVG is cached.
+// Stripped of id/data-id so nothing that queries the canvas mistakes it for
+// a toy.
+let _landingGhostSeq = 0;
+function _landingGhost(def, x, y) {
+  const markup = UI.getToolPreviewMarkup(def);
+  if (!markup) return null;
+  const initArgs = Toys.toolInitArgs(def, _toolParams[def.name] ?? {}, App.user.color);
+  const { toyEl } = Toys.buildToyEl(
+    { id: `landing-ghost-${++_landingGhostSeq}`, toyType: def.toyType, x, y, color: initArgs.color }, markup);
+  try { Toys.runInitializers(toyEl, def.toyType, initArgs); } catch (err) { console.warn('[landing] ghost initialize failed', err); }
+  for (const attr of ['id', 'data-id', 'data-module']) toyEl.removeAttribute(attr);
+  return toyEl;
 }
 
 // computeResize keeps the corner opposite the dragged one fixed in the
@@ -402,6 +420,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // Delight (bowstring handle and sparks)
   Delight.init(App, _svgEl);
+  Landing.init(App, _svgEl);
 
   // Attention mode (triple-click pointing), on its own top layer
   Attention.init({
@@ -1125,24 +1144,39 @@ const App = {
   cancelEdit: (id) => Overlay.endGhost(id),
 
   /**
-   * Place a toy on the table, then run its namespace(s)' initialize(elem)
-   * hook exactly once
+   * Start the landing squash for a press with a toy tool at (x, y). Returns
+   * the landing for commitToy or cancelToyPress, or null for other tools.
    */
-  commitToy: (toolName, x, y) => {
+  pressToy: (toolName, x, y) => {
     const def = _toolById[toolName];
-    if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
+    if (!def?.toyType) return null;
+    return Landing.press(x, y, _landingGhost(def, x, y));
+  },
+
+  cancelToyPress: (landing) => Landing.cancel(landing),
+
+  /**
+   * Place a toy on the table, then run its namespace(s)' initialize(elem)
+   * hook exactly once. landing is pressToy's, released here and shown
+   * through the placed toy once it exists.
+   */
+  commitToy: (toolName, x, y, landing = null) => {
+    const def = _toolById[toolName];
+    if (!def?.toyType) { Landing.cancel(landing); UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = Toys.newToyId();
     const layerEl = layerElOf('toys');
-    if (!layerEl) return;
+    if (!layerEl) { Landing.cancel(landing); return; }
     const params = _toolParams[toolName] ?? {};
     // initialize()'s options always carries color + every other tool option
     const initArgs = Toys.toolInitArgs(def, params, App.user.color);
     const color    = initArgs.color;
+    Landing.release(landing);
     // initializeToy below runs its own gesture, so initialize commits as a
     // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
     _Layers.toys.add({ id, toyType: def.toyType, x, y, color }).then(async () => {
       App.addLog(`placed ${def.label} ${id}`, 'local');
+      Landing.attach(landing, layerEl.querySelector(`[data-id="${id}"]`));
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace]. Placing the toy
@@ -1154,6 +1188,7 @@ const App = {
         Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, App.user.id, _tableId, initArgs);
       }
     }).catch(err => {
+      Landing.cancel(landing);
       UI.toast(`Failed to place ${def.label}`, 'warn');
       App.addLog(`place failed: ${err.message}`, 'del');
     });
