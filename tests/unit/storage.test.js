@@ -181,9 +181,9 @@ describe('populateFromSvgDoc', () => {
     // layer, as BounPos created and the op log projected it.
     function exportedBounPosInner() {
       const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUN_POS_LAYER)
-      BounPos.BOUNPOS_TYPES.boundary.create(layerEl, { id: 'tt-b-v1-abc', matches: '.Hand', x: 10, y: 20, w: 100, h: 50 })
+      BounPos.BOUN_POS_TYPES.boundary.create(layerEl, { id: 'tt-b-v1-abc', matches: '.Hand', x: 10, y: 20, w: 100, h: 50 })
       const rect = { x: 0, y: 0, w: 200, h: 200 }
-      BounPos.BOUNPOS_TYPES['pos-grid-sq'].create(layerEl, {
+      BounPos.BOUN_POS_TYPES['pos-grid-sq'].create(layerEl, {
         ...BounPos.newPositionSetId(), genType: 'square', ...rect,
         ...BounPos.toolParamsToCreateParams('square', { spacing: 80, snapRadius: 2 }, rect),
       })

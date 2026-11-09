@@ -94,6 +94,11 @@ export const SHAPE_TYPES = {
   },
 };
 
+// A fresh id for a drawing shape: its author's user id and a random slug.
+export function newShapeId(userId) {
+  return userId + '_' + Math.random().toString(36).slice(2, 7);
+}
+
 // ── Shape operations ──────────────────────────────────────────────────────────
 // Each takes the layer element or a shape element and mutates the live DOM.
 // Callers wrap them in a gesture (see makeLayerAPI).

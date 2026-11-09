@@ -17,7 +17,7 @@ import {
   // Grid math
   generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // DOM writes
-  BOUNPOS_TYPES, findEl, deleteEl, editBounPos, editEl, applyMove,
+  BOUN_POS_TYPES, findEl, deleteEl, editEl, applyMove,
   // Layer
   BOUN_POS_LAYER, makeLayerAPI, layerData,
   // Geometry queries
@@ -50,7 +50,7 @@ function makeLayer() {
 
 function addB(layer, overrides = {}) {
   const { id, matches } = newBoundaryId();
-  BOUNPOS_TYPES.boundary.create(layer.layerEl, {
+  BOUN_POS_TYPES.boundary.create(layer.layerEl, {
     id, matches, x: 100, y: 100, w: 200, h: 150,
     ...overrides,
   });
@@ -73,7 +73,7 @@ function addPS(layer, overrides = {}) {
   const xSpacing = overrides.xSpacing ?? 80;
   const ySpacing = overrides.ySpacing ?? 80;
   const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-  BOUNPOS_TYPES['pos-grid-sq'].create(layer.layerEl, {
+  BOUN_POS_TYPES['pos-grid-sq'].create(layer.layerEl, {
     id, matches, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
     ...overrides, id, matches,
   });
@@ -253,7 +253,7 @@ describe('gridFillExtent', () => {
 
 describe('computeGridPositions', () => {
   // The same math rebuildPositionSetGrid uses to actually commit a
-  // resize (see editBounPos/editEl below) — exposed separately so this
+  // resize (see editEl below) — exposed separately so this
   // file's own previewEdit (tested further down) can compute the
   // identical result without touching Yjs.
   test('circles match gridFillExtent for the same inputs', () => {
@@ -363,13 +363,13 @@ describe('deleteEl', () => {
   });
 });
 
-describe('editBounPos rename', () => {
+describe('editEl rename', () => {
   test('updates the data-tt-matches attribute and the label’s text node', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
     const el = findEl(layer.layerEl, id);
     const textNode = el.querySelector('text').firstChild;
-    editBounPos({ id, 'data-tt-matches': '.forest' }, layer.layerEl);
+    editEl(findEl(layer.layerEl, id), { 'data-tt-matches': '.forest' });
     expect(el.getAttribute('data-tt-matches')).toBe('.forest');
     expect(el.querySelector('text').textContent).toBe('.forest');
     expect(el.querySelector('text').firstChild).toBe(textNode);   // changed in place
@@ -386,16 +386,16 @@ describe('editBounPos rename', () => {
   });
 });
 
-describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
+describe('editEl grid resize (xSpacing/ySpacing/snapRadius)', () => {
   // Locks in that the real commit path (rebuildPositionSetGrid, called
-  // via editBounPos/editEl) produces exactly what computeGridPositions
+  // via editEl) produces exactly what computeGridPositions
   // predicts — the same parity a live ghost preview relies on to show a
   // grid that matches what actually lands on release.
   test('changing xSpacing rebuilds the circle set to match computeGridPositions', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
 
-    editBounPos({ id, xSpacing: 50, ySpacing: 80 }, layer.layerEl);
+    editEl(findEl(layer.layerEl, id), { xSpacing: 50, ySpacing: 80 });
 
     const el = findEl(layer.layerEl, id);
     const { circles: expectedCircles } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 50, 80, 2);
@@ -407,7 +407,7 @@ describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
 
-    editBounPos({ id, snapRadius: 4 }, layer.layerEl);
+    editEl(findEl(layer.layerEl, id), { snapRadius: 4 });
 
     const el = findEl(layer.layerEl, id);
     const { r: expectedR } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 80, 80, 4);
@@ -795,14 +795,14 @@ describe('computeBoundaryRects', () => {
   test('returns null when no boundary data-tt-matches selects the toy', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
     expect(computeBoundaryRects(layer.layerEl, toyWith('dungeon'), { x: 50, y: 50 })).toBeNull();
   });
 
   test('returns rects when the selector matches and toy starts inside', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
     const rects = computeBoundaryRects(layer.layerEl, toyWith('forest'), { x: 50, y: 50 });
     expect(rects).not.toBeNull();
     expect(rects).toHaveLength(1);
@@ -812,7 +812,7 @@ describe('computeBoundaryRects', () => {
   test('a selector matches the toy\'s inner <svg> as well as its wrapper', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
     const toy = toyWith();
     const inner = document.createElementNS(SVG_NS, 'svg');
     inner.setAttribute('class', 'forest');
@@ -838,7 +838,7 @@ describe('computeBoundaryRects', () => {
   test('returns null when toy starts outside matched boundary', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 100, h: 100 });
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 100, h: 100 });
     // anchor is outside the boundary
     const rects = computeBoundaryRects(layer.layerEl, toyWith('forest'), { x: 200, y: 200 });
     expect(rects).toBeNull();
@@ -857,7 +857,7 @@ describe('getSnapPoints', () => {
   test('returns snap points', () => {
     const layer = makeLayer();
     const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', xSpacing: 100, ySpacing: 100 });
-    editBounPos({ id, 'data-tt-matches': '.forest' }, layer.layerEl);
+    editEl(findEl(layer.layerEl, id), { 'data-tt-matches': '.forest' });
     const pts = getSnapPoints(layer.layerEl);
     expect(pts.length).toBe(circles.length);
     pts.forEach(p => {

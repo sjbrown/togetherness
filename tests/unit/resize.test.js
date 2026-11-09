@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToyDom, computeResizeRect, applyResize,
+  addToyDom, computeResize, applyResize,
   RESIZE_CORNER_SE,
   reparentToyDom,
   _clearSvgTextCache,
@@ -40,14 +40,14 @@ beforeEach(() => {
   _clearSvgTextCache()
 })
 
-describe('computeResizeRect — layer_toys.js’s own wrapper around the shared corner algorithm', () => {
+describe('computeResize — layer_toys.js’s own wrapper around the shared corner algorithm', () => {
   // Full corner-by-corner coverage of the algorithm itself (same fixture
   // numbers) lives in tests/unit/geometry.test.js now — this just checks
   // layer_toys.js wires MIN_TOY_SIZE through as the clamp floor.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
   test('delegates to computeResizeCornerRect with MIN_TOY_SIZE as the floor', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_SE, 50, 50)
+    const rect = computeResize('sel-resize', startRect, RESIZE_CORNER_SE, 50, 50)
     expect(rect).toEqual({ x: 100, y: 100, width: 30, height: 30 }) // MIN_TOY_SIZE
   })
 })

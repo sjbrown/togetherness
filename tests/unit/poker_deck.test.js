@@ -8,7 +8,7 @@ import { ensureLayerId } from '../../src/op_layers.js'
 import {
   TOYS_LAYER, TOY_TYPES, addToyDom, activateAllToyScriptsDom, reparentToyDom, deleteEl,
   findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
-  findDropTarget, runGesture, getLandingPosition, toyCloneToy,
+  findDropTarget, runGesture, getLandingPosition, cloneToyAt,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
 
@@ -945,7 +945,7 @@ describe('cloning (a Supply copying a pile)', () => {
       faceUp: !card.querySelector('.card_front + .card_back'),
     })
 
-    const { id } = toyCloneToy(t.ydoc, t.layerEl, pile, pile, { authorId: AUTHOR, tableId: TABLE })
+    const { id } = cloneToyAt(t.ydoc, t.layerEl, pile, pile, { authorId: AUTHOR, tableId: TABLE })
 
     const copy = t.layerEl.querySelector(`[data-id="${id}"]`)
     const cards = [...copy.querySelectorAll('.tt_contents > .toy')]

@@ -350,8 +350,8 @@ function buildGroup(bounPosType, { id, matches, x, y, w, h }) {
 //   create(layerEl, params) — build the element and append it to the layer
 //                             (call inside a gesture)
 //
-// app.js builds the tool registry from Object.entries(BOUNPOS_TYPES).
-export const BOUNPOS_TYPES = {
+// app.js builds the tool registry from Object.entries(BOUN_POS_TYPES).
+export const BOUN_POS_TYPES = {
   boundary: {
     bounPosType: 'boundary',
     label:       'Boundary',
@@ -459,7 +459,7 @@ function _createPositionSet(layerEl,
 
 /** Build a toolName element from params and append it. Returns the element. */
 export function addEl(layerEl, toolName, params) {
-  return BOUNPOS_TYPES[toolName].create(layerEl, params);
+  return BOUN_POS_TYPES[toolName].create(layerEl, params);
 }
 
 export function findEl(layerEl, id) {
@@ -565,46 +565,46 @@ export function getAnchor(svgEl) {
 function _resolveBounPosToolName(svgElOrType) {
   if (typeof svgElOrType === 'string') {
     // Direct tool name lookup first
-    if (BOUNPOS_TYPES[svgElOrType]) return svgElOrType;
+    if (BOUN_POS_TYPES[svgElOrType]) return svgElOrType;
     // bounPosType string — pick first matching tool entry
-    return Object.keys(BOUNPOS_TYPES)
-      .find(k => BOUNPOS_TYPES[k].bounPosType === svgElOrType)
+    return Object.keys(BOUN_POS_TYPES)
+      .find(k => BOUN_POS_TYPES[k].bounPosType === svgElOrType)
       ?? 'boundary';
   }
 
   const bounPosType = svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary';
   const genType     = svgElOrType?.getAttribute?.('data-gen-type') ?? null;
 
-  return Object.keys(BOUNPOS_TYPES).find(k => {
-    const d = BOUNPOS_TYPES[k];
+  return Object.keys(BOUN_POS_TYPES).find(k => {
+    const d = BOUN_POS_TYPES[k];
     return d.bounPosType === bounPosType &&
       (genType ? d.genType === genType : d.genType === null || d.genType === 'square');
   }) ?? 'boundary';
 }
 
 export function getTtStateSchema(svgElOrType) {
-  // Resolve to a BOUNPOS_TYPES key.
+  // Resolve to a BOUN_POS_TYPES key.
   // Accepts: tool name ('boundary','pos-grid-sq','pos-grid-hex','pos-grid-flat-hex'),
   //          bounPosType string ('boundary','pos-set'), or a DOM element.
   let toolName;
   if (typeof svgElOrType === 'string') {
-    if (BOUNPOS_TYPES[svgElOrType]) {
+    if (BOUN_POS_TYPES[svgElOrType]) {
       toolName = svgElOrType;
     } else {
-      toolName = Object.keys(BOUNPOS_TYPES)
-        .find(k => BOUNPOS_TYPES[k].bounPosType === svgElOrType) ?? 'boundary';
+      toolName = Object.keys(BOUN_POS_TYPES)
+        .find(k => BOUN_POS_TYPES[k].bounPosType === svgElOrType) ?? 'boundary';
     }
   } else {
     const bounPosType = svgElOrType?.getAttribute?.('data-bounpos-type') ?? 'boundary';
     const genType     = svgElOrType?.getAttribute?.('data-gen-type') ?? null;
-    toolName = Object.keys(BOUNPOS_TYPES).find(k => {
-      const d = BOUNPOS_TYPES[k];
+    toolName = Object.keys(BOUN_POS_TYPES).find(k => {
+      const d = BOUN_POS_TYPES[k];
       return d.bounPosType === bounPosType &&
         (genType ? d.genType === genType : d.genType === null || d.genType === 'square');
     }) ?? 'boundary';
   }
 
-  const def    = BOUNPOS_TYPES[toolName];
+  const def    = BOUN_POS_TYPES[toolName];
   const schema = def.schema;
 
   if (!svgElOrType || typeof svgElOrType === 'string') {
@@ -701,7 +701,7 @@ function createBounPos(state, layerEl) {
       circles,
     });
   } else {
-    BOUNPOS_TYPES.boundary.create(layerEl, {
+    BOUN_POS_TYPES.boundary.create(layerEl, {
       id:     state.id,
       matches: state['data-tt-matches'],
       x:      state.x,
@@ -728,7 +728,7 @@ export function applyTtState(layerEl, state) {
   }
 }
 
-export function editBounPos(state, layerEl) {
+function editBounPos(state, layerEl) {
   // Note 'state' might be partial - only update attrs that are present
   const existing = findEl(layerEl, state.id);
   if (!existing) {

@@ -15,7 +15,7 @@ export function init(App, svgEl, Toys, UI) {
 
       let result
       try {
-        result = Toys.toyCloneToy(ydoc, layerEl, sourceEl, subjectEl, { authorId: myId, tableId })
+        result = Toys.cloneToyAt(ydoc, layerEl, sourceEl, subjectEl, { authorId: myId, tableId })
       } catch (err) {
         e.detail.error = err.message
         return

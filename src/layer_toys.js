@@ -630,11 +630,11 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
 }
 
 /**
- * clone cloneeEl under a fresh id, placed via clonerEl's own .tt_target
- * marker if present.
- * Then re-run initialize() on every cloned instance.
+ * Clone cloneeEl under a fresh id, placed at clonerEl: on its own
+ * .tt_target marker if it has one, else its anchor. Then re-run
+ * initialize() on every cloned instance.
  */
-export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
+export function cloneToyAt(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
   const target = clonerEl?.querySelector?.('.tt_target')
   const { x, y } = target ? getInnerAnchor(clonerEl, target) : getAnchor(clonerEl)
   const newId = newToyId()
@@ -1235,9 +1235,9 @@ export function applyMove(domEl, cx, cy) {
 }
 
 // Resize corner indices — shared with overlay.js's corner-handle geometry
-// (Overlay.resizeCorners returns points in this same order) so canvas.js's
-// hit-test result can be passed straight through to computeResizeRect
-// without any translation. The order is NW, NE, SE, SW.
+// (Overlay.resizeCorners returns points in this same order) so the corner
+// canvas.js reads off a pressed handle can be passed straight through to
+// computeResize without any translation. The order is NW, NE, SE, SW.
 export const RESIZE_CORNER_NW = 0
 export const RESIZE_CORNER_SE = 2
 
@@ -1251,9 +1251,11 @@ function clampResizeDim(value) {
 /**
  * A toy's own corner-drag resize, at the toy's own minimum size. The
  * shared corner-opposite-fixed algorithm lives in geometry.js; this is
- * just layer_toys.js's own MIN_RESIZE_SIZE threaded through.
+ * just layer_toys.js's own MIN_RESIZE_SIZE threaded through. Toys have one
+ * resize flavor (corner-drag), so `mode` is unused -- it is there so every
+ * layer's computeResize takes the same arguments.
  */
-export function computeResizeRect(startRect, corner, px, py) {
+export function computeResize(mode, startRect, corner, px, py) {
   return Geometry.computeResizeCornerRect(startRect, corner, px, py, MIN_RESIZE_SIZE)
 }
 
@@ -2128,9 +2130,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
-    // Toys only have one resize flavor (corner-drag), so `mode` is
-    // unused here -- kept so callers can ask uniformly across layers.
-    computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
+    computeResize,
     getRotation,
     resolveRotation,
     rotationCenter:  (svgEl, geom = getGeom(svgEl)) => rotationCenter(geom),

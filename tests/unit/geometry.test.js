@@ -108,7 +108,7 @@ describe('computeRotate', () => {
 })
 
 describe('computeResizeCornerRect — corner-opposite-fixed resize', () => {
-  // Same fixture as tests/unit/resize.test.js's computeResizeRect
+  // Same fixture as tests/unit/resize.test.js's computeResize
   // (layer_toys.js's own thin wrapper around this), so the numbers are already
   // independently verified.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250

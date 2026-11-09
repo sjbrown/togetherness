@@ -257,7 +257,7 @@ function buildToolRegistry() {
   };
   register(SELECT_TOOL);
   _toolsByLayer['background'] = [SELECT_TOOL];
-  const bounPosTools = Object.entries(BounPos.BOUNPOS_TYPES).map(([name, def]) => ({
+  const bounPosTools = Object.entries(BounPos.BOUN_POS_TYPES).map(([name, def]) => ({
     name,
     label:   def.label,
     layer:   'boun_pos',
@@ -265,7 +265,7 @@ function buildToolRegistry() {
   }));
   bounPosTools.forEach(def => {
     _toolById[def.name] = def;
-    _toolParams[def.name] = { ...BounPos.BOUNPOS_TYPES[def.name].schema.values };
+    _toolParams[def.name] = { ...BounPos.BOUN_POS_TYPES[def.name].schema.values };
   });
   _toolsByLayer['boun_pos'] = [SELECT_TOOL, ...bounPosTools];
   Toys.TOOLS.forEach(register);
@@ -780,7 +780,7 @@ const App = {
   getToolSchema:   (name)  => {
     const drawSchema = Drawing.getTtStateSchema(name);
     if (drawSchema?.types) return drawSchema;
-    if (BounPos.BOUNPOS_TYPES[name]) return BounPos.BOUNPOS_TYPES[name].schema;
+    if (BounPos.BOUN_POS_TYPES[name]) return BounPos.BOUN_POS_TYPES[name].schema;
     const def = _toolById[name];
     if (!def) return { types: {}, values: {} };
     const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
@@ -969,13 +969,13 @@ const App = {
 
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
-    const id = newDrawingId();
+    const id = Drawing.newShapeId(App.user.id);
     _Layers.drawing.add({ ...attrs, id });
     App.addLog(`added ${attrs.type} ${id}`, 'local');
   },
 
   commitBounPos: ({ toolName, x, y, w, h }) => {
-    const def = BounPos.BOUNPOS_TYPES[toolName];
+    const def = BounPos.BOUN_POS_TYPES[toolName];
     if (!def) return;
     const { id, matches } = def.newId();
     let params;
@@ -1193,7 +1193,7 @@ const App = {
       return;
     }
     const src = _Layers.drawing.find(id);
-    if (!src || !_Layers.drawing.duplicate(src, newDrawingId())) return;
+    if (!src || !_Layers.drawing.duplicate(src, Drawing.newShapeId(App.user.id))) return;
     App.addLog(`duplicated ${id}`, 'local');
   },
 
@@ -2173,11 +2173,6 @@ function newestAcrossLayers(rowOf, keyOf) {
     return row ? [{ ...row, layer: layer.name }] : [];
   });
   return rows.sort((a, b) => (keyOf(b) - keyOf(a)) || (a.id < b.id ? 1 : -1))[0] ?? null;
-}
-
-// A fresh id for a drawing shape.
-function newDrawingId() {
-  return App.user.id + '_' + Math.random().toString(36).slice(2, 7);
 }
 
 // A human-readable label for an operation's gesture, for undo/redo
