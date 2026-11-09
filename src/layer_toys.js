@@ -454,22 +454,6 @@ export function toolInitArgs(def, params, fallbackColor) {
 }
 
 /**
- * A toy's artwork as a standalone <svg> filling its container, tinted with
- * initArgs.color and run through the toy's initialize() hook so its options
- * show. Ids are scoped by `id`. Decorative: scripts are dropped.
- */
-export function buildToyPreviewSvg(id, svgText, toyType, initArgs) {
-  const { toyEl } = buildToyEl({ id, toyType, x: 0, y: 0, color: initArgs.color }, svgText)
-  const svg = toyEl.firstElementChild
-  try { runInitializers(toyEl, toyType, initArgs) } catch (err) { console.warn('[toys] preview initialize failed', err) }
-  svg.setAttribute('x', '0')
-  svg.setAttribute('y', '0')
-  svg.setAttribute('width', '100%')
-  svg.setAttribute('height', '100%')
-  return svg
-}
-
-/**
  * A toy as it would be placed at (x, y): built from svgText and run through
  * the toy's initialize() hook with initArgs, but inert. It has no id,
  * data-id, data-module, data-toy-type or toy class (stripped after
