@@ -865,6 +865,10 @@ const App = {
     _awareness.setLocalStateField('candidates', null);
   },
 
+  // The rubber-band boxes canvas.js shows while drawing or box-selecting.
+  showDragBox: (kind, x, y, w, h) => UI.showDragBox(kind, x, y, w, h),
+  hideDragBox: (kind) => UI.hideDragBox(kind),
+
   // ── Add-cursor (awareness crosshair + placement preview) ──────────────────
   // Called by canvas.js on every pointermove while a non-'select' tool is
   // active — including while just hovering, before any gesture has

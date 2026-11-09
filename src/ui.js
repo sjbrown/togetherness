@@ -104,6 +104,21 @@ export function init(appBus) {
   updateInfoBar();
 }
 
+// -- Drag boxes ----------------------------------------------------------------
+// The HTML rubber bands over the canvas while a shape is drawn
+// (#draw-preview) or a box-select is swept (#select-preview), in px from
+// #stage's top-left. kind is 'draw' or 'select'; canvas.js drives them
+// through App.showDragBox / hideDragBox.
+export function showDragBox(kind, x, y, w, h) {
+  const el = document.getElementById(`${kind}-preview`);
+  if (el) el.style.cssText = `display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+}
+
+export function hideDragBox(kind) {
+  const el = document.getElementById(`${kind}-preview`);
+  if (el) el.style.display = 'none';
+}
+
 // -- Toasts --------------------------------------------------------------------
 export function toast(msg, kind = '') {
   // Mirrored to the console for anything warning/error-level, so the exact
