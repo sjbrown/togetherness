@@ -333,11 +333,31 @@ html, body {
   background: none; box-shadow: none; padding: 0; border-radius: 0;
 }
 
-/* Mobile: the pill fades out and drops away while #menuItems fans up,
-   using the same duration and offset so the two read as one motion. */
+/* Mobile: while #menuItems is open the pill shrinks to a circle that
+   matches #menuBtn's resting look (52px, three dots). setPillCollapsed()
+   pins explicit pixel sizes so width/height have something to animate. */
 @media (max-width: 759px) {
-  #pill { transition: opacity .2s, transform .2s; }
-  #pill.collapsed { pointer-events: none; opacity: 0; transform: translateY(16px); }
+  #pill {
+    transition: width .2s, height .2s, padding .2s, border-radius .2s,
+                background-color .2s, box-shadow .2s;
+  }
+  #pill > * { transition: opacity .2s; }
+  #pill > .ico { transition: color .15s, box-shadow .15s, transform .1s, opacity .2s; }
+  #pill.collapsed {
+    width: 52px; height: 52px; padding: 0; border-radius: 26px; overflow: hidden;
+    background-color: var(--surface); box-shadow: var(--emboss);
+    pointer-events: none;
+  }
+  #pill.collapsed > * { opacity: 0; }
+  #pill::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 2.2px; height: 2.2px; border-radius: 50%;
+    background: var(--text-2);
+    box-shadow: 0 -6.4px 0 var(--text-2), 0 6.4px 0 var(--text-2);
+    transform: translate(-50%, -50%);
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #pill.collapsed::after { opacity: 1; }
 }
 
 .toy-menu-row {

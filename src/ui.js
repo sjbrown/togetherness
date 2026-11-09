@@ -146,11 +146,41 @@ export function updateInfoBar() {
 }
 
 // -- Menu --------------------------------------------------------------------
+// On mobile the pill's width is content-driven, so the shrink to a circle (and
+// back) is animated between measured pixel sizes. The final size is measured
+// with transitions off, then the pill is put back at its starting size.
+let pillCollapseGen = 0;
+function setPillCollapsed(on) {
+  const pill = $('#pill');
+  if (!pill || pill.classList.contains('collapsed') === on) return;
+  if (!window.matchMedia?.('(max-width: 759px)').matches) {
+    pill.classList.toggle('collapsed', on);
+    return;
+  }
+  const gen = ++pillCollapseGen;
+  const from = { w: pill.offsetWidth, h: pill.offsetHeight };
+  pill.style.transition = 'none';
+  pill.style.width = pill.style.height = '';
+  pill.classList.toggle('collapsed', on);
+  const to = { w: pill.offsetWidth, h: pill.offsetHeight };
+  pill.classList.toggle('collapsed', !on);
+  pill.style.width = from.w + 'px';
+  pill.style.height = from.h + 'px';
+  pill.getBoundingClientRect();
+  pill.style.transition = '';
+  pill.classList.toggle('collapsed', on);
+  pill.style.width = to.w + 'px';
+  pill.style.height = to.h + 'px';
+  if (!on) setTimeout(() => {
+    if (gen === pillCollapseGen) pill.style.width = pill.style.height = '';
+  }, 250);
+}
+
 export function toggleMenu() {
   UIData.menuOpen = !UIData.menuOpen;
   $('#menuBtn')?.classList.toggle('open', UIData.menuOpen);
   $('#menuItems')?.classList.toggle('open', UIData.menuOpen);
-  $('#pill')?.classList.toggle('collapsed', UIData.menuOpen);
+  setPillCollapsed(UIData.menuOpen);
   if (UIData.menuOpen) { hideToolOpts(); }
   updateInfoBar();
 }
@@ -158,7 +188,7 @@ export function closeMenu() {
   UIData.menuOpen = false;
   $('#menuBtn')?.classList.remove('open');
   $('#menuItems')?.classList.remove('open');
-  $('#pill')?.classList.remove('collapsed');
+  setPillCollapsed(false);
   updateInfoBar();
 }
 
