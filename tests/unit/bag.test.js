@@ -6,7 +6,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
 import {
-  TOYS_LAYER, addToyDom, activateAllToyScriptsDom, reparentToyDom, findEl,
+  TOYS_LAYER, addToyEl, activateLayerToyScripts, reparentEl, findEl,
   getRadialItems, invokeMenuAction, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
 import { buildSpokes } from '../../src/ui_radial.js'
@@ -47,12 +47,12 @@ afterEach(() => { vi.unstubAllGlobals() })
 async function bagOf(count) {
   const ydoc = new Y.Doc()
   const layerEl = freshLayer()
-  addToyDom(ydoc, layerEl, { id: 'bag1', toyType: 'bag', x: 100, y: 100, color: '#fff' }, BAG_SVG)
+  addToyEl(ydoc, layerEl, { id: 'bag1', toyType: 'bag', x: 100, y: 100, color: '#fff' }, BAG_SVG)
   for (let i = 0; i < count; i++) {
-    addToyDom(ydoc, layerEl, { id: `chip${i}`, toyType: 'chip', x: 100, y: 100, color: '#fff' }, CHIP_SVG)
-    reparentToyDom(layerEl, `chip${i}`, 'bag1')
+    addToyEl(ydoc, layerEl, { id: `chip${i}`, toyType: 'chip', x: 100, y: 100, color: '#fff' }, CHIP_SVG)
+    reparentEl(layerEl, `chip${i}`, 'bag1')
   }
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
   return { ydoc, layerEl, bagEl: findEl(layerEl, 'bag1') }
 }

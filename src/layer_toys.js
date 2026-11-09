@@ -266,7 +266,7 @@ export function isForeignToyG(el) {
  * parsedNode is el's subtree normalised for the data-id invariant
  * (normalizeForeignToySubtree) with any embedded <script>s already
  * stripped, and those scripts have already been hoisted into ydoc's own
- * scripts fragment — same as at placement time (addToy) — since
+ * scripts fragment — same as at placement time (addToyEl) — since
  * hoisting needs data-toy-type, which is exactly the kind of toy-contract
  * detail a caller storing/exporting documents shouldn't have to read.
  * scripts is returned too, for a caller that wants to know what was found
@@ -412,7 +412,7 @@ export function svgTextToDom(svgText, prefix) {
  * Build a toy's rendered <g> wrapper, ready to insert into the layer.
  * attrs: { id, toyType, x, y, color } — x,y is the centre point.
  */
-export function buildToyDom(attrs, svgText) {
+export function buildToyEl(attrs, svgText) {
   const { id, toyType, x, y, color } = attrs
   const { svgEl, colorMatrices, width: nativeWidth, height: nativeHeight, scripts } =
     svgTextToDom(svgText, `${id}__`)
@@ -459,7 +459,7 @@ export function toolInitArgs(def, params, fallbackColor) {
  * show. Ids are scoped by `id`. Decorative: scripts are dropped.
  */
 export function buildToyPreviewSvg(id, svgText, toyType, initArgs) {
-  const { toyEl } = buildToyDom({ id, toyType, x: 0, y: 0, color: initArgs.color }, svgText)
+  const { toyEl } = buildToyEl({ id, toyType, x: 0, y: 0, color: initArgs.color }, svgText)
   const svg = toyEl.firstElementChild
   try { runInitializers(toyEl, toyType, initArgs) } catch (err) { console.warn('[toys] preview initialize failed', err) }
   svg.setAttribute('x', '0')
@@ -473,8 +473,8 @@ export function buildToyPreviewSvg(id, svgText, toyType, initArgs) {
  * Place a toy into the live layer. Hoists the template's inline scripts
  * into ydoc, then appends the wrapper. Call from inside runInEnvelope.
  */
-export function addToyDom(ydoc, layerEl, attrs, svgText) {
-  const { toyEl, scripts } = buildToyDom(attrs, svgText)
+export function addToyEl(ydoc, layerEl, attrs, svgText) {
+  const { toyEl, scripts } = buildToyEl(attrs, svgText)
   hoistInlineScripts(ydoc, attrs.toyType, scripts)
   layerEl.appendChild(toyEl)
   return toyEl
@@ -484,7 +484,7 @@ export function addToyDom(ydoc, layerEl, attrs, svgText) {
  * Fetch a toyType's SVG template text, using/warming _svgTextCache.
  * Throws if toyType isn't registered in TOY_TYPES or the fetch fails.
  */
-async function fetchToySvgText(toyType) {
+export async function fetchToySvgText(toyType) {
   let svgText = _svgTextCache.get(toyType)
   if (svgText) return svgText
   const def = TOY_TYPES[toyType]
@@ -494,21 +494,6 @@ async function fetchToySvgText(toyType) {
   svgText = await res.text()
   _svgTextCache.set(toyType, svgText)
   return svgText
-}
-
-/**
- * Place a toy directly onto a layer's DOM. Fetches the toy's SVG file on
- * first use and caches it; subsequent placements of the same toy type are
- * cache hits. attrs: { id, toyType, x, y, color } (x,y is the center point).
- *
- * Not a gesture — nothing is committed to the op log. This exists for
- * building up a layerEl's contents before a checkpoint is taken (table
- * genesis, seeding a scratch layer for tests) — see placeToy for the
- * gesture-committing counterpart used once a table is live.
- */
-export async function addToy(ydoc, layerEl, attrs) {
-  const svgText = await fetchToySvgText(attrs.toyType)
-  return addToyDom(ydoc, layerEl, attrs, svgText)
 }
 
 /**
@@ -622,7 +607,7 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   attachScopedLookup(g, newId)
   // No-ops without a carried-over data-rotate. Matters here for a NESTED
   // clone (its geometry never moves again); the root gets re-synced once
-  // more once cloneToyDom repositions it.
+  // more once cloneToyEl repositions it.
   syncRotation(g)
 
   cloned.push({ id: newId, toyType, el: g })
@@ -640,7 +625,7 @@ export function cloneToyAt(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
   const newId = newToyId()
 
   const { result } = ensureEnvelope(ydoc, layerEl, () => {
-    const built = addClonedToyDom(layerEl, cloneeEl, newId, x, y)
+    const built = addClonedToyEl(layerEl, cloneeEl, newId, x, y)
     for (const { toyType, el } of built.cloned) runInitializers(el, toyType)
     return built
   }, { gesture: 'clone', ...opts })
@@ -651,7 +636,7 @@ export function cloneToyAt(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
 /**
  * Deep-clone an already-placed toy under a fresh id, nested toys and
  * all — the "duplicate this specific instance, live state and all"
- * counterpart to buildToyDom's "instantiate a fresh one from its
+ * counterpart to buildToyEl's "instantiate a fresh one from its
  * template". Used by supply-style toys (see src/toy/supply.svg) that
  * hand back a copy of whatever they're holding rather than conjuring a
  * blank instance.
@@ -662,7 +647,7 @@ export function cloneToyAt(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
  * Returns { toyEl, cloned }, where cloned lists every toy instance this
  * produced ({ id, toyType, el })
  */
-export function cloneToyDom(sourceEl, newId, x, y) {
+export function cloneToyEl(sourceEl, newId, x, y) {
   const cloned = []
   const toyEl  = cloneToyBoundary(sourceEl, newId, cloned)
   const svgEl  = toyEl.querySelector(':scope > svg')
@@ -676,9 +661,9 @@ export function cloneToyDom(sourceEl, newId, x, y) {
   return { toyEl, cloned }
 }
 
-/** Clone + append, mirroring addToyDom's relationship to buildToyDom. */
-export function addClonedToyDom(layerEl, sourceEl, newId, x, y) {
-  const result = cloneToyDom(sourceEl, newId, x, y)
+/** Clone + append, mirroring addToyEl's relationship to buildToyEl. */
+export function addClonedToyEl(layerEl, sourceEl, newId, x, y) {
+  const result = cloneToyEl(sourceEl, newId, x, y)
   layerEl.appendChild(result.toyEl)
   return result
 }
@@ -721,7 +706,7 @@ export function deleteEl(layerEl, id) {
  * Note, there's also an end-of-gesture scan (runContentsChangeCascadeInto)
  * called by runGesture as a backstop
  */
-export function reparentToyDom(layerEl, id, containerElId) {
+export function reparentEl(layerEl, id, containerElId) {
   const el = layerEl.querySelector(`[data-id="${id}"]`)
   if (!el) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
   const elSvg = el.tagName === 'svg' ? el : el.querySelector('svg')
@@ -800,7 +785,7 @@ export function getGeom(svgEl) {
 }
 
 /**
- * The drag anchor for a toy is its centre point — matching how addToy places
+ * The drag anchor for a toy is its centre point — matching how addToyEl places
  * it: x = center - width/2, y = center - height/2 (the toy's own native size).
  * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if geom is unavailable.
  */
@@ -1327,12 +1312,12 @@ export function findEl(layerEl, id) {
 }
 
 /** Every top-level toy wrapper in z-order. */
-export function listToysDom(layerEl) {
+export function listEls(layerEl) {
   return layerEl ? [...layerEl.querySelectorAll(':scope > g.toy')] : []
 }
 
 export function layerData(layerEl) {
-  return listToysDom(layerEl).map(toyData)
+  return listEls(layerEl).map(toyData)
 }
 
 /** Snapshot a rendered toy's state: id, type, color and centre. */
@@ -1858,7 +1843,7 @@ function affectedContainerIdsFromRecords(records) {
  * Run containerEl's own contents_change_handler(s), if its toy type has
  * any registered — a plain, direct, synchronous call, not tied to any
  * mutation-record scanning. Used both by the generic end-of-gesture
- * cascade below and directly by reparentToyDom, so a reparent's own
+ * cascade below and directly by reparentEl, so a reparent's own
  * container reaction doesn't have to wait for that scan to discover it.
  */
 function runContentsChangeHandlersFor(containerEl) {
@@ -1959,7 +1944,7 @@ export const TOYS_LAYER = defineOpLayer({
       runPositionsChangeCascadeInto(all, layerEl, opts.positionEvents)
       return all.slice(records.length)
     },
-    afterProject: (ydoc, layerEl) => activateAllToyScriptsDom(ydoc, layerEl),
+    afterProject: (ydoc, layerEl) => activateLayerToyScripts(ydoc, layerEl),
   },
 })
 
@@ -2041,7 +2026,7 @@ export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId, 
  * since getMenuActions reads globalThis[namespace].menu and nothing had
  * ever populated it.
  */
-export function activateAllToyScriptsDom(ydoc, layerEl) {
+export function activateLayerToyScripts(ydoc, layerEl) {
   if (!layerEl) return
   const seen = new Set()
   for (const el of layerEl.querySelectorAll('[data-toy-type]')) {
@@ -2065,7 +2050,7 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
   const svgText = await fetchToySvgText(attrs.toyType)
   let toyEl = null
   runGesture(ydoc, layerEl, () => {
-    toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
+    toyEl = addToyEl(ydoc, layerEl, attrs, svgText)
   }, { gesture: 'place', ...opts })
   activateToyScripts(ydoc, attrs.toyType)
   return toyEl
@@ -2082,7 +2067,7 @@ export function placeToyInGesture(ydoc, layerEl, attrs, initArgs) {
   if (!isInsideEnvelope()) throw new Error('[toys] placeToyInGesture needs an open gesture')
   const svgText = _svgTextCache.get(attrs.toyType)
   if (!svgText || !isToyTypeActivated(attrs.toyType)) return null
-  const toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
+  const toyEl = addToyEl(ydoc, layerEl, attrs, svgText)
   runInitializers(toyEl, attrs.toyType, initArgs)
   return toyEl
 }
@@ -2152,7 +2137,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     },
     importMany: (els) => {
       const op = base.importMany(els)
-      activateAllToyScriptsDom(ydoc, layerEl())
+      activateLayerToyScripts(ydoc, layerEl())
       return op
     },
   }))

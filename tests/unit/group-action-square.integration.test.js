@@ -50,7 +50,8 @@ async function bootApp(toys) {
       <g id="background-layer"></g><g id="boun_pos-layer"></g><g id="toys-layer"></g>
       <g id="drawing-layer"></g><g id="selection_shared"></g><g id="awareness"></g><g id="selection_local"></g><g id="delight-layer"></g></svg></div>`
   const svgEl = document.getElementById('canvas')
-  const { addToy, activateAllToyScriptsDom } = await import('../../src/layer_toys.js')
+  const { activateLayerToyScripts } = await import('../../src/layer_toys.js')
+  const { addToy } = await import('../helpers/toys.js')
   const { boot, App } = await import('../../src/app.js')
   const { tablesAPI } = await import('../../src/tables.js')
   const ydoc = tablesAPI.makeDoc()
@@ -58,7 +59,7 @@ async function bootApp(toys) {
   const awareness = new awarenessProtocol.Awareness(ydoc)
   const user = { id: 'bailey', name: 'Bailey', color: '#0f0', gradient: { c1: '#0f0', c2: '#0a0', angle: 45 } }
   for (const t of toys) await addToy(ydoc, layerEl, { color: '#abc', ...t })
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
   awareness.setLocalState({ user, cursor: null, desired: {} })
   boot({ ydoc, awareness, provider: { on: vi.fn(), signalingConns: [] }, user,

@@ -4,7 +4,7 @@
  * Two things a die dropped into a tray needs, together, to actually be
  * visible: (1) the tray itself renders at something close to its real
  * size (not squashed to a fixed 64x64 — see the native-sizing fix in
- * addToyDom), and (2) the moved toy's position gets converted into the
+ * addToyEl), and (2) the moved toy's position gets converted into the
  * tray's own local coordinate space on drop, not left at its old
  * table-space x/y (which — once nested inside the tray's own <svg
  * viewBox> — would very likely fall outside the visible area entirely).
@@ -13,7 +13,7 @@
  * (untestable directly — see the project's existing convention of not
  * unit-testing app.js). dropIntoTray() below is a literal, minimal
  * reimplementation of exactly what commitMove does for the reparent
- * branch: findDropTarget → reparentToyDom → getGeom the tray →
+ * branch: findDropTarget → reparentEl → getGeom the tray →
  * applyMove the moved toy at (dropX - trayGeom.x, dropY - trayGeom.y).
  */
 
@@ -24,9 +24,10 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import {
-  addToy, findDropTarget, reparentToyDom, getGeom, applyMove,
+  findDropTarget, reparentEl, getGeom, applyMove,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -48,7 +49,7 @@ function freshLayer() {
 function dropIntoTray(ydoc, layerEl, draggedId, dropX, dropY) {
   const dropTrayId = findDropTarget(layerEl, draggedId, dropX, dropY)
   if (!dropTrayId) return null
-  const movedEl = reparentToyDom(layerEl, draggedId, dropTrayId)
+  const movedEl = reparentEl(layerEl, draggedId, dropTrayId)
   const trayEl  = layerEl.querySelector(`[data-id="${dropTrayId}"]`)
   const trayGeom = trayEl && getGeom(trayEl)
   if (trayGeom) applyMove(movedEl, dropX - trayGeom.x, dropY - trayGeom.y)
@@ -124,7 +125,7 @@ describe('drop-position rebase — real tray_sum + dice_d6 assets', () => {
     await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 900, y: 900, color: '#fff' })
 
     const dropTrayId = findDropTarget(layerEl, 'die1', 350, 340)
-    const movedEl = reparentToyDom(layerEl, 'die1', dropTrayId) // reparent only, no rebase
+    const movedEl = reparentEl(layerEl, 'die1', dropTrayId) // reparent only, no rebase
 
     const movedSvg = movedEl.querySelector('svg')
     const staleX = Number(movedSvg.getAttribute('x')) // still the original table-space x (900 - 40)

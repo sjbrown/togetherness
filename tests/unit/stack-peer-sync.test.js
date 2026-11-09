@@ -10,7 +10,7 @@ import * as Events from '../../src/events.js'
 import { getOps } from '../../src/op_dag.js'
 import * as OpLayer from '../../src/op_layer.js'
 
-const { TOYS_LAYER, addToyDom, activateToyScripts, invokeMenuAction, _clearSvgTextCache, _resetToyScriptState } = Toys
+const { TOYS_LAYER, addToyEl, activateToyScripts, invokeMenuAction, _clearSvgTextCache, _resetToyScriptState } = Toys
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const TOY_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src/toy')
 const read = (f) => fs.readFileSync(path.join(TOY_DIR, f), 'utf8')
@@ -21,7 +21,7 @@ afterEach(() => vi.unstubAllGlobals())
 function mk(ydoc) {
   const layerEl = document.createElementNS(SVG_NS, 'g'); layerEl.id = 'toys-layer'
   ensureLayerId(layerEl, TOYS_LAYER)
-  const place = (id, x) => addToyDom(ydoc, layerEl, { id, toyType: 'chip', x, y: 300, color: '#dd2222' }, read('chip.svg'))
+  const place = (id, x) => addToyEl(ydoc, layerEl, { id, toyType: 'chip', x, y: 300, color: '#dd2222' }, read('chip.svg'))
   const a = place('chipA', 100), b = place('chipB', 112)
   a.setAttribute('data-below', 'chipB'); a.setAttribute('data-above', '')
   b.setAttribute('data-above', 'chipA'); b.setAttribute('data-below', '')

@@ -17,8 +17,8 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  TOYS_LAYER, makeLayerAPI as makeToysAPI, activateAllToyScriptsDom, runGesture,
-  reparentToyDom, applyMove, getMenuActions, invokeMenuAction,
+  TOYS_LAYER, makeLayerAPI as makeToysAPI, activateLayerToyScripts, runGesture,
+  reparentEl, applyMove, getMenuActions, invokeMenuAction,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
 import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/layer_drawing.js'
@@ -78,7 +78,7 @@ const LAYERS = [
       await placeDie(L, 'die1', 0, 0)
       await placeDie(L, 'die2', 40, 40)
       await L.add({ id: 'tray1', toyType: 'tray_sum', x: 100, y: 100, color: '#fff' })
-      activateAllToyScriptsDom(ydoc, layerEl)
+      activateLayerToyScripts(ydoc, layerEl)
       await new Promise(r => setTimeout(r, 0))
 
       L.applyMoveCommit(L.find('die1'), 60, 60)
@@ -90,7 +90,7 @@ const LAYERS = [
       // Reparent into a container: one gesture, the same shape as
       // commitMove's drop into a tray.
       runGesture(ydoc, layerEl, () => {
-        reparentToyDom(layerEl, 'die1', 'tray1')
+        reparentEl(layerEl, 'die1', 'tray1')
         applyMove(layerEl.querySelector('[data-id="die1"]'), 10, 10)
       }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
 

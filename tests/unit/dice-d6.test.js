@@ -8,9 +8,10 @@ import { getOps, appendOp } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead, setHead } from '../../src/op_head.js'
 import * as Toys from '../../src/layer_toys.js'
-import { addToy, activateAllToyScriptsDom, _clearSvgTextCache,
+import {  activateLayerToyScripts, _clearSvgTextCache,
          _resetToyScriptState, getMenuActions, invokeMenuAction,
          getNamespacesForType } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -37,7 +38,7 @@ function stubToyFetch() {
 
 async function placeAndActivate(ydoc, layerEl, id) {
   await addToy(ydoc, layerEl, { id, toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0)) // flush the fire-and-forget script activation
   return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }

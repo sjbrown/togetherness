@@ -6,7 +6,7 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
 import {
-  TOYS_LAYER, TOY_TYPES, addToyDom, activateAllToyScriptsDom, reparentToyDom, deleteEl,
+  TOYS_LAYER, TOY_TYPES, addToyEl, activateLayerToyScripts, reparentEl, deleteEl,
   findEl, getMenuActions, invokeMenuAction, runInitializers, getTtStateSchema, editEl, TOOLS, toolInitArgs,
   findDropTarget, runGesture, getLandingPosition, cloneToyAt,
   _clearSvgTextCache, _resetToyScriptState,
@@ -49,11 +49,11 @@ function wirePlatform(ydoc, layerEl) {
     on('toy:add', (e) => {
       const { toyType, x, y, color, initArgs } = e.detail
       const svg = { single_poker_card: CARD_SVG, poker_card_pile: PILE_SVG }[toyType]
-      const toyEl = addToyDom(ydoc, layerEl, { id: `new${n++}`, toyType, x, y, color }, svg)
+      const toyEl = addToyEl(ydoc, layerEl, { id: `new${n++}`, toyType, x, y, color }, svg)
       runInitializers(toyEl, toyType, initArgs)
     }),
     on('toy:delete', (e) => { deleteEl(layerEl, e.detail.id) }),
-    on('toy:reparent', (e) => { reparentToyDom(layerEl, e.detail.id, e.detail.containerId) }),
+    on('toy:reparent', (e) => { reparentEl(layerEl, e.detail.id, e.detail.containerId) }),
   ]
 }
 
@@ -79,11 +79,11 @@ async function table() {
   const layerEl = freshLayer()
   wirePlatform(ydoc, layerEl)
   const place = (id, toyType, svg, x = 100, y = 100) =>
-    addToyDom(ydoc, layerEl, { id, toyType, x, y, color: '#fa2020' }, svg)
+    addToyEl(ydoc, layerEl, { id, toyType, x, y, color: '#fa2020' }, svg)
   place('seed', 'single_poker_card', CARD_SVG)
   const decks = [place('deck1', 'poker_deck', DECK_SVG, 100), place('deck2', 'poker_deck', DECK_SVG, 400)]
   place('pile1', 'poker_card_pile', PILE_SVG, 700, 100)
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
   deleteEl(layerEl, 'seed')
   decks.forEach(el => runInitializers(el, 'poker_deck'))
@@ -190,7 +190,7 @@ describe('poker_deck', () => {
     const t = await table()
     draw(t, 'deck1', { num: 2 })
     const [first, second] = onTable(t.layerEl)
-    reparentToyDom(t.layerEl, first.getAttribute('data-id'), 'pile1')
+    reparentEl(t.layerEl, first.getAttribute('data-id'), 'pile1')
     const otherDeck = order(t.layerEl, 'deck2')
 
     shuffleDeck(t, 'deck1')
@@ -214,7 +214,7 @@ describe('poker_deck: start_shuffled', () => {
   // Off the toys layer, so a deck is placed without a table around it.
   async function deckWith(options) {
     const t = await table()
-    const el = addToyDom(t.ydoc, document.createElementNS(SVG_NS, 'g'),
+    const el = addToyEl(t.ydoc, document.createElementNS(SVG_NS, 'g'),
       { id: 'd', toyType: 'poker_deck', x: 0, y: 0, color: '#fa2020' }, DECK_SVG)
     const pristine = [...el.querySelectorAll('.tt_contents > svg.card')].map(c => `${c.getAttribute('data-suit')}.${c.getAttribute('data-rank')}`)
     runInitializers(el, 'poker_deck', options)
@@ -372,7 +372,7 @@ describe('poker_deck: deck_summary count', () => {
     // Off the toys layer, so these are not stocked.
     const scratch = document.createElementNS(SVG_NS, 'g')
     const make = (id, opts) => {
-      const el = addToyDom(t.ydoc, scratch, { id, toyType: 'poker_deck', x: 0, y: 0, color: '#fa2020' }, DECK_SVG)
+      const el = addToyEl(t.ydoc, scratch, { id, toyType: 'poker_deck', x: 0, y: 0, color: '#fa2020' }, DECK_SVG)
       runInitializers(el, 'poker_deck', opts)
       return el
     }
@@ -605,7 +605,7 @@ describe('stacking cards into a poker_card_pile and fanning it', () => {
     const pile = fillPile(t)
     for (let k = 3; k < 8; k++) {
       loose(t.place, `x${k}`, 2, k)
-      reparentToyDom(t.layerEl, `x${k}`, 'pile1') // the drop path
+      reparentEl(t.layerEl, `x${k}`, 'pile1') // the drop path
     }
     const spots = spotsOf(pile)
     const cards = cardsOf(pile)
@@ -771,7 +771,7 @@ describe('drop filtering: `data-tt-matches` on a container\'s tt_contents', () =
 describe('dropping a card on a deck works like Return to deck', () => {
   // What commitMove does once findDropTarget names the deck.
   const dropOn = (t, cardId, deckId) =>
-    runGesture(t.ydoc, t.layerEl, () => reparentToyDom(t.layerEl, cardId, deckId),
+    runGesture(t.ydoc, t.layerEl, () => reparentEl(t.layerEl, cardId, deckId),
       { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
 
   // What the deck decided about a card toy inside it.
@@ -881,13 +881,13 @@ describe('dropping a card on a deck works like Return to deck', () => {
 describe('a toy that is not a card cannot be put in a deck or a pile', () => {
   // data-tt-matches is enforced where reparenting happens, so a drag, a
   // toy:reparent event and a toy script all meet the same refusal.
-  test('reparentToyDom refuses it, and nothing changes', async () => {
+  test('reparentEl refuses it, and nothing changes', async () => {
     const t = await table()
     t.place('chip1', 'chip', CHIP_SVG, 1500, 500)
     const before = t.layerEl.outerHTML
 
     for (const target of ['deck1', 'pile1']) {
-      expect(() => reparentToyDom(t.layerEl, 'chip1', target)).toThrow(/does not accept/)
+      expect(() => reparentEl(t.layerEl, 'chip1', target)).toThrow(/does not accept/)
     }
 
     expect(t.layerEl.outerHTML).toBe(before)
@@ -901,8 +901,8 @@ describe('a toy that is not a card cannot be put in a deck or a pile', () => {
     t.place('chip1', 'chip', CHIP_SVG, 1500, 500)
     loose(t.place, 'card1', 1, 1)
 
-    expect(() => reparentToyDom(t.layerEl, 'card1', 'deck1')).not.toThrow()
-    expect(() => reparentToyDom(t.layerEl, 'chip1', 'bag1')).not.toThrow()
+    expect(() => reparentEl(t.layerEl, 'card1', 'deck1')).not.toThrow()
+    expect(() => reparentEl(t.layerEl, 'chip1', 'bag1')).not.toThrow()
   })
 
   test('a selector that does not parse refuses everything, with a warning', async () => {
@@ -911,7 +911,7 @@ describe('a toy that is not a card cannot be put in a deck or a pile', () => {
     loose(t.place, 'card1', 1, 1)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
-      expect(() => reparentToyDom(t.layerEl, 'card1', 'bad')).toThrow(/does not accept/)
+      expect(() => reparentEl(t.layerEl, 'card1', 'bad')).toThrow(/does not accept/)
     } finally { warn.mockRestore() }
   })
 })

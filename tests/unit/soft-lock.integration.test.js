@@ -21,7 +21,8 @@
 import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, _clearSvgTextCache } from '../../src/layer_toys.js'
+import { _clearSvgTextCache } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),

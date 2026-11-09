@@ -2,7 +2,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToyDom, findDropTarget, _clearSvgTextCache,
+  addToyEl, findDropTarget, _clearSvgTextCache,
 } from '../../src/layer_toys.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -21,13 +21,13 @@ const DIE_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="die_fixture" class="die_fixture">
 </svg>`
 
-// addToyDom places the toy's embedded <svg> centered on (x, y), sized to
+// addToyEl places the toy's embedded <svg> centered on (x, y), sized to
 // the fixture's own native width/height (clamped for sanity — see
 // clampToySize) — no longer forced to one fixed DISPLAY square. So place
 // with (x, y) = the desired *center* and read back the actual placed
 // geometry rather than assuming a fixed size.
 function place(ydoc, layerEl, id, toyType, svgText, cx, cy) {
-  addToyDom(ydoc, layerEl, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
+  addToyEl(ydoc, layerEl, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
 }
 
 beforeEach(() => {

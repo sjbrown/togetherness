@@ -6,8 +6,9 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TOYS_LAYER } from '../../src/layer_toys.js'
 import * as Toys from '../../src/layer_toys.js'
-import { addToy, activateAllToyScriptsDom, reparentToyDom, undoToyGesture, _clearSvgTextCache,
+import {  activateLayerToyScripts, reparentEl, undoToyGesture, _clearSvgTextCache,
          _resetToyScriptState, getNamespacesForType } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 import { getOps } from '../../src/op_dag.js'
 
 const TABLE  = 'test-table'
@@ -42,7 +43,7 @@ function stubToyFetch() {
 
 async function placeAndActivate(ydoc, layerEl, toyType, id) {
   await addToy(ydoc, layerEl, { id, toyType, x: 0, y: 0, color: '#fff' })
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0)) // flush the fire-and-forget script activation
   return { layerEl, toyEl: layerEl.querySelector(`[data-id="${id}"]`) }
 }
@@ -85,11 +86,11 @@ describe('tray.js + tray_sum — script activation', () => {
     // from a peer before this client ever activates anything.
     await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    reparentToyDom(layerEl, 'die1', 'tray1')
+    reparentEl(layerEl, 'die1', 'tray1')
 
     // Now this client activates for the very first time — tray1 already has
     // die1 nested, before 'tray_sum' has ever been activated.
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     expect(getNamespacesForType('tray_sum')).toEqual(['tray', 'tray_sum'])
@@ -104,9 +105,9 @@ describe('tray.js + tray_sum — script activation', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    reparentToyDom(layerEl, 'die1', 'tray1')
+    reparentEl(layerEl, 'die1', 'tray1')
 
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     expect(typeof globalThis.dice.roll_handler).toBe('function')
@@ -336,10 +337,10 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
     await addToy(ydoc, layerEl, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6',  x: 0, y: 0, color: '#fff' })
-    Toys.reparentToyDom(layerEl, 'inner', 'outer')
-    Toys.reparentToyDom(layerEl, 'die1', 'inner')
+    Toys.reparentEl(layerEl, 'inner', 'outer')
+    Toys.reparentEl(layerEl, 'die1', 'inner')
 
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     const dieEl = layerEl.querySelector('[data-id="die1"]')
 
@@ -364,10 +365,10 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
     await addToy(ydoc, layerEl, { id: 'trayB', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'dieA', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'dieB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    Toys.reparentToyDom(layerEl, 'dieA', 'trayA')
-    Toys.reparentToyDom(layerEl, 'dieB', 'trayB')
+    Toys.reparentEl(layerEl, 'dieA', 'trayA')
+    Toys.reparentEl(layerEl, 'dieB', 'trayB')
 
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     // A synthetic "roll both" menu action, installed directly on the real
@@ -448,7 +449,7 @@ describe('invokeMenuAction — the DOM-based cascade itself', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'loopA', toyType: 'meeple', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'loopB', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     // The handler scripts above use document.querySelector to reach across
     // toys (same as production code now legitimately can) — that only
     // finds anything if the layer is actually attached to the page, unlike

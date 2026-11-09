@@ -71,7 +71,7 @@ export function init(App, svgEl, Toys, UI) {
       const layerEl = svgEl.querySelector('#toys-layer')
       if (!layerEl) { e.detail.error = 'toys layer not found'; return }
       // containerId === null (or omitted) means "move to the top level" —
-      // same convention reparentToyDom itself uses. Only look one up when
+      // same convention reparentEl itself uses. Only look one up when
       // an actual target was given.
       if (containerId != null && !layerEl.querySelector(`[data-id="${containerId}"]`)) {
         e.detail.error = `toy not found: ${containerId}`; return
@@ -82,7 +82,7 @@ export function init(App, svgEl, Toys, UI) {
       const wasInside = Toys.isInsideEnvelope()
       try {
         Toys.ensureEnvelope(ydoc, layerEl, () => {
-          Toys.reparentToyDom(layerEl, id, containerId)
+          Toys.reparentEl(layerEl, id, containerId)
         }, { gesture: 'reparent', authorId: myId, tableId })
       } catch (err) {
         e.detail.error = err.message

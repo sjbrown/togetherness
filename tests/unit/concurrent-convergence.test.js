@@ -21,7 +21,7 @@ import { TOYS_LAYER } from '../../src/layer_toys.js'
 import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/layer_drawing.js'
 import { BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI, gridFillExtent } from '../../src/layer_boun_pos.js'
 import {
-  placeToy, makeLayerAPI, activateAllToyScriptsDom, projectLayer, _clearSvgTextCache, _resetToyScriptState,
+  placeToy, makeLayerAPI, activateLayerToyScripts, projectLayer, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
 import { receiveLayerOp, undoGesture } from '../../src/op_layer.js'
@@ -139,7 +139,7 @@ function assertConverged(peers) {
 async function place(peer, id, toyType, x, y) {
   await placeToy(peer.ydoc, peer.layer, { id, toyType, x, y, color: '#fff' },
     { authorId: peer.id, tableId: peer.tableId })
-  activateAllToyScriptsDom(peer.ydoc, peer.layer)
+  activateLayerToyScripts(peer.ydoc, peer.layer)
   await new Promise(r => setTimeout(r, 0))
   return getOp(peer)
 }

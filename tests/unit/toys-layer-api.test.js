@@ -19,12 +19,13 @@ import {
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
-  makeLayerAPI, projectLayer, placeToy, addToy, activateAllToyScriptsDom,
+  makeLayerAPI, projectLayer, placeToy,  activateLayerToyScripts,
   undoToyGesture, redoToyGesture,
   canUndoToyGesture, canRedoToyGesture,
-  getGeom, reparentToyDom, applyMove, runGesture,
+  getGeom, reparentEl, applyMove, runGesture,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 import { getOps, getContent, appendOp, appendCheckpoint } from '../../src/op_dag.js'
 import { checkpointOp, projectFrom } from '../../src/op_checkpoint.js'
 import { getHead, setHead } from '../../src/op_head.js'
@@ -67,7 +68,7 @@ async function setup(...toys) {
   for (const [id, toyType] of toys) {
     await addToy(ydoc, layerEl, { id, toyType, x: 100, y: 100, color: '#ffffff' })
   }
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
 
   const L = makeLayerAPI(ydoc, () => layerEl, { id: 'user-a' })
@@ -915,7 +916,7 @@ describe('undoToyGesture / redoToyGesture', () => {
     const containerEl   = layerEl.querySelector('[data-id="tray1"]')
     const containerGeom = getGeom(containerEl)
     runGesture(ydoc, layerEl, () => {
-      reparentToyDom(layerEl, 'die1', 'tray1')
+      reparentEl(layerEl, 'die1', 'tray1')
       const movedEl = layerEl.querySelector('[data-id="die1"]')
       applyMove(movedEl, 320 - containerGeom.x, 320 - containerGeom.y)
     }, { origin: 'envelope', gesture: 'reparent', authorId: 'user-a', tableId: TABLE })

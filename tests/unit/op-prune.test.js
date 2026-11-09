@@ -18,7 +18,7 @@ import {
 import { ensureLayerId } from '../../src/op_layers.js'
 import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
-  placeToy, makeLayerAPI, activateAllToyScriptsDom, _clearSvgTextCache, _resetToyScriptState,
+  placeToy, makeLayerAPI, activateLayerToyScripts, _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
 import {
   getOps, getContent, appendOp, appendCheckpoint, ancestors, ancestorsInclusive,
@@ -92,7 +92,7 @@ function seedGenesis(peers) {
 async function place(peer, id, x = 0, y = 0) {
   await placeToy(peer.ydoc, peer.layer, { id, toyType: 'dice_d6', x, y, color: '#fff' },
     { authorId: peer.id, tableId: peer.tableId })
-  activateAllToyScriptsDom(peer.ydoc, peer.layer)
+  activateLayerToyScripts(peer.ydoc, peer.layer)
   await new Promise(r => setTimeout(r, 0))
   return getOps(peer.ydoc, TOYS_LAYER).get(getHead(peer.tableId, TOYS_LAYER))
 }

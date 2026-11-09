@@ -17,9 +17,10 @@ import {
   snapshot, serialize, apply, invert, ensureIds, serializeNode, deserializeNode, WireApplyError,
 } from '../../src/op_wire_mutation.js'
 import {
-  addToy, activateAllToyScriptsDom,
+  activateLayerToyScripts,
   _clearSvgTextCache, _resetToyScriptState,
 } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -437,7 +438,7 @@ describe('round trip over real toy gestures', () => {
     for (const [id, toyType] of toys) {
       await addToy(ydoc, layerEl, { id, toyType, x: 0, y: 0, color: '#fff' })
     }
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     return { ydoc, layerEl }
   }

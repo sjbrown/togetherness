@@ -6,8 +6,9 @@ import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as Toys from '../../src/layer_toys.js'
 import {
-  addToy, _clearSvgTextCache, reparentToyDom,
+  _clearSvgTextCache, reparentEl,
 } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -35,19 +36,19 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllGlobals() })
 
-describe('reparentToyDom — validation', () => {
+describe('reparentEl — validation', () => {
   test('throws if the toy itself is not found', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    expect(() => reparentToyDom(layerEl, 'nope', 'tray1')).toThrow(/toy not found/)
+    expect(() => reparentEl(layerEl, 'nope', 'tray1')).toThrow(/toy not found/)
   })
 
   test('throws if the target container is not found', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    expect(() => reparentToyDom(layerEl, 'die1', 'nope')).toThrow(/target not found/)
+    expect(() => reparentEl(layerEl, 'die1', 'nope')).toThrow(/target not found/)
   })
 
   test('throws if the target has no .tt_contents', async () => {
@@ -55,14 +56,14 @@ describe('reparentToyDom — validation', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'a', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'b', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    expect(() => reparentToyDom(layerEl, 'a', 'b')).toThrow(/no \.tt_contents/)
+    expect(() => reparentEl(layerEl, 'a', 'b')).toThrow(/no \.tt_contents/)
   })
 
   test('refuses to move a toy into itself', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    expect(() => reparentToyDom(layerEl, 'tray1', 'tray1')).toThrow(/cannot move .* into itself/)
+    expect(() => reparentEl(layerEl, 'tray1', 'tray1')).toThrow(/cannot move .* into itself/)
   })
 
   test('refuses to move a toy into its own contained toy (would disconnect the subtree)', async () => {
@@ -70,12 +71,12 @@ describe('reparentToyDom — validation', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
-    reparentToyDom(layerEl, 'inner', 'outer') // inner now lives inside outer
-    expect(() => reparentToyDom(layerEl, 'outer', 'inner')).toThrow(/cannot move .* into itself or one of its own contained toys/)
+    reparentEl(layerEl, 'inner', 'outer') // inner now lives inside outer
+    expect(() => reparentEl(layerEl, 'outer', 'inner')).toThrow(/cannot move .* into itself or one of its own contained toys/)
   })
 })
 
-describe('reparentToyDom — the move itself', () => {
+describe('reparentEl — the move itself', () => {
   test('moves the toy element into the target\'s tt_contents (DOM)', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
@@ -85,7 +86,7 @@ describe('reparentToyDom — the move itself', () => {
     const dieEl  = layerEl.querySelector('[data-id="die1"]')
     const trayEl = layerEl.querySelector('[data-id="tray1"]')
 
-    const returned = reparentToyDom(layerEl, 'die1', 'tray1')
+    const returned = reparentEl(layerEl, 'die1', 'tray1')
 
     expect(returned).toBe(dieEl) // same DOM node, relocated — not a clone
     expect(Toys.getContentsGroup(trayEl).contains(dieEl)).toBe(true)
@@ -97,9 +98,9 @@ describe('reparentToyDom — the move itself', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'tray1', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'die1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    reparentToyDom(layerEl, 'die1', 'tray1')
+    reparentEl(layerEl, 'die1', 'tray1')
 
-    reparentToyDom(layerEl, 'die1', null)
+    reparentEl(layerEl, 'die1', null)
 
     expect(layerEl.querySelector(':scope > [data-id="die1"]')).not.toBeNull()
   })
@@ -111,8 +112,8 @@ describe('reparentToyDom — the move itself', () => {
     await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'die1',  toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
 
-    reparentToyDom(layerEl, 'inner', 'outer')
-    reparentToyDom(layerEl, 'die1', 'inner')
+    reparentEl(layerEl, 'inner', 'outer')
+    reparentEl(layerEl, 'die1', 'inner')
 
     const outerEl = layerEl.querySelector('[data-id="outer"]')
     const innerEl = layerEl.querySelector('[data-id="inner"]')

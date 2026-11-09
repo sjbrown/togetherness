@@ -1323,7 +1323,7 @@ const App = {
           // A container that tracks its own landing position
           // always lands the moved item exactly there
           const hasLandingPosition = containerEl && !!Toys.getLandingPosition(containerEl);
-          Toys.reparentToyDom(layerEl, id, dropContainerId);
+          Toys.reparentEl(layerEl, id, dropContainerId);
           if (!hasLandingPosition) {
             const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
             const containerGeom = containerEl && Toys.getGeom(containerEl);

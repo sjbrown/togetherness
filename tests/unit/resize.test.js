@@ -2,9 +2,9 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToyDom, computeResize, applyResize,
+  addToyEl, computeResize, applyResize,
   RESIZE_CORNER_SE,
-  reparentToyDom,
+  reparentEl,
   _clearSvgTextCache,
 } from '../../src/layer_toys.js'
 import { resizeCorners, PAD } from '../../src/overlay.js'
@@ -33,7 +33,7 @@ function freshLayer() {
 }
 
 function place(ydoc, layerEl, id, toyType, svgText, cx, cy) {
-  return addToyDom(ydoc, layerEl, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
+  return addToyEl(ydoc, layerEl, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
 }
 
 beforeEach(() => {
@@ -137,7 +137,7 @@ describe('applyResize — nested-toy isolation (ownYClassSelector)', () => {
     const layerEl = freshLayer()
     place(ydoc, layerEl, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
-    reparentToyDom(layerEl, 'inner', 'outer')
+    reparentEl(layerEl, 'inner', 'outer')
 
     applyResize(layerEl.querySelector('[data-id="outer"]'), 40, 50, 300, 220)
 
@@ -156,8 +156,8 @@ describe('applyResize — nested-toy isolation (ownYClassSelector)', () => {
     place(ydoc, layerEl, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'mid', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
-    reparentToyDom(layerEl, 'mid', 'outer')
-    reparentToyDom(layerEl, 'inner', 'mid')
+    reparentEl(layerEl, 'mid', 'outer')
+    reparentEl(layerEl, 'inner', 'mid')
 
     applyResize(layerEl.querySelector('[data-id="outer"]'), 0, 0, 400, 400)
 
@@ -175,7 +175,7 @@ describe('applyResize — nested-toy isolation (ownYClassSelector)', () => {
     const layerEl = freshLayer()
     place(ydoc, layerEl, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
-    reparentToyDom(layerEl, 'inner', 'outer')
+    reparentEl(layerEl, 'inner', 'outer')
 
     applyResize(layerEl.querySelector('[data-id="inner"]'), 0, 0, 90, 90)
 

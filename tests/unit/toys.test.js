@@ -5,14 +5,15 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
-  svgTextToDom, addToy, addToyDom, deleteEl, TOY_TYPES, TOOLS,
-  getGeom, getTtStateSchema, editEl, previewEdit, reparentToyDom, findEl,
+  svgTextToDom,  addToyEl, deleteEl, TOY_TYPES, TOOLS,
+  getGeom, getTtStateSchema, editEl, previewEdit, reparentEl, findEl,
   hslToRgb, colorMatrixValues, selectModes, nextSelectMode,
-  _clearSvgTextCache, _resetToyScriptState, activateAllToyScriptsDom,
+  _clearSvgTextCache, _resetToyScriptState, activateLayerToyScripts,
   newToyId, _getScriptsFragment, initializeToy,
   syncRotation, resolveRotation, applyRotate,
   applyMove, applyResize, ROTATE_SNAP_DEG,
 } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 import { getRotation } from '../../src/geometry.js'
 
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -212,7 +213,7 @@ describe('svgTextToDom — namespacing, url rewriting, viewBox synthesis', () =>
 //
 // addToy's own wrapper-attribute/positioning/id-namespacing/script-hoisting
 // behavior is comprehensively covered in toys-dom-ops.test.js (it shares
-// buildToyDom with addToyDom) -- kept here is what isn't covered there:
+// buildToyEl with addToyEl) -- kept here is what isn't covered there:
 // the reject-and-write-nothing failure paths, deleteEl's own return
 // contract, and the "scripts never in the toy's own DOM" property.
 
@@ -718,7 +719,7 @@ describe('tray_sum: color option + editable name (real assets)', () => {
     await addToy(ydoc, layerEl, { id: 'outer', toyType: 'tray_sum', x: 0, y: 0, color: '#5e7ea8' })
     await addToy(ydoc, layerEl, { id: 'inner', toyType: 'tray_sum', x: 0, y: 0, color: '#a8905e' })
     editEl(layerEl.querySelector('[data-id="inner"]'), { name: 'inner-loot' })
-    reparentToyDom(layerEl, 'inner', 'outer')
+    reparentEl(layerEl, 'inner', 'outer')
 
     const innerBefore = getTtStateSchema(layerEl.querySelector('[data-id="inner"]'))
     expect(innerBefore.name).toBe('inner-loot')
@@ -763,7 +764,7 @@ describe('chip: value from the Tools panel range slider (real assets)', () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const chipEl = await addToy(ydoc, layerEl, { id: 'chip1', toyType: 'chip', x: 0, y: 0, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0)) // flush fire-and-forget script activation
 
     initializeToy(ydoc, layerEl, chipEl, 'chip', AUTHOR, TABLE, { color: '#fff', value: 17 })
@@ -775,7 +776,7 @@ describe('chip: value from the Tools panel range slider (real assets)', () => {
     const ydoc = new Y.Doc()
     const layerEl = document.createElementNS('http://www.w3.org/2000/svg', 'g')
     const chipEl = await addToy(ydoc, layerEl, { id: 'chip1', toyType: 'chip', x: 0, y: 0, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     initializeToy(ydoc, layerEl, chipEl, 'chip', AUTHOR, TABLE)
@@ -810,7 +811,7 @@ describe('token_glass: value from the Tools panel range slider (real assets)', (
 
   async function placedToken(ydoc, layerEl) {
     const tokenEl = await addToy(ydoc, layerEl, { id: 'tok1', toyType: 'token_glass', x: 0, y: 0, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0)) // flush fire-and-forget script activation
     return tokenEl
   }
@@ -880,7 +881,7 @@ describe('single_poker_card: suit/rank from the Tools + Edit panel sliders (real
 
   async function placedCard(ydoc, layerEl, id = 'card1') {
     const cardEl = await addToy(ydoc, layerEl, { id, toyType: 'single_poker_card', x: 0, y: 0, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0)) // flush fire-and-forget script activation
     return cardEl
   }
