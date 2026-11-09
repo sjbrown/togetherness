@@ -142,6 +142,18 @@ html, body {
    would be lost the moment the pointer left the handle it is dragging. */
 #stage.pivot-dragging, #stage.pivot-dragging * { cursor: crosshair; }
 
+/* #selection_local keeps its nodes across renders (overlay.js's
+   reconcile), so these run once, as a ring or handle first appears. The
+   ring fades only: a drag ring carries a rotate transform attribute, which
+   a CSS transform would override while it ran. */
+@media (prefers-reduced-motion: no-preference) {
+  #selection_local .selRing { animation: sel-ring-in 140ms ease-out; }
+  #selection_local .handle  { animation: sel-handle-in 160ms cubic-bezier(.34, 1.56, .64, 1);
+                              transform-box: fill-box; transform-origin: center; }
+}
+@keyframes sel-ring-in   { from { opacity: 0; } }
+@keyframes sel-handle-in { from { opacity: 0; transform: scale(.5); } }
+
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the
  * tray's own background — instead of the nested toy itself. Descendant

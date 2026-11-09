@@ -705,19 +705,22 @@ export function render() {
 // ticks never reach here, so its nodes are rebuilt only on local or doc change.
 function renderSelectionLocal() {
   if (!_selectionLocalEl) return;
-  _selectionLocalEl.innerHTML = '';
+  // Collected rather than appended, then reconciled into the live layer, so
+  // a node that is still wanted keeps its identity (see reconcile()).
+  const next = [];
+  const layer = { appendChild: (node) => (next.push(node), node) };
 
   const scale = App.getViewScale();
 
   // ── Dim placeholders — z-bottom ────────────────────────────────────────
   for (const entry of _dragGhosts.values()) {
-    _selectionLocalEl.appendChild(entry.placeholderEl);
+    layer.appendChild(entry.placeholderEl);
   }
   for (const entry of _resizeGhosts.values()) {
-    _selectionLocalEl.appendChild(entry.placeholderEl);
+    layer.appendChild(entry.placeholderEl);
   }
   for (const entry of _ghosts.values()) {
-    _selectionLocalEl.appendChild(entry.placeholderEl);
+    layer.appendChild(entry.placeholderEl);
   }
 
   // ── Selection rings  ───────────────────────────────
@@ -728,7 +731,7 @@ function renderSelectionLocal() {
     // getBBox is UNROTATED; furniture rides the element's own rotation so
     // the ring hugs the shape, not its axis-aligned bounds.
     const rot = App.getRotation?.(elId) ?? null;
-    const parent = decorGroup(rot); // one shared rotation group per element
+    const parent = decorGroup(rot, elId, layer); // one group per element
     switch (entry.mode) {
       case 'local':
       case 'candidate':
@@ -750,44 +753,46 @@ function renderSelectionLocal() {
         break;
       case 'sel-action':
         renderLocalSelection(geo, entry, scale, parent);
-        if (App.hasToyActions(elId)) renderActionAffordance(bowstringOrigin(geo, rot), scale);
+        if (App.hasToyActions(elId)) renderActionAffordance(bowstringOrigin(geo, rot), scale, 'bowstring', layer, `bowstring:${elId}`);
         break;
     }
   }
 
   // ── Group action square — one for a multi-selection sharing a default action
   const group = App.getGroupAction?.();
-  if (group) renderActionAffordance(group.origin, scale, 'groupAction');
+  if (group) renderActionAffordance(group.origin, scale, 'groupAction', layer, 'group-action');
 
   // ── Drop-target hover — highlight on the el under the drop point
   if (_dropTargetId) {
     const geo = App.getBBox(_dropTargetId);
-    if (geo) renderDropTargetHover(geo, scale);
+    if (geo) renderDropTargetHover(geo, scale, layer);
   }
 
   // ── Local drag ghosts + rings — z-top ──────────────────────────────────
   for (const [elId, entry] of _dragGhosts) {
-    _selectionLocalEl.appendChild(entry.ghostEl);
-    _selectionLocalEl.appendChild(entry.ringEl);
+    layer.appendChild(entry.ghostEl);
+    layer.appendChild(entry.ringEl);
     _updateDragRing(entry, elId, scale);
   }
 
   // ── Local resize ghosts + rings — z-top ────────────────────────────────
   for (const entry of _resizeGhosts.values()) {
-    _selectionLocalEl.appendChild(entry.ghostEl);
-    _selectionLocalEl.appendChild(entry.ringEl);
+    layer.appendChild(entry.ghostEl);
+    layer.appendChild(entry.ringEl);
   }
 
   // ── Local edit-preview ghosts — z-top ──────────────────────────────────
   for (const entry of _ghosts.values()) {
-    _selectionLocalEl.appendChild(entry.ghostEl);
+    layer.appendChild(entry.ghostEl);
   }
 
   const local = getBowstringState();
-  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale, _selectionLocalEl);
+  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale, layer);
 
-  // Re-appended: it survives the wipe above, same as the drag/resize ghosts.
-  if (_localAddCursor) _selectionLocalEl.appendChild(_localAddCursor.groupEl);
+  // Retained between renders, same as the drag/resize ghosts.
+  if (_localAddCursor) layer.appendChild(_localAddCursor.groupEl);
+
+  reconcile(_selectionLocalEl, next);
 }
 
 // What #selection_shared was last drawn from. Awareness ticks that change
@@ -928,10 +933,11 @@ function drawCharge(elId, pull, heldMs, stroke, scale, layerEl) {
     clone.setAttribute('opacity', chargeOpacityFor(heldMs).toFixed(3));
     clone.setAttribute('pointer-events', 'none');
     if (rot) {
-      const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})` });
+      const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})`, 'data-key': `charge-clone:${elId}` });
       wrap.appendChild(clone);
       layerEl.appendChild(wrap);
     } else {
+      clone.setAttribute('data-key', `charge-clone:${elId}`);
       layerEl.appendChild(clone);
     }
   }
@@ -950,6 +956,7 @@ function drawCharge(elId, pull, heldMs, stroke, scale, layerEl) {
       stroke,
       'stroke-width': 2 / scale,
       class: 'bowstring-charge-ring',
+      'data-key': `charge-ring:${elId}`,
     }));
   }
 }
@@ -979,16 +986,15 @@ function _updateDragRing(entry, elId, scale) {
 }
 
 /**
- * Where one element's selection furniture should be appended: a rotated
- * <g> for a rotated element, or the layer itself for the common case, so
- * an unrotated selection costs no extra node. `rot` is a resolved rotation
- * ({ deg, cx, cy }) or null — layers that don't rotate report none and
- * everything below takes the untransformed path unchanged.
+ * The <g> one element's selection furniture is appended to, keyed by the
+ * element so reconcile() keeps it across renders, and turned with the
+ * element when it is rotated. `rot` is a resolved rotation ({ deg, cx, cy })
+ * or null — layers that don't rotate report none and everything below
+ * takes the untransformed path unchanged.
  */
-function decorGroup(rot) {
-  if (!rot) return _selectionLocalEl;
-  const g = el('g', { transform: rotationTransform(rot) });
-  _selectionLocalEl.appendChild(g);
+function decorGroup(rot, elId, layerEl) {
+  const g = el('g', { 'data-key': `sel:${elId}`, ...(rot && { transform: rotationTransform(rot) }) });
+  layerEl.appendChild(g);
   return g;
 }
 
@@ -1019,7 +1025,7 @@ export function handleCursor(corner, deg, kind) {
   return `${COMPASS[(COMPASS.indexOf(axis) + steps % 8 + 8) % 8]}-resize`;
 }
 
-function renderLocalSelection(geo, entry, scale, parent = _selectionLocalEl) {
+function renderLocalSelection(geo, entry, scale, parent) {
   const { x, y, width, height } = geo;
   const stroke = _localGradUrl();
   const ring = el('rect', {
@@ -1037,7 +1043,7 @@ function renderLocalSelection(geo, entry, scale, parent = _selectionLocalEl) {
 
 }
 
-function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _selectionLocalEl) {
+function renderLocalResizeSelection(geo, entry, scale, rot, parent) {
   const { x, y, width, height } = geo;
   const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
@@ -1085,7 +1091,7 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _sel
  * which keeps the handle legible against the rotate handles: a pivot
  * dragged into a corner has already dropped every ray pointing at it.
  */
-function renderPivotHandle(elId, geo, scale, parent = _selectionLocalEl) {
+function renderPivotHandle(elId, geo, scale, parent) {
   const committed = App.getPivot?.(elId);
   if (!committed) return;
   // Mid-drag: the shape itself never moves, so the handle is all there is to preview.
@@ -1114,7 +1120,7 @@ function renderPivotHandle(elId, geo, scale, parent = _selectionLocalEl) {
  * squares — the one visual cue that says this drag spins the shape rather
  * than stretching it. Shared by both 'sel-rotate' and 'sel-rotate-pivot'.
  */
-function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _selectionLocalEl) {
+function renderLocalRotateSelection(geo, entry, scale, rot, parent) {
   const { x, y, width, height } = geo;
   const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   parent.appendChild(el('rect', {
@@ -1157,7 +1163,7 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _sel
  * radius-drag handle centered on the right edge instead of four corner
  * handles — used for the 'sel-resize-r' mode (currently: circles).
  */
-function renderLocalResizeRSelection(geo, entry, scale, parent = _selectionLocalEl) {
+function renderLocalResizeRSelection(geo, entry, scale, parent) {
   const { x, y, width, height } = geo;
   const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
@@ -1193,22 +1199,24 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _selectionLocal
 // ── Action-mode affordance ───────────────────────────────────────────────────
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
-function renderActionAffordance(origin, scale, groupClass = 'bowstring') {
+function renderActionAffordance(origin, scale, groupClass, layerEl, key) {
   const side = ACTION_SQUARE_SIDE / scale;
   // Drawn in the layer, not the rotated decorGroup, so it stays upright at
   // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
-  // wrapper makes square plus glyph one unit; this layer is wiped each render(),
-  // while the live gesture lives in #delight-layer.
-  drawActionSquare(origin, side, scale, groupClass, _selectionLocalEl);
+  // wrapper makes square plus glyph one unit; the live gesture lives in
+  // #delight-layer.
+  drawActionSquare(origin, side, scale, groupClass, layerEl, key);
 }
 
 // The data-handle each clickable square carries, read by canvas.js's
 // pointerdown.
 const ACTION_SQUARE_HANDLES = { bowstring: 'bowstring', groupAction: 'group-action' };
 
-function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _selectionLocalEl) {
+function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host, key) {
   const handle = ACTION_SQUARE_HANDLES[groupClass];
-  const parent = groupClass ? el('g', { class: groupClass, ...(handle && { 'data-handle': handle }) }) : host;
+  const parent = groupClass
+    ? el('g', { class: groupClass, ...(handle && { 'data-handle': handle }), ...(key && { 'data-key': key }) })
+    : host;
   parent.appendChild(el('rect', {
     x: cx - side / 2, y: cy - side / 2,
     width: side, height: side,
@@ -1298,7 +1306,7 @@ function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
   _selectionSharedEl.appendChild(ring);
 }
 
-function renderDropTargetHover(geo, scale) {
+function renderDropTargetHover(geo, scale, layerEl) {
   const { x, y, width, height } = geo;
   const ring = el('rect', {
     x:      x - PAD,
@@ -1310,8 +1318,9 @@ function renderDropTargetHover(geo, scale) {
     stroke:             'var(--warn)',
     'stroke-width':     2.5 / scale,
     class:              'dropTargetRing',
+    'data-key':         'drop-target',
   });
-  _selectionLocalEl.appendChild(ring);
+  layerEl.appendChild(ring);
 }
 
 // ── SVG element factory ─────────────────────────────────────────────────────
@@ -1424,6 +1433,53 @@ function renderRemoteAddCursors() {
     groupEl.setAttribute('transform', `translate(${cursor.x}, ${cursor.y})`);
     _awarenessEl.appendChild(groupEl);
   }
+}
+
+/**
+ * Makes layerEl's children exactly `next`, in order. A wanted node that is
+ * already a child (a retained ghost) stays put; a fresh node whose data-key
+ * matches a current child is patched onto that child instead of replacing
+ * it. Either way the node keeps its identity, and with it any CSS
+ * transition or animation running on it. Everything else is removed.
+ */
+function reconcile(layerEl, next) {
+  const byKey = new Map();
+  for (const child of layerEl.children) {
+    const key = child.getAttribute('data-key');
+    if (key) byKey.set(key, child);
+  }
+  const keep = next.map((node) => {
+    if (node.parentNode === layerEl) return node;
+    const old = byKey.get(node.getAttribute('data-key'));
+    if (!old || old.localName !== node.localName) return node;
+    patch(old, node);
+    return old;
+  });
+  const wanted = new Set(keep);
+  for (const child of [...layerEl.children]) if (!wanted.has(child)) child.remove();
+  keep.forEach((node, i) => {
+    if (layerEl.children[i] !== node) layerEl.insertBefore(node, layerEl.children[i] ?? null);
+  });
+}
+
+// Makes `old` match `fresh` in place: attributes, then children by
+// position, patching each pair of the same tag and replacing the rest. A
+// mode change that adds handles to a ring keeps the ring.
+function patch(old, fresh) {
+  for (const { name } of [...old.attributes]) if (!fresh.hasAttribute(name)) old.removeAttribute(name);
+  for (const { name, value } of fresh.attributes) if (old.getAttribute(name) !== value) old.setAttribute(name, value);
+  const b = [...fresh.children];
+  if (!b.length && !old.children.length) {
+    if (old.textContent !== fresh.textContent) old.textContent = fresh.textContent;
+    return;
+  }
+  b.forEach((child, i) => {
+    const mine = old.children[i];
+    if (!mine) old.appendChild(child);
+    else if (mine.localName === child.localName) patch(mine, child);
+    else mine.replaceWith(child);
+  });
+  while (old.children.length > b.length) old.lastElementChild.remove();
 }
 
 function el(tag, attrs) {

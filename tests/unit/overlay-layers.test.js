@@ -13,12 +13,17 @@ import {
   SelectionModeLocal,
   SelectionModeShared,
   localSelectionChanged,
+  setSelectionMode,
+  startDragPlaceholder,
+  endDragPlaceholder,
+  setDropTargetHover,
   syncFromAwareness,
   render,
   init as overlayInit,
 } from '../../src/overlay.js'
 
 const BBOX = { x: 10, y: 10, width: 50, height: 50 }
+let geo = {} // per-test bbox overrides
 const PEER = { id: 'bailey', name: 'Bailey', color: '#ee4a82', gradient: { c1: '#ee4a82', c2: '#9a45f2', angle: 45 } }
 
 const selectionShared = () => document.getElementById('selection_shared')
@@ -36,10 +41,12 @@ beforeEach(() => {
   `
   SelectionModeLocal.clear()
   SelectionModeShared.clear()
+  geo = {}
   overlayInit({
     user:         { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
     getViewScale: () => 1,
-    getBBox:      (id) => (id.startsWith('die-') ? BBOX : null),
+    getBBox:      (id) => (id.startsWith('die-') ? (geo[id] ?? BBOX) : null),
+    hasToyActions: () => false,
   }, document.getElementById('canvas'), { id: 'me' })
   syncFromAwareness(new Map(), 1)
 })
@@ -103,14 +110,65 @@ describe('overlay layers', () => {
     expect(selectionShared().querySelectorAll('.requestedRing')).toHaveLength(1)
   })
 
-  test('a full render redraws every layer', () => {
+  test('a full render redraws the peer layers and keeps #selection_local\'s nodes', () => {
     localSelectionChanged(new Set(['die-1']))
     tick()
     const myRing = selectionLocal().querySelector('.selRing')
     const peerRing = selectionShared().querySelector('.remote-sel')
     render()
-    expect(selectionLocal().querySelector('.selRing')).not.toBe(myRing)
+    expect(selectionLocal().querySelector('.selRing')).toBe(myRing)
     expect(selectionShared().querySelector('.remote-sel')).not.toBe(peerRing)
     expect(selectionShared().querySelectorAll('.remote-sel')).toHaveLength(1)
+  })
+})
+
+// #selection_local is reconciled, not rebuilt: a node that is still wanted
+// keeps its identity, so CSS transitions and animations on it run once.
+describe('#selection_local keeps its nodes across renders', () => {
+  const group = (elId) => selectionLocal().querySelector(`[data-key="sel:${elId}"]`)
+
+  test('a moved element\'s ring is the same node, patched to the new geometry', () => {
+    localSelectionChanged(new Set(['die-1']))
+    const ring = selectionLocal().querySelector('.selRing')
+    geo['die-1'] = { ...BBOX, x: 100 }
+    render()
+    expect(selectionLocal().querySelector('.selRing')).toBe(ring)
+    expect(ring.getAttribute('x')).toBe(String(100 - 6))
+  })
+
+  test('a mode change keeps the element\'s group and ring, and swaps its handles', () => {
+    localSelectionChanged(new Set(['die-1']))
+    const g = group('die-1')
+    const ring = g.querySelector('.selRing')
+    setSelectionMode('die-1', 'sel-resize')
+    expect(group('die-1')).toBe(g)
+    expect(g.querySelector('.selRing')).toBe(ring)
+    expect(g.querySelectorAll('.handle')).toHaveLength(4)
+    const handle = g.querySelector('.handle')
+    setDropTargetHover('die-2')
+    expect(g.querySelector('.handle')).toBe(handle)
+  })
+
+  test('deselecting removes the element\'s group; other elements\' groups stay', () => {
+    localSelectionChanged(new Set(['die-1', 'die-2']))
+    const g2 = group('die-2')
+    localSelectionChanged(new Set(['die-2']))
+    expect(group('die-1')).toBeNull()
+    expect(group('die-2')).toBe(g2)
+  })
+
+  test('a retained drag ghost stays put, below and above the right things', () => {
+    localSelectionChanged(new Set(['die-1']))
+    startDragPlaceholder('die-1')
+    const kids = () => [...selectionLocal().children]
+    const before = kids()
+    setDropTargetHover('die-2')
+    const after = kids()
+    // [placeholder, ring group, drop target, ghost, drag ring]
+    expect(after.filter((n) => before.includes(n))).toEqual(before)
+    expect(after.map((n) => n.getAttribute('data-key') ?? n.localName))
+      .toEqual(['use', 'sel:die-1', 'drop-target', 'use', 'rect'])
+    endDragPlaceholder('die-1')
+    expect(kids().map((n) => n.getAttribute('data-key'))).toEqual(['sel:die-1', 'drop-target'])
   })
 })
