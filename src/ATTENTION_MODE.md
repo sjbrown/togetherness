@@ -16,9 +16,9 @@ changes the table.
 
 Attention mode is pointing without touching. While in it, a player's pointer
 input never reaches the table layers. It is written to awareness instead, and
-every player, the sender included, sees it drawn on the overlay. The trail and
-click ripples are ephemeral. The circle marking where the player started stays
-on the table until someone dismisses it.
+every player, the sender included, sees it drawn on `#attention-layer`. The
+trail and click ripples are ephemeral. The circle marking where the player
+started stays on the table until someone dismisses it.
 
 ---
 
@@ -90,7 +90,7 @@ reckoning (§4).
 
 ### 2.5 The origin after exit
 
-When attention mode ends, the origin circle stays on the overlay, static and
+When attention mode ends, the origin circle stays on the table, static and
 dimmed (§5.2). It goes away in exactly two ways:
 
 - **Dismissal.** Any player, the owner included, presses inside the circle.

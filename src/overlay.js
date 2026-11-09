@@ -9,7 +9,9 @@
  * maps for #selection_local and #selection_shared.
  * Called by App after doc changes (renderDoc pipeline, all three) and
  * after awareness changes (renderPresence pipeline, the two peer groups;
- * #selection_shared only when peers' claims or requests changed).
+ * #selection_shared only when peers' claims or requests changed). Each
+ * group is reconciled, not rebuilt (see reconcile()), so a node that is
+ * still drawn keeps its identity.
  *
  * SelectionModeLocal modes (the `.mode` property on each Map entry):
  *   'none'         — no decoration
@@ -26,13 +28,12 @@
  *   'sel-rotate-pivot'
  *                  — the same decoration for shapes whose pivot the user can
  *                    place (rects). Only the pivot differs, so the two share
- *                    every rendering and hit-testing path below.
+ *                    every rendering path below.
  *   'sel-action'   — local selection ring + the action affordance square
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
  *
- * SelectionModeShared modes:
- *   'remote'       — dashed border + peer name label (awareness)
- *   'locked'       — remote peer is actively editing
+ * SelectionModeShared entries are all mode 'remote': a dashed border and
+ * the peer's name label.
  *
  * The two maps are independent: an element both I and a peer claim (e.g.
  * mid soft-lock handoff) shows both rings until the claims converge.
@@ -209,8 +210,8 @@ function _localGradUrl() {
 
 // ── SelectionModeLocal setters ────────────────────────────────────────────────
 /**
- * Called by App whenever _selectedIds changes.
- * Clears all previous local/candidate/resize entries and sets 'local' for
+ * Called by App whenever the set of ids this client holds changes.
+ * Clears all previous local/candidate/mode entries and sets 'local' for
  * each id in the Set. Works for N=0 (deselect), N=1, and N>1 uniformly —
  * the caller passes selectedIds and Overlay decides how to render it.
  */
@@ -281,7 +282,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     if (clientId === myClientId) return;
 
     // The peer's <linearGradient id="grad-{id}"> is created/kept current
-    // by user.js's upsertUserGradient (see app.js's syncUserGradients) —
+    // by user.js's upsertUserGradient (see app.js's syncUserVisuals) —
     // Overlay only ever references it by id, never creates it.
     const peer     = state?.user;
     const peerName = peer?.name ?? String(clientId);

@@ -6,7 +6,7 @@
  * Calls App.* for every action that changes document or selection state.
  *
  * The view transform (pan + zoom) is applied uniformly to all content layers
- * and the overlay. canvas.js has no opinion about which layer is "primary".
+ * and the overlay layers. canvas.js has no opinion about which layer is "primary".
  *
  * Depends on: App (bus object). No ui.js imports. No Yjs imports.
  */

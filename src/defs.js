@@ -16,8 +16,9 @@
 
 /**
  * Desaturates and dims a shape to indicate "committed position" while it is
- * being dragged. Applied via <use href="#{id}" filter="url(#...)"> in the
- * overlay layer — the native layer element is never touched.
+ * being dragged. Applied via <use href="#{id}" filter="url(#...)"> in
+ * #selection_local or #awareness — the native layer element is never
+ * touched.
  */
 export const DRAG_PLACEHOLDER_FILTER_ID = 'drag-placeholder-filter';
 

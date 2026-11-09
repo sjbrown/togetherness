@@ -19,7 +19,7 @@
  *
  * So the live gesture runs in its own #delight-layer, which overlay.js never
  * touches. This mirrors the existing reasoning for user gradients living in
- * their own page-root <defs> rather than the overlay layer (see user.js's
+ * their own page-root <defs> rather than an overlay layer (see user.js's
  * upsertUserGradient).
  *
  * Division of labour with overlay.js:
@@ -155,11 +155,6 @@ export function init(appBus, svgElement) {
   if (!_layerEl) {
     throw new Error("delight.init: '#delight-layer' not found in SVG document — malformed template?");
   }
-}
-
-/** True while a bowstring gesture is in flight — canvas.js checks this. */
-export function isDragging() {
-  return _active !== null;
 }
 
 /**

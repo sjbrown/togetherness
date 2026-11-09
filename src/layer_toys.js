@@ -1319,7 +1319,7 @@ function toyData(svgEl) {
   }
 }
 
-/** A toy's rendered <g> wrapper, by toy id. Top level only, like findToy. */
+/** A toy's rendered <g> wrapper, by toy id. Top level only. */
 export function findEl(layerEl, id) {
   return layerEl?.querySelector(`:scope > [data-id="${id}"]`) ?? null
 }
