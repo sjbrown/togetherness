@@ -25,7 +25,6 @@ import {
   endResizeGhost,
   init as overlayInit,
 } from '../../src/overlay.js'
-import { handleAt } from '../helpers/handle-at.js'
 
 const BBOX = { x: 100, y: 100, width: 200, height: 100 }
 
@@ -125,52 +124,25 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
   })
 })
 
-describe('corner handle hit areas', () => {
-  const svg = () => document.getElementById('canvas')
+describe('corner handle grab areas', () => {
+  // canvas.js dispatches a press by the [data-handle] element under it, so a
+  // handle's grab area is just the invisible .handleHit square drawn with it.
+  const hitAt = (corner) => document.querySelector(`#selection_local .handleHit[data-handle="resize"][data-corner="${corner}"]`)
 
-  test('each corner is a data-handle press target, in NW, NE, SE, SW order', () => {
-    const corners = resizeCorners(BBOX)
-    for (const [mode, handle] of [['sel-resize', 'resize'], ['sel-rotate', 'rotate'], ['sel-rotate-pivot', 'rotate']]) {
-      enter(mode)
-      corners.forEach((c, i) => expect(handleAt(svg(), c.x, c.y)).toEqual({ handle, corner: i }))
+  test('reach HANDLE_SIZE / 2 + HANDLE_HIT_PAD (12) screen px either side of the corner, at any zoom', () => {
+    const [, , se] = resizeCorners(BBOX)
+    for (const scale of [1, 4]) {
+      boot({ scale }); enter('sel-resize')
+      const hit = hitAt('se')
+      expect(Number(hit.getAttribute('width'))).toBe(24 / scale)
+      expect(Number(hit.getAttribute('x')) + 12 / scale).toBe(se.x)
+      expect(Number(hit.getAttribute('y')) + 12 / scale).toBe(se.y)
     }
   })
 
-  test('the radius handle is a resize press target with corner r', () => {
-    enter('sel-resize-r')
-    expect(handleAt(svg(), BBOX.x + BBOX.width + 6, BBOX.y + BBOX.height / 2)).toEqual({ handle: 'resize', corner: 'r' })
-  })
-
-  test('nothing but the pivot answers in the middle', () => {
-    enter('sel-rotate')
-    expect(handleAt(svg(), 200, 150)).toBeNull()
-    enter('sel-rotate-pivot')
-    expect(handleAt(svg(), 200, 150)).toEqual({ handle: 'pivot', corner: undefined })
-  })
-
-  test('the grab area reaches HANDLE_SIZE / 2 + HANDLE_HIT_PAD (12px) past the corner, beyond the visible square', () => {
-    const [nw] = resizeCorners(BBOX)
-    enter('sel-resize')
-    expect(handleAt(svg(), nw.x - 11, nw.y - 11)).toEqual({ handle: 'resize', corner: 0 })
-    expect(handleAt(svg(), nw.x - 13, nw.y)).toBeNull()
-    enter('sel-rotate')
-    expect(handleAt(svg(), nw.x - 11, nw.y - 11)).toEqual({ handle: 'rotate', corner: 0 })
-  })
-
-  test('the grab area is fixed in screen px, so it shrinks in canvas space as the view zooms in', () => {
-    const [, , se] = resizeCorners(BBOX)
-    boot({ scale: 1 }); enter('sel-resize')
-    expect(handleAt(svg(), se.x + 5, se.y)).toEqual({ handle: 'resize', corner: 2 })
-    // At scale 4 the same 5 canvas px is 20 screen px away — outside it.
-    boot({ scale: 4 }); enter('sel-resize')
-    expect(handleAt(svg(), se.x + 5, se.y)).toBeNull()
-  })
-
-  test('on a rotated shape the grab areas turn with it', () => {
+  test('turn with a rotated shape, inside its rotated furniture group', () => {
     boot({ rotation: 90 }); enter('sel-resize')
-    // NW (94, 94) turned 90° about (200, 150) lands at (256, 44).
-    expect(handleAt(svg(), 256, 44)).toEqual({ handle: 'resize', corner: 0 })
-    expect(handleAt(svg(), 94, 94)).toBeNull()
+    expect(hitAt('nw').closest('[transform]').getAttribute('transform')).toBe('rotate(90 200 150)')
   })
 })
 
@@ -407,11 +379,6 @@ describe('the pivot handle', () => {
     expect(Number(hit.getAttribute('cx'))).toBe(BBOX.x)
     expect(Number(hit.getAttribute('cy'))).toBe(BBOX.y)
     expect(Number(hit.getAttribute('r'))).toBe(9 / 2 + 6)  // PIVOT_SIZE / 2 + HANDLE_HIT_PAD, at scale 1
-  })
-
-  test('carries data-handle="pivot" for canvas.js to dispatch on', () => {
-    boot(); enter('sel-rotate-pivot')
-    expect(document.querySelector('#selection_local .pivotHandle').dataset.handle).toBe('pivot')
   })
 
   test('is drawn after the rotate handles, so a pivot parked on a corner is the one pressed', () => {

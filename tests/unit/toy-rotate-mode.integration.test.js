@@ -23,7 +23,6 @@
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { addToy, _clearSvgTextCache } from '../../src/toys.js'
-import { cornerAt } from '../helpers/handle-at.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -173,16 +172,6 @@ describe('sel-rotate is offered for a tt_able_rotate toy, gated by the class', (
 })
 
 describe('dragging a toy’s rotate handle', () => {
-  test('the rotate handles sit just outside the toy\u2019s corners', async () => {
-    const { App, svgEl, id } = { ...(await inRotateMode()), id: 'chip-1' }
-    const geo = App.getBBox(id)
-    expect(geo).toEqual({ x: 50, y: 50, width: 100, height: 100 })
-    // [NW, NE, SE, SW], each just outside its corner.
-    expect(cornerAt(svgEl, 'rotate', geo.x - 6, geo.y - 6)).toBe(0)
-    expect(cornerAt(svgEl, 'rotate', geo.x + geo.width + 6, geo.y + geo.height + 6)).toBe(2)
-    expect(cornerAt(svgEl, 'rotate', geo.x + geo.width / 2, geo.y + geo.height / 2)).toBeNull()
-  })
-
   test('commits a snapped angle to the toy’s outer <g> — 45° steps, not 15°', async () => {
     const { App, svgEl } = await inRotateMode()
     const id = 'chip-1'

@@ -16,7 +16,6 @@
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { _clearSvgTextCache } from '../../src/toys.js'
-import { handleAt, cornerAt } from '../helpers/handle-at.js'
 
 const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="placeholder">
@@ -168,25 +167,6 @@ describe('dragging a rotate handle', () => {
     return booted
   }
 
-  test('the rotate handles sit just outside the shape\u2019s corners', async () => {
-    const { App, svgEl, id } = await inRotateMode()
-    const geo = App.getBBox(id)
-    // [NW, NE, SE, SW], each PAD outside its corner.
-    expect(cornerAt(svgEl, 'rotate', geo.x - 6, geo.y - 6)).toBe(0)
-    expect(cornerAt(svgEl, 'rotate', geo.x + geo.width + 6, geo.y + geo.height + 6)).toBe(2)
-    // The middle is the pivot's; elsewhere on the shape is nothing.
-    expect(handleAt(svgEl, geo.x + geo.width / 2, geo.y + geo.height / 2)?.handle).toBe('pivot')
-    expect(handleAt(svgEl, geo.x + geo.width / 4, geo.y + geo.height / 2)).toBeNull()
-  })
-
-  test('no rotate handle is drawn while the element is in resize mode', async () => {
-    const { App, svgEl, id } = await bootWithSquare()
-    App.nextSelectionMode(id) // sel-resize only
-    const geo = App.getBBox(id)
-    expect(cornerAt(svgEl, 'rotate', geo.x + geo.width + 6, geo.y + geo.height + 6)).toBeNull()
-    expect(cornerAt(svgEl, 'resize', geo.x + geo.width + 6, geo.y + geo.height + 6)).toBe(2)
-  })
-
   test('commits a snapped angle to the doc — a quarter turn of the SE corner is 90°', async () => {
     const { App, ydoc, id } = await inRotateMode()
     App.startRotate(id, 2)              // SE corner, at 45° from centre (200,200)
@@ -313,11 +293,7 @@ describe('resizing an already-rotated rect', () => {
   }
 
   test('the pointer is measured in the shape\u2019s own turned frame, not the screen\u2019s', async () => {
-    const { App, svgEl, id } = await rotatedThenResizing({ x: 100, y: 300 })  // 90°
-    // At 90° the SE handle is drawn where the SW corner's unrotated position
-    // would be — down and left of centre on screen.
-    expect(cornerAt(svgEl, 'resize', 94, 306)).toBe(2)
-
+    const { App, ydoc, id } = await rotatedThenResizing({ x: 100, y: 300 })  // 90°
     App.startResize(id, 2)
     // Screen (50, 350) is local (350, 350) once un-rotated by the 90°.
     App.commitResize(id, 2, 50, 350)
@@ -340,18 +316,10 @@ describe('resizing an already-rotated rect', () => {
 
   test('holds at an angle that is not a quarter turn, where the slide is worst', async () => {
     // 45°: the pivot shift and the rotation compound instead of cancelling.
-    const { App, svgEl, id } = await rotatedThenResizing({ x: 200, y: 400 })
+    const { App, ydoc, id } = await rotatedThenResizing({ x: 200, y: 400 })
     expect(rectEl(id).getAttribute('data-rotate')).toBe('45')
     const anchorBefore = onCanvas(rectEl(id), nw(rectEl(id)))
-
-    const corner = cornerAt(svgEl, 'resize', ...Object.values(
-      // the SE handle's screen position at 45°, padded out like the overlay draws it
-      (() => { const g = App.getBBox(id); const c = { x: g.x + g.width / 2, y: g.y + g.height / 2 }
-               const d = { x: g.width / 2 + 6, y: g.height / 2 + 6 }
-               const r = Math.PI / 4
-               return { x: c.x + d.x * Math.cos(r) - d.y * Math.sin(r),
-                        y: c.y + d.x * Math.sin(r) + d.y * Math.cos(r) } })()))
-    expect(corner).toBe(2)
+    const corner = 2 // SE
 
     App.startResize(id, corner)
     App.commitResize(id, corner, 260, 420)

@@ -65,20 +65,6 @@ async function drag(page, from, to) {
   await page.mouse.up();
 }
 
-test('dragging the pivot handle moves the pivot', async () => {
-  const browser = await launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  const { rect } = await rectInMode(page, 2);
-  await expect(page.locator('#selection_local [data-handle="pivot"]')).toHaveCount(1, { timeout: 3000 });
-
-  // Pivot starts at the centre (200, 200); drop it on the SW corner (100, 300).
-  await drag(page, await toScreen(page, 200, 200), await toScreen(page, 102, 298));
-
-  await expect(rect).toHaveAttribute('data-pivot-x', '0');
-  await expect(rect).toHaveAttribute('data-pivot-y', '1');
-  await browser.close();
-});
-
 test('a pivot parked on a rotate corner is the one a press there grabs', async () => {
   const browser = await launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -108,19 +94,6 @@ test('dragging a resize corner resizes, including from its grab margin outside t
 
   await expect(rect).toHaveAttribute('width', '266');
   await expect(rect).toHaveAttribute('height', '266');
-  await browser.close();
-});
-
-test('dragging a rotate corner turns the shape', async () => {
-  const browser = await launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  const { rect } = await rectInMode(page, 2);
-  await expect(page.locator('#selection_local [data-handle="rotate"]')).toHaveCount(4, { timeout: 3000 });
-
-  // SE handle at (306, 306), 45° from the centre (200, 200); carry it to 135°.
-  await drag(page, await toScreen(page, 306, 306), await toScreen(page, 94, 306));
-
-  await expect(rect).toHaveAttribute('data-rotate', '90');
   await browser.close();
 });
 

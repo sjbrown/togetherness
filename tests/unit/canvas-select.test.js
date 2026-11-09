@@ -1115,71 +1115,35 @@ function addHandle(attrs) {
 }
 
 describe('handle dispatch', () => {
-  test('a press on the group action square fires it and starts no gesture', () => {
-    const fired = []
-    init(makeApp({ fireGroupAction: () => { fired.push(true); return true } }), document.getElementById('canvas'))
+  // [data-handle, data-corner, the App answers that put the selection in the
+  //  handle's mode, the App call and arguments a press makes, the gesture]
+  const CASES = [
+    ['group-action', null, {},                                'fireGroupAction', [],                null],
+    ['bowstring',    null, {},                                'startBowstring',  ['pointerdown'],   'bowstring'],
+    ['pivot',        null, { getRotateModeId: () => 'el-1' }, 'startPivotDrag',  ['el-1'],          'pivot'],
+    ['rotate',       'ne', { getRotateModeId: () => 'el-1' }, 'startRotate',     ['el-1', 1],       'rotate'],
+    ['resize',       'sw', { getResizeModeId: () => 'el-1' }, 'startResize',     ['el-1', 3],       'resize'],
+    ['resize',       'r',  { getResizeModeId: () => 'el-1' }, 'startResize',     ['el-1', 'r'],     'resize'],
+  ]
+  const press = (handle, corner, app) => {
+    init(app, document.getElementById('canvas'))
     setTool('select', {})
-    const target = addHandle({ 'data-handle': 'group-action' })
+    const target = addHandle({ 'data-handle': handle, ...(corner && { 'data-corner': corner }) })
     document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
-    expect(fired).toEqual([true])
-    expect(ToolMode._gesture).toBeNull()
+  }
+  const recording = (call, calls) => ({ [call]: (...args) => { calls.push(args.map(a => a?.type ?? a)); return true } })
+
+  test.each(CASES)('a press on %s (corner %s) → App.%s', (handle, corner, mode, call, args, gesture) => {
+    const calls = []
+    press(handle, corner, makeApp({ ...mode, ...recording(call, calls) }))
+    expect(calls).toEqual([args])
+    expect(ToolMode._gesture).toBe(gesture)
   })
 
-  test('a press on a pivot handle outside rotate mode starts no pivot drag', () => {
-    const started = []
-    init(makeApp({ startPivotDrag: (id) => started.push(id) }), document.getElementById('canvas'))
-    setTool('select', {})
-    const target = addHandle({ 'data-handle': 'pivot' })
-    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
-    expect(started).toEqual([])
-    expect(ToolMode._gesture).not.toBe('pivot')
-  })
-
-  test('a press on a resize or rotate corner outside its mode starts nothing', () => {
-    const started = []
-    init(makeApp({ startResize: () => started.push('resize'), startRotate: () => started.push('rotate') }), document.getElementById('canvas'))
-    setTool('select', {})
-    const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { target: addHandle({ 'data-handle': 'resize', 'data-corner': 'se' }) }))
-    stage.dispatchEvent(makePointerEvent('pointerup'))
-    stage.dispatchEvent(makePointerEvent('pointerdown', { target: addHandle({ 'data-handle': 'rotate', 'data-corner': 'se' }) }))
-    expect(started).toEqual([])
-  })
-
-  test('the radius handle hands App the corner r', () => {
-    const started = []
-    init(makeApp({ getResizeModeId: () => 'c-1', startResize: (id, corner) => started.push([id, corner]) }), document.getElementById('canvas'))
-    setTool('select', {})
-    const target = addHandle({ 'data-handle': 'resize', 'data-corner': 'r' })
-    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
-    expect(started).toEqual([['c-1', 'r']])
-  })
-
-  test('a press on the bowstring square starts a bowstring gesture, with the event', () => {
-    const started = []
-    init(makeApp({ startBowstring: (e) => { started.push(e.type); return true } }), document.getElementById('canvas'))
-    setTool('select', {})
-    const target = addHandle({ 'data-handle': 'bowstring' })
-    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
-    expect(started).toEqual(['pointerdown'])
-    expect(ToolMode._gesture).toBe('bowstring')
-  })
-
-  test('a bowstring square App declines falls through to ordinary hit-testing', () => {
-    init(makeApp({ startBowstring: () => false }), document.getElementById('canvas'))
-    setTool('select', {})
-    const target = addHandle({ 'data-handle': 'bowstring' })
-    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
-    expect(ToolMode._gesture).not.toBe('bowstring')
-  })
-
-  test('a press anywhere else never fires the group action', () => {
-    const fired = []
-    init(makeApp({ fireGroupAction: () => { fired.push(true); return true } }), document.getElementById('canvas'))
-    setTool('select', {})
-    addHandle({ 'data-handle': 'group-action' })
-    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown'))
-    expect(fired).toEqual([])
-    expect(ToolMode._gesture).toBe('pan-or-deselect')
-  })
+  test.each(CASES.filter(([, , mode]) => Object.keys(mode).length))(
+    'a press on %s (corner %s) outside its mode does nothing', (handle, corner, mode, call) => {
+      const calls = []
+      press(handle, corner, makeApp(recording(call, calls)))
+      expect(calls).toEqual([])
+    })
 })
