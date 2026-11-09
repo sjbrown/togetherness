@@ -19,6 +19,7 @@
 
 import { initIcons }                              from './icons.js';
 import { rotatePoint }                            from './geometry.js';
+import * as Background                            from './background.js';
 import * as BounPos                               from './boun_pos.js';
 import * as Drawing                               from './drawing.js';
 import * as Toys                                  from './toys.js';
@@ -54,14 +55,6 @@ const DEBUG = typeof location !== 'undefined'
 
 const svgNS = 'http://www.w3.org/2000/svg'
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
-
-const DEFAULT_BACKGROUNDS = [
-  { label: 'Default',   url: 'img/bg_default.png',  width: 120, height: 120 },
-  { label: 'Slate Hex',   url: 'img/bg_slatehex.png',  width: 1384, height: 998 },
-  { label: 'Beige Hex',   url: 'img/bg_beigehex.png',  width: 815,  height: 718 },
-  { label: 'Green Felt',  url: 'img/bg_greenfelt.png', width: 800,  height: 600 },
-  { label: 'Iron Grid',   url: 'img/bg_irongrid.png',  width: 438,  height: 285 },
-];
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
@@ -2114,19 +2107,9 @@ const App = {
     peersIce: ExternalServices.getIcePeers(),
   }),
 
-  getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
-  getBackground:   () => ({
-    url:    _yMeta.get('bg_url')    ?? '',
-    width:  _yMeta.get('bg_width')  ?? 120,
-    height: _yMeta.get('bg_height') ?? 120,
-  }),
-  setBackground:   (attrs) => {
-    _ydoc.transact(() => {
-      if (attrs.url    !== undefined) _yMeta.set('bg_url',    attrs.url);
-      if (attrs.width  !== undefined) _yMeta.set('bg_width',  Number(attrs.width));
-      if (attrs.height !== undefined) _yMeta.set('bg_height', Number(attrs.height));
-    });
-  },
+  getDefaultBackgrounds: () => Background.DEFAULT_BACKGROUNDS,
+  getBackground:   () => Background.read(_yMeta),
+  setBackground:   (attrs) => Background.write(_ydoc, _yMeta, attrs),
 };
 
 // ── History log ───────────────────────────────────────────────────────────────
@@ -2212,45 +2195,11 @@ function onMetaChanged() {
 }
 
 function renderBackgroundLayer() {
-  const layer = _svgEl.querySelector('#background-layer');
-  if (!layer) throw new Error("renderBackgroundLayer: '#background-layer' not found in SVG document — malformed template?");
-  layer.innerHTML = '';
-  const url    = _yMeta.get('bg_url')    || 'img/bg_default.png';
-  const width  = _yMeta.get('bg_width')  || 120;
-  const height = _yMeta.get('bg_height') || 120;
-  const SVGNS = 'http://www.w3.org/2000/svg';
-  // Tiling pattern so the image repeats across infinite canvas
-  const defs    = _svgEl.querySelector('defs');
-  // Remove stale bg pattern if present
-  defs.querySelector('#bg-pattern')?.remove();
-  const pattern = document.createElementNS(SVGNS, 'pattern');
-  pattern.setAttribute('id',           'bg-pattern');
-  pattern.setAttribute('x',            '0');
-  pattern.setAttribute('y',            '0');
-  pattern.setAttribute('width',        width);
-  pattern.setAttribute('height',       height);
-  pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-  const img = document.createElementNS(SVGNS, 'image');
-  img.setAttribute('href',   url);
-  img.setAttribute('x',      '0');
-  img.setAttribute('y',      '0');
-  img.setAttribute('width',  width);
-  img.setAttribute('height', height);
-  pattern.appendChild(img);
-  defs.appendChild(pattern);
-  const rect = document.createElementNS(SVGNS, 'rect');
-  rect.setAttribute('x',              '0');
-  rect.setAttribute('y',              '0');
-  rect.setAttribute('width',          '100%');
-  rect.setAttribute('height',         '100%');
-  rect.setAttribute('fill',           'url(#bg-pattern)');
-  rect.setAttribute('pointer-events', 'none');
-  layer.appendChild(rect);
+  Background.render(_svgEl, _yMeta);
   // The pattern was just rebuilt from scratch, so it has no patternTransform
   // yet — re-sync it to the current view so the tile doesn't jump to the
   // origin if the table is panned/zoomed when the background changes.
   Canvas.syncBackgroundTransform();
 }
-
 
 export { App };
