@@ -14,9 +14,13 @@
  *     its data-id, which the <use> instance does not inherit. The rule sets
  *     opacity rather than visibility so the toy can still be grabbed.
  *
- * Lifecycle, driven by canvas.js and App.commitToy:
- *   press(x, y, ghost) → release(landing) → attach(landing, toyEl)
- *   or press → cancel(landing) when the press is abandoned (pinch).
+ * Driven by App's place:* notifications (see App.on), one landing per
+ * placementId:
+ *   place:press   → press(x, y, preview())
+ *   place:release → release(landing)
+ *   place:placed  → attach(landing, toyEl)
+ *   place:cancel  → cancel(landing), when the press is abandoned (pinch) or
+ *                   placement fails.
  * release and attach may come in either order: placement is async.
  *
  * The pose is a JS rAF loop because the press depth depends on how long the
@@ -141,6 +145,8 @@ let _layerEl = null;     // #delight-layer
 let _styleEl = null;     // page <style> holding the hide rules
 let _rafId = null;
 const _landings = new Set();
+const _byPlacement = new Map();   // placementId -> landing
+let _unsubscribe = [];
 
 export function init(appBus, svgElement) {
   App = appBus;
@@ -148,11 +154,29 @@ export function init(appBus, svgElement) {
   _layerEl = svgElement.querySelector('#delight-layer');
   if (!_layerEl) throw new Error("delight_landing.init: '#delight-layer' not found");
   _landings.clear();
+  _byPlacement.clear();
   _rafId = null;
   _styleEl?.remove();
   _styleEl = document.createElement('style');
   _styleEl.id = 'landing-hide-rules';
   document.head.appendChild(_styleEl);
+  for (const off of _unsubscribe) off();
+  _unsubscribe = [
+    App.on('place:press', ({ placementId, x, y, preview }) => {
+      if (reducedMotion()) return;
+      const L = press(x, y, preview());
+      if (L) _byPlacement.set(placementId, L);
+    }),
+    App.on('place:release', ({ placementId }) => release(_byPlacement.get(placementId))),
+    App.on('place:placed', ({ placementId, id }) => {
+      attach(_byPlacement.get(placementId), _svgEl.querySelector(`#toys-layer [data-id="${id}"]`));
+      _byPlacement.delete(placementId);
+    }),
+    App.on('place:cancel', ({ placementId }) => {
+      cancel(_byPlacement.get(placementId));
+      _byPlacement.delete(placementId);
+    }),
+  ];
 }
 
 function el(tag, attrs, parent) {

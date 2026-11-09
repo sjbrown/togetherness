@@ -124,22 +124,15 @@ function _rotationCenterOf(id, geom) {
   return layer?.rotationCenter?.(domEl, geom) ?? null;
 }
 
-// A detached stand-in for the toy a press is about to place, centred on
-// (x, y) and initialized like the real one will be, for the landing squash
-// to show until the real toy exists. Null until the tool's SVG is cached.
-// Stripped of id/data-id so nothing that queries the canvas mistakes it for
-// a toy.
-let _landingGhostSeq = 0;
-function _landingGhost(def, x, y) {
-  const markup = UI.getToolPreviewMarkup(def);
-  if (!markup) return null;
-  const initArgs = Toys.toolInitArgs(def, _toolParams[def.name] ?? {}, App.user.color);
-  const { toyEl } = Toys.buildToyEl(
-    { id: `landing-ghost-${++_landingGhostSeq}`, toyType: def.toyType, x, y, color: initArgs.color }, markup);
-  try { Toys.runInitializers(toyEl, def.toyType, initArgs); } catch (err) { console.warn('[landing] ghost initialize failed', err); }
-  for (const attr of ['id', 'data-id', 'data-module']) toyEl.removeAttribute(attr);
-  return toyEl;
+// Local-only notifications (App.on), for modules that decorate what
+// happens on the table. Nothing sent here reaches the doc or awareness.
+const _localEvents = new EventTarget();
+function _emit(type, detail) {
+  _localEvents.dispatchEvent(new CustomEvent(type, { detail }));
 }
+
+// Pairs a place:press with the release, placement or cancel that follows.
+let _placementSeq = 0;
 
 // computeResize keeps the corner opposite the dragged one fixed in the
 // shape's own space, but a resize also moves the pivot a rotated shape
@@ -1144,39 +1137,76 @@ const App = {
   cancelEdit: (id) => Overlay.endGhost(id),
 
   /**
-   * Start the landing squash for a press with a toy tool at (x, y). Returns
-   * the landing for commitToy or cancelToyPress, or null for other tools.
+   * Subscribe to a local-only notification; handler gets its detail.
+   * Returns the unsubscribe function. Placing a toy with the pointer sends,
+   * all keyed by one placementId:
+   *   place:press   { placementId, tool, x, y, preview } — preview() builds
+   *                 a fresh App.toolPreview of what will be placed, at (x, y)
+   *   place:release { placementId } — the pointer came up; placement starts
+   *   place:placed  { placementId, id } — the toy is in its layer
+   *   place:cancel  { placementId } — nothing will be placed
    */
-  pressToy: (toolName, x, y) => {
-    const def = _toolById[toolName];
-    if (!def?.toyType) return null;
-    return Landing.press(x, y, _landingGhost(def, x, y));
+  on: (type, handler) => {
+    const listener = (e) => handler(e.detail);
+    _localEvents.addEventListener(type, listener);
+    return () => _localEvents.removeEventListener(type, listener);
   },
 
-  cancelToyPress: (landing) => Landing.cancel(landing),
+  /**
+   * What toolName would place, as a detached, inert element centred on
+   * (x, y): nothing that marks it as a toy (id, data-id, data-toy-type…),
+   * scripts dropped, internal ids freshly scoped.
+   * Built by the tool's layer with the tool's current options. Null for a
+   * tool whose layer has no preview, or until its SVG is cached.
+   */
+  toolPreview: (toolName, { x = 0, y = 0 } = {}) => {
+    const def = _toolById[toolName];
+    const markup = def && UI.getToolPreviewMarkup(def);
+    const layer = def && _Layers[def.layer];
+    if (!markup || !layer?.preview) return null;
+    const initArgs = Toys.toolInitArgs(def, _toolParams[toolName] ?? {}, App.user.color);
+    return layer.preview(def, markup, initArgs, { x, y });
+  },
+
+  /**
+   * A press that will place toolName's toy at (x, y) on release. Returns
+   * the placementId to hand to commitToy or placeCancel, or null for a tool
+   * that doesn't place a toy.
+   */
+  placePress: (toolName, x, y) => {
+    if (!_toolById[toolName]?.toyType) return null;
+    const placementId = ++_placementSeq;
+    _emit('place:press', { placementId, tool: toolName, x, y, preview: () => App.toolPreview(toolName, { x, y }) });
+    return placementId;
+  },
+
+  /** The press from placePress was abandoned. */
+  placeCancel: (placementId) => {
+    if (placementId != null) _emit('place:cancel', { placementId });
+  },
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)
-   * hook exactly once. landing is pressToy's, released here and shown
-   * through the placed toy once it exists.
+   * hook exactly once. placementId, from placePress, keys the place:*
+   * notifications.
    */
-  commitToy: (toolName, x, y, landing = null) => {
+  commitToy: (toolName, x, y, placementId = null) => {
     const def = _toolById[toolName];
-    if (!def?.toyType) { Landing.cancel(landing); UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
+    if (!def?.toyType) { App.placeCancel(placementId); UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = Toys.newToyId();
     const layerEl = layerElOf('toys');
-    if (!layerEl) { Landing.cancel(landing); return; }
+    if (!layerEl) { App.placeCancel(placementId); return; }
     const params = _toolParams[toolName] ?? {};
     // initialize()'s options always carries color + every other tool option
     const initArgs = Toys.toolInitArgs(def, params, App.user.color);
     const color    = initArgs.color;
-    Landing.release(landing);
+    if (placementId != null) _emit('place:release', { placementId });
     // initializeToy below runs its own gesture, so initialize commits as a
     // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
     _Layers.toys.add({ id, toyType: def.toyType, x, y, color }).then(async () => {
       App.addLog(`placed ${def.label} ${id}`, 'local');
-      Landing.attach(landing, layerEl.querySelector(`[data-id="${id}"]`));
+      if (placementId != null) _emit('place:placed', { placementId, id });
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace]. Placing the toy
@@ -1188,7 +1218,7 @@ const App = {
         Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, App.user.id, _tableId, initArgs);
       }
     }).catch(err => {
-      Landing.cancel(landing);
+      App.placeCancel(placementId);
       UI.toast(`Failed to place ${def.label}`, 'warn');
       App.addLog(`place failed: ${err.message}`, 'del');
     });

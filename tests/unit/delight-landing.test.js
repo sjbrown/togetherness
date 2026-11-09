@@ -113,7 +113,7 @@ describe('puffParticles', () => {
 
 describe('landing lifecycle', () => {
   const SVGNS = 'http://www.w3.org/2000/svg'
-  let svg, toysLayer, delightLayer
+  let svg, toysLayer, delightLayer, bus
 
   function toy(id, x, y, w, h) {
     const g = document.createElementNS(SVGNS, 'g')
@@ -141,7 +141,15 @@ describe('landing lifecycle', () => {
     svg = document.getElementById('canvas')
     toysLayer = svg.querySelector('#toys-layer')
     delightLayer = svg.querySelector('#delight-layer')
-    init({ getViewScale: () => 2 }, svg)
+    bus = new EventTarget()
+    init({
+      getViewScale: () => 2,
+      on: (type, handler) => {
+        const l = (e) => handler(e.detail)
+        bus.addEventListener(type, l)
+        return () => bus.removeEventListener(type, l)
+      },
+    }, svg)
   })
 
   afterEach(() => {
@@ -235,6 +243,59 @@ describe('landing lifecycle', () => {
     expect(press(50, 60, toy('ghost', 50, 60, 80, 100))).toBeNull()
     expect(delightLayer.querySelector('.landing')).toBeNull()
     vi.unstubAllGlobals()
+  })
+
+  describe('driven by place:* notifications', () => {
+    const emit = (type, detail) => bus.dispatchEvent(new CustomEvent(type, { detail }))
+
+    it('runs press → release → placed by placementId, building the preview only on press', () => {
+      const preview = vi.fn(() => toy('ghost', 50, 60, 80, 100))
+      emit('place:press', { placementId: 3, tool: 'd6', x: 50, y: 60, preview })
+      expect(preview).toHaveBeenCalledTimes(1)
+      expect(delightLayer.querySelector('.landing')).not.toBeNull()
+
+      emit('place:release', { placementId: 3 })
+      expect(delightLayer.querySelectorAll('.landing-puff')).toHaveLength(PUFF.count)
+
+      toysLayer.appendChild(toy('tt-t-v1-ev', 50, 60, 80, 100))
+      emit('place:placed', { placementId: 3, id: 'tt-t-v1-ev' })
+      expect(delightLayer.querySelector('.landing use').getAttribute('href')).toBe('#tt-t-v1-ev')
+
+      advance(releaseMs() + 50)
+      expect(delightLayer.querySelector('.landing')).toBeNull()
+      expect(hideRules()).toBe('')
+    })
+
+    it('place:cancel removes the landing', () => {
+      emit('place:press', { placementId: 4, x: 50, y: 60, preview: () => toy('ghost', 50, 60, 80, 100) })
+      emit('place:cancel', { placementId: 4 })
+      advance(500)
+      expect(delightLayer.querySelector('.landing')).toBeNull()
+    })
+
+    it('ignores notifications for placements it never saw', () => {
+      expect(() => {
+        emit('place:release', { placementId: 99 })
+        emit('place:placed', { placementId: 99, id: 'nope' })
+        emit('place:cancel', { placementId: 99 })
+      }).not.toThrow()
+      expect(delightLayer.querySelector('.landing')).toBeNull()
+    })
+
+    it('does not build a preview when motion is reduced', () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true }))
+      const preview = vi.fn()
+      emit('place:press', { placementId: 5, x: 50, y: 60, preview })
+      expect(preview).not.toHaveBeenCalled()
+      vi.unstubAllGlobals()
+    })
+
+    it('a second init drops the first subscription', () => {
+      const first = bus
+      init({ getViewScale: () => 1, on: () => () => {} }, svg)
+      first.dispatchEvent(new CustomEvent('place:press', { detail: { placementId: 6, x: 0, y: 0, preview: () => null } }))
+      expect(delightLayer.querySelector('.landing')).toBeNull()
+    })
   })
 
   it('release, attach and cancel accept a null landing', () => {
