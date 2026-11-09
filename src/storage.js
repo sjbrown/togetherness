@@ -4,9 +4,10 @@
  * This module works headless (no live room, no UI) and is
  * unit-testable on its own.
  */
-import * as Toys     from './toys.js';
-import * as Drawing  from './drawing.js';
-import { BOUN_POS_LAYER } from './boun_pos.js';
+import * as Toys     from './layer_toys.js';
+import * as Drawing  from './layer_drawing.js';
+import * as Background from './layer_background.js';
+import { BOUN_POS_LAYER } from './layer_boun_pos.js';
 import { appendCheckpoint } from './op_dag.js';
 import { checkpointOp } from './op_checkpoint.js';
 import { ensureLayerId, getOpLayer, LAYER_MARKER } from './op_layers.js';
@@ -100,11 +101,9 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
   const bgImg = bgPattern?.querySelector('image');
   const bgUrl = bgImg?.getAttribute('href') || bgImg?.getAttribute('xlink:href') || '';
   if (bgUrl) {
-    yMeta.set('bg_url', bgUrl);
     const w = Number(bgPattern.getAttribute('width'))  || 0;
     const h = Number(bgPattern.getAttribute('height')) || 0;
-    if (w) yMeta.set('bg_width',  w);
-    if (h) yMeta.set('bg_height', h);
+    Background.write(ydoc, yMeta, { url: bgUrl, ...(w && { width: w }), ...(h && { height: h }) });
   }
 
   // Document-root scripts — our own export format (buildExportSvg): one
@@ -230,7 +229,7 @@ export function populateFromSvgDoc(svgRootEl, ydoc, opts = {}) {
  * the live element, which already holds the toys and drawing layers as the
  * op log projected them, and strips overlay/UI-only bits and op-layer
  * bookkeeping, and appends one consolidated <script> per hoisted namespace
- * at document root — see toys.js, "Script hoisting": a toy's own subtree
+ * at document root — see layer_toys.js, "Script hoisting": a toy's own subtree
  * never carries a <script> at all anymore (hoisted to the document's own
  * `scripts` fragment at placement time), so there's nothing to lose by
  * cloning the live DOM; scripts just need their own explicit pass since
@@ -270,7 +269,7 @@ export function buildExportSvg(liveSvgEl, ydoc) {
   // (dice_utils.js etc.) are deliberately never baked in — reopening an
   // export assumes the same source tree that would be needed to run the
   // app around it in the first place, so there's nothing to preserve them
-  // against. See toys.js, "Script hoisting".
+  // against. See layer_toys.js, "Script hoisting".
   yScripts.toArray().forEach(yScript => {
     const scriptEl = document.createElementNS('http://www.w3.org/2000/svg', 'script');
     scriptEl.setAttribute('type', 'text/javascript');

@@ -31,15 +31,15 @@
     <g id="selection_shared" pointer-events="none"></g>
     <g id="awareness" pointer-events="none"></g>
     <!-- #selection_local is drawn only from this client's own state, so
-         awareness updates never wipe it. -->
+         awareness updates never redraw it. -->
     <g id="selection_local" pointer-events="none"></g>
-    <!-- #delight-layer is NEVER wiped (unlike the overlay groups above,
-         which Overlay.render() clears wholesale).
+    <!-- #delight-layer is never touched by Overlay.render(), which removes
+         anything from the overlay groups above that it didn't draw.
          The live bowstring gesture and its clones/sparks live here so a
          peer's cursor moving can't destroy an in-flight pull. -->
     <g id="delight-layer" pointer-events="none"></g>
     <!-- #attention-layer is last so attention draws above everything.
-         Only attention_mode.js writes to it; dismissing an origin is a
+         Only layer_attention.js writes to it; dismissing an origin is a
          geometric test in canvas.js, so it never takes pointer events. -->
     <g id="attention-layer" pointer-events="none"></g>
   </svg>

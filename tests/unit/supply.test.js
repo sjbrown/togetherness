@@ -26,15 +26,15 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { TOYS_LAYER } from '../../src/toys.js'
-import * as Toys from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
+import * as Toys from '../../src/layer_toys.js'
 import * as Events from '../../src/events.js'
 import {
-  addToyDom, activateAllToyScriptsDom, reparentToyDom, makeLayerAPI,
+  addToyEl, activateLayerToyScripts, reparentEl, makeLayerAPI,
   getContentsGroup, findEl, getSnapPoints, getAnchor, getInnerAnchor,
   initializeToy, newToyId, applyRotate,
   _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import { getOps, getContent, heads } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
 
@@ -66,7 +66,7 @@ function freshLayer() {
 // an unregistered type would fall back to reading its already-hoisted
 // scripts instead, but none of the four toys here are unregistered.
 // Placement itself never needs fetch either way: every toy below is
-// placed via addToyDom directly (real svg text, no network), matching
+// placed via addToyEl directly (real svg text, no network), matching
 // tests/unit/toys-dom-ops.test.js's convention — this stub exists only
 // for what *activation* needs.
 function stubToyFetch() {
@@ -82,7 +82,7 @@ function stubToyFetch() {
 }
 
 async function activateAll(ydoc, layerEl) {
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0)) // flush the fire-and-forget script activation
 }
 
@@ -169,7 +169,7 @@ describe('supply - no prototype beneath it', () => {
   test('fires "warn" and never touches document with "toy:clone"', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
     await activateAll(ydoc, layerEl)
 
     const warnSpy  = vi.fn()
@@ -197,8 +197,8 @@ describe('supply — dispatch contract', () => {
   test('"toy:clone" detail names the toy below it and passes its own element as sourceEl (no canvas-space math of its own)', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
-    addToyDom(ydoc, layerEl, { id: 'chipA',   toyType: 'chip',   x: 100, y: 250, color: '#fff' }, CHIP_SVG)
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'chipA',   toyType: 'chip',   x: 100, y: 250, color: '#fff' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
     const supplyEl = findEl(layerEl, 'supply1')
@@ -224,10 +224,10 @@ describe('supply — clone scenario: tray_sum with a nested dice_d6', () => {
   async function setUp() {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply',   x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
-    addToyDom(ydoc, layerEl, { id: 'tray1',   toyType: 'tray_sum', x: 100, y: 300, color: '#3355ff' }, TRAY_SUM_SVG)
-    addToyDom(ydoc, layerEl, { id: 'die1',    toyType: 'dice_d6',  x: 100, y: 300, color: '#ffcc00' }, D6_SVG)
-    reparentToyDom(layerEl, 'die1', 'tray1')
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply',   x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'tray1',   toyType: 'tray_sum', x: 100, y: 300, color: '#3355ff' }, TRAY_SUM_SVG)
+    addToyEl(ydoc, layerEl, { id: 'die1',    toyType: 'dice_d6',  x: 100, y: 300, color: '#ffcc00' }, D6_SVG)
+    reparentEl(layerEl, 'die1', 'tray1')
 
     await activateAll(ydoc, layerEl)
 
@@ -313,9 +313,9 @@ describe('supply — clone scenario: chip "5" with chip "6" stacked on top', () 
   async function setUp() {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
-    addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 100, y: 300, color: '#dd2222' }, CHIP_SVG)
-    addToyDom(ydoc, layerEl, { id: 'chip6',   toyType: 'chip',   x: 500, y: 500, color: '#22dd22' }, CHIP_SVG)
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 100, y: 300, color: '#dd2222' }, CHIP_SVG)
+    addToyEl(ydoc, layerEl, { id: 'chip6',   toyType: 'chip',   x: 500, y: 500, color: '#22dd22' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
     // chip.svg's template default is "5" (matches the scenario as named);
@@ -406,8 +406,8 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
   async function setUp() {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#123456' }, SUPPLY_SVG)
-    addToyDom(ydoc, layerEl, { id: 'chipA',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#123456' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'chipA',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
@@ -448,8 +448,8 @@ describe('supply — borrows a landed toy\u2019s color, then gives it back', () 
 
   test('a second, different-colored chip landing after the first departs stashes the TRUE original, not the borrowed one', async () => {
     const { ydoc, layerEl, api, unbind, supplyPoint } = await setUp()
-    addToyDom(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 700, y: 700, color: '#22aa22' }, CHIP_SVG)
-    activateAllToyScriptsDom(ydoc, layerEl)
+    addToyEl(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 700, y: 700, color: '#22aa22' }, CHIP_SVG)
+    activateLayerToyScripts(ydoc, layerEl)
     const supplyEl = findEl(layerEl, 'supply1')
 
     api.applyMoveCommit(api.find('chipA'), supplyPoint.cx, supplyPoint.cy)
@@ -490,8 +490,8 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
   test('clicking Take (via the real menu-action path) produces exactly one new op', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
-    addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
@@ -510,8 +510,8 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
   test('Take with num: 3 (a radial pick) clones three, in one op', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
-    addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
@@ -535,11 +535,11 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
   test('chip scenario: replaying the op log from scratch matches the live layer exactly', async () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    // Real, op-committing placement (Toys.placeToy) — not addToyDom
+    // Real, op-committing placement (Toys.placeToy) — not addToyEl
     // directly — because reloadedIds() replays purely from the op log,
     // and the initial placements need to be *in* that log for the
     // comparison to mean anything. (Every other describe block in this
-    // file uses addToyDom deliberately, to avoid needing the fetch
+    // file uses addToyEl deliberately, to avoid needing the fetch
     // stub at all; this one specifically needs the opposite.)
     await Toys.placeToy(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, { authorId: AUTHOR, tableId: TABLE })
     await Toys.placeToy(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, { authorId: AUTHOR, tableId: TABLE })
@@ -563,11 +563,11 @@ describe('supply — reload parity (regression: nested-envelope duplicate clone)
     await Toys.placeToy(ydoc, layerEl, { id: 'supply1', toyType: 'supply',   x: 100, y: 100, color: '#fff' }, { authorId: AUTHOR, tableId: TABLE })
     await Toys.placeToy(ydoc, layerEl, { id: 'tray1',   toyType: 'tray_sum', x: 100, y: 300, color: '#3355ff' }, { authorId: AUTHOR, tableId: TABLE })
     await Toys.placeToy(ydoc, layerEl, { id: 'die1',    toyType: 'dice_d6',  x: 100, y: 300, color: '#ffcc00' }, { authorId: AUTHOR, tableId: TABLE })
-    // reparentToyDom is a plain DOM op — wrap it in its own gesture so
+    // reparentEl is a plain DOM op — wrap it in its own gesture so
     // the nesting itself is a real, replayable op too (same reasoning
     // as placeToy above: reloadedIds() only sees what's in the log).
     Toys.runGesture(ydoc, layerEl, () => {
-      reparentToyDom(layerEl, 'die1', 'tray1')
+      reparentEl(layerEl, 'die1', 'tray1')
     }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
     await activateAll(ydoc, layerEl)
 
@@ -685,8 +685,8 @@ describe('supply — a clone always carries the prototype’s other data- attrib
   async function setUp() {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
-    addToyDom(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
-    addToyDom(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
+    addToyEl(ydoc, layerEl, { id: 'supply1', toyType: 'supply', x: 100, y: 100, color: '#fff' }, SUPPLY_SVG)
+    addToyEl(ydoc, layerEl, { id: 'chip5',   toyType: 'chip',   x: 500, y: 500, color: '#dd2222' }, CHIP_SVG)
     await activateAll(ydoc, layerEl)
 
     const chip5El = findEl(layerEl, 'chip5')

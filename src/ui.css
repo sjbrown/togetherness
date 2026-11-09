@@ -126,6 +126,20 @@ html, body {
 .selRing   { pointer-events: none; }
 .peer-ring { pointer-events: none; }
 .requestedRing { pointer-events: none; }
+
+/* The request ring draws itself on over REQUEST_WINDOW_MS (3000ms, see
+   soft_lock.js), holds full for 100ms, and repeats until the request
+   resolves: 3000 / 3100 = 96.774%. overlay.js sets a negative
+   animation-delay for a request already under way. Reduced motion: the
+   full ring, still. */
+@media (prefers-reduced-motion: no-preference) {
+  .requestedRing { stroke-dasharray: 1 1; animation: request-ring 3100ms linear infinite both; }
+}
+@keyframes request-ring {
+  0%      { stroke-dashoffset: 1; animation-timing-function: ease-in-out; }
+  96.774% { stroke-dashoffset: 0; }
+  100%    { stroke-dashoffset: 0; }
+}
 .remote-sel     { pointer-events: none; }
 .handle    { pointer-events: auto; }
 .handleHit { pointer-events: auto; }
@@ -141,6 +155,19 @@ html, body {
 /* Pointer capture routes the drag to #stage, so without this the crosshair
    would be lost the moment the pointer left the handle it is dragging. */
 #stage.pivot-dragging, #stage.pivot-dragging * { cursor: crosshair; }
+
+/* #selection_local and #selection_shared keep their nodes across renders
+   (overlay.js's reconcile), so these run once, as a ring or handle first
+   appears. Rings fade only: a ring may carry a rotate transform attribute,
+   which a CSS transform would override while it ran. */
+@media (prefers-reduced-motion: no-preference) {
+  #selection_local .selRing,
+  #selection_shared .remote-sel { animation: sel-ring-in 140ms ease-out; }
+  #selection_local .handle  { animation: sel-handle-in 160ms cubic-bezier(.34, 1.56, .64, 1);
+                              transform-box: fill-box; transform-origin: center; }
+}
+@keyframes sel-ring-in   { from { opacity: 0; } }
+@keyframes sel-handle-in { from { opacity: 0; transform: scale(.5); } }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the
@@ -733,7 +760,7 @@ svg.tt-icon-letter {
   animation: tt-icon-pulse 1.2s ease-in-out infinite;
 }
 
-/* ── Bowstring handle (delight.js / #delight-layer) ───────────────────────── */
+/* ── Bowstring handle (layer_delight.js / #delight-layer) ─────────────────── */
 
 /* The resting affordance in #selection_local. The live handle is built in
  * #delight-layer on pointerdown and is a separate DOM tree entirely. */

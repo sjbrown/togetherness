@@ -1,5 +1,5 @@
 /**
- * drawing.js — the drawing layer, an op layer (DRAWING_LAYER).
+ * layer_drawing.js — the drawing layer, an op layer (DRAWING_LAYER).
  *
  * Every write is a DOM operation on the live #drawing-layer, run inside a
  * gesture (OpLayer.runGesture) so the envelope captures it as one operation.
@@ -93,6 +93,11 @@ export const SHAPE_TYPES = {
     },
   },
 };
+
+// A fresh id for a drawing shape: its author's user id and a random slug.
+export function newShapeId(userId) {
+  return userId + '_' + Math.random().toString(36).slice(2, 7);
+}
 
 // ── Shape operations ──────────────────────────────────────────────────────────
 // Each takes the layer element or a shape element and mutates the live DOM.

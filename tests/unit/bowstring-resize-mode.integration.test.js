@@ -2,7 +2,7 @@
  * tests/unit/bowstring-resize-mode.integration.test.js
  *
  * Regression: clicking a resizable toy (tray_sum, bag — anything whose
- * toys.js selectModes() reports both 'sel-action' and 'sel-resize') a
+ * layer_toys.js selectModes() reports both 'sel-action' and 'sel-resize') a
  * second time to enter resize mode left its SE corner still answering to
  * the bowstring handle instead of the resize-corner handle. overlay.js's
  * render() already stops drawing the action square the moment the id
@@ -25,7 +25,8 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, _clearSvgTextCache } from '../../src/toys.js'
+import { _clearSvgTextCache } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -52,7 +53,7 @@ vi.mock('../../src/canvas.js', () => ({
 
 // A stand-in for tray_sum.svg — real toyType (so TOY_TYPES[toyType] exists
 // and addToy's fetch resolves), but pared down to the one thing this test
-// cares about: the tt-mode-resize class that makes toys.js's selectModes()
+// cares about: the tt-mode-resize class that makes layer_toys.js's selectModes()
 // report 'sel-resize' alongside 'sel-action'. The fetch mock below serves
 // this content for whatever toyType is requested.
 const RESIZABLE_TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>

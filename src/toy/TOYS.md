@@ -101,7 +101,7 @@ Expect these, and design for them:
 </svg>
 ```
 
-Drop this file in `src/toy/`, register it in `TOY_TYPES` (`toys.js`) with a
+Drop this file in `src/toy/`, register it in `TOY_TYPES` (`layer_toys.js`) with a
 type name and a display label, and it's placeable from the palette. That's
 the whole mechanism — there's no separate registration file, no build
 step, no compile pass. The file *is* the toy.

@@ -9,7 +9,7 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
   isReplaying, withSuppressedCapture, touchedBy, conflicts, orderSensitive, classify, advanceTo, receiveOp,
   SUBSEQUENT, MERGED, REBUILT, CONFLICTING, KNOWN,

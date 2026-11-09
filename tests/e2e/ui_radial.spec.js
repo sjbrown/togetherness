@@ -4,7 +4,7 @@
  * The bowstring's radial menu, driven through real pointer events on the
  * real app: a supply with a chip on it, whose 'Take' action declares a
  * 'How many' integer spoke (1..5). Covers what the unit suites can't see —
- * canvas.js's pointer routing into delight.js, the menu's visibility
+ * canvas.js's pointer routing into layer_delight.js, the menu's visibility
  * timing, and a pick reaching the toy's handler as params.
  */
 

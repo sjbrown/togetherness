@@ -112,11 +112,11 @@ test.describe('soft-lock: two-peer element requests', () => {
     await browser.close();
   });
 
-  test('an open request animates: the requester\'s ring grows while the holder\'s ring stays as it is', async () => {
-    // SMIL isn't evaluated by jsdom, so this is the only place the real
-    // animation runs. animVal is the live animated value of a stop's offset;
-    // it keeps advancing across the continuous overlay re-renders that
-    // awareness traffic causes, which is what the timestamp-derived phase is for.
+  test('an open request animates: the requester\'s ring draws on while the holder\'s ring stays as it is', async () => {
+    // jsdom runs no CSS animation, so this is the only place the real one
+    // runs. The ring's computed stroke-dashoffset falls from 1 to 0 over the
+    // request window, on both pages, across the overlay re-renders that
+    // awareness traffic causes.
     const browser = await chromium.launch({ executablePath: process.env.PW_CHROME, args: ['--no-sandbox','--disable-dev-shm-usage'] });
     const { page1, page2 } = await twoPeers(browser);
 
@@ -127,22 +127,21 @@ test.describe('soft-lock: two-peer element requests', () => {
     await expect(page1.locator('#selection_local .selRing')).toHaveCount(1, { timeout: 3000 });
     await clickToy(page2, id);                     // B requests
 
-    // B's request ring is stroked by the growing gradient; A's own ring keeps A's gradient.
-    await expect(page2.locator('#selection_shared .requestedRing')).toHaveAttribute('stroke', /url\(#req-grow-/, { timeout: 2000 });
+    // The request ring is in B's own gradient; A's own ring keeps A's.
+    await expect(page2.locator('#selection_shared .requestedRing')).toHaveAttribute('stroke', /url\(#grad-/, { timeout: 2000 });
     await expect(page1.locator('#selection_shared .requestedRing')).toHaveCount(1, { timeout: 2000 });
-    await expect(page1.locator('#selection_local .selRing')).not.toHaveAttribute('stroke', /req-/);
+    const ringStroke = await page1.locator('#selection_local .selRing').getAttribute('stroke');
 
-    // The moving stop's live offset (stop index 1 of the gradient).
-    const offset = (page, kind) => page.evaluate((k) => {
-      const stop = document.querySelector(`#selection_shared linearGradient[id^="req-${k}-"]`)?.querySelectorAll('stop')[1];
-      return stop ? stop.offset.animVal : null;
-    }, kind);
+    const dashoffset = (page) => page.evaluate(() =>
+      parseFloat(getComputedStyle(document.querySelector('#selection_shared .requestedRing')).strokeDashoffset));
 
-    const grow0 = await offset(page2, 'grow');
+    const a0 = await dashoffset(page1), b0 = await dashoffset(page2);
     await page1.waitForTimeout(1000);
-    const grow1 = await offset(page2, 'grow');
+    const a1 = await dashoffset(page1), b1 = await dashoffset(page2);
 
-    expect(grow1).toBeLessThan(grow0);             // requester's colours emerging
+    expect(a1).toBeLessThan(a0);                   // drawing on, on the holder's page...
+    expect(b1).toBeLessThan(b0);                   // ...and on the requester's
+    await expect(page1.locator('#selection_local .selRing')).toHaveAttribute('stroke', ringStroke);
 
     await browser.close();
   });

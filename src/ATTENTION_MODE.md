@@ -16,9 +16,9 @@ changes the table.
 
 Attention mode is pointing without touching. While in it, a player's pointer
 input never reaches the table layers. It is written to awareness instead, and
-every player, the sender included, sees it drawn on the overlay. The trail and
-click ripples are ephemeral. The circle marking where the player started stays
-on the table until someone dismisses it.
+every player, the sender included, sees it drawn on `#attention-layer`. The
+trail and click ripples are ephemeral. The circle marking where the player
+started stays on the table until someone dismisses it.
 
 ---
 
@@ -90,7 +90,7 @@ reckoning (§4).
 
 ### 2.5 The origin after exit
 
-When attention mode ends, the origin circle stays on the overlay, static and
+When attention mode ends, the origin circle stays on the table, static and
 dimmed (§5.2). It goes away in exactly two ways:
 
 - **Dismissal.** Any player, the owner included, presses inside the circle.
@@ -105,7 +105,7 @@ owner's presses on it are attention clicks, and other players' presses pass
 through to the table as if it weren't there.
 
 "Inside" is the circle's drawn radius, `ORIGIN_R / origin.scale` in canvas
-units. canvas.js asks attention_mode.js about expired origins on pointerdown
+units. canvas.js asks layer_attention.js about expired origins on pointerdown
 before ordinary hit-testing, the same way it checks the bowstring handle. The
 attention layer sits above every other layer, so a circle can be dismissed
 wherever it lies, but the layer itself is `pointer-events="none"`: the test
@@ -435,7 +435,7 @@ trimmed (§3.2), once all three parts are:
 **Fancy explosion.** A click whose `t % FANCY_EVERY` is 0 draws a
 different, longer explosion instead of the flash, sparks and shockwave above.
 It comes from its own frame-by-frame tuning page; its values are the `FANCY`
-table in attention_mode.js, not §7. It plays once, stepped at `FANCY.fps`
+table in layer_attention.js, not §7. It plays once, stepped at `FANCY.fps`
 (frame = `floor(age(t) * fps / 1000)`), in four stages:
 
 1. Ignition: a white cross that shrinks and thickens, through a turbulence
@@ -471,7 +471,7 @@ its own `<defs>`, which the per-frame rebuild never touches, with one
 `user.gradient`, refreshed when the colours change and removed with the last
 origin that uses it. `ORIGIN_GRAD_MID` and `ORIGIN_FILL_OPACITY` are baked
 into its stops. Keeping these here rather than in user.js's page-root defs
-leaves every piece of attention DOM owned by attention_mode.js.
+leaves every piece of attention DOM owned by layer_attention.js.
 
 ---
 
@@ -480,24 +480,24 @@ leaves every piece of attention DOM owned by attention_mode.js.
 Attention draws on `<g id="attention-layer" pointer-events="none">`, the last
 layer in the SVG and so above everything else.
 It pans and zooms with the rest (canvas.js's transformed layers).
-Only attention_mode.js writes to it.
+Only layer_attention.js writes to it.
 
-It is not `#awareness` because overlay.js rebuilds every node there, on
+It is not `#awareness` because overlay.js redraws every node there, on
 every awareness change from any peer. Drawing attention there would mean a
 full rebuild of that layer on every animation frame for as long as any
 attention was live.
 
-attention_mode.js rebuilds its own effects group each frame instead, so the
+layer_attention.js rebuilds its own effects group each frame instead, so the
 same constraints apply to it:
 
 - **CSS transitions don't work.** There is never an earlier state on the same
   node to transition from.
 - **CSS keyframe animations restart from 0** every time the node is
-  recreated. delight.js's header records this; it is why the bowstring's live
+  recreated. layer_delight.js's header records this; it is why the bowstring's live
   gesture has its own `#delight-layer`.
 
 Every animated value in §5 is therefore a pure function of `age()`, computed
-in JS at draw time. attention_mode.js runs its own `requestAnimationFrame`
+in JS at draw time. layer_attention.js runs its own `requestAnimationFrame`
 pump while any live attention, intro, coast or fade-out is visible, and stops
 it when none is, as `_pumpRemoteCharge` does for the bowstring charge. It also
 renders once on every awareness change. This survives any number of
@@ -578,15 +578,15 @@ are sender screen px (§5.1).
 The values in §7 were found with a standalone HTML page, kept outside the
 repo: a sender pane and a receiver pane over a mock table with toys at their
 app sizes, a slider per tunable, and simulated latency and clock skew. Its
-formula functions are the ones in attention_mode.js. To retune, copy the
-pure-formula section of attention_mode.js into a page like it, adjust by eye,
+formula functions are the ones in layer_attention.js. To retune, copy the
+pure-formula section of layer_attention.js into a page like it, adjust by eye,
 and bring the constants back.
 
 ---
 
 ## 9. Code layout
 
-attention_mode.js owns the feature. In file order:
+layer_attention.js owns the feature. In file order:
 
 1. **Tunables**: the §7 table as one exported object.
 2. **Formulas**: pure functions of their arguments and the tunables (§5),

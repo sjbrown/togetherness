@@ -63,6 +63,8 @@ function makeApp(overrides = {}) {
     getBoxCandidates:   () => [],
     broadcastCandidates: () => {},
     clearBoxCandidates: () => {},
+    showDragBox:        () => {},
+    hideDragBox:        () => {},
     commitMultiSelect:  () => {},
     toggleSelection:    () => {},
     startMultiDrag:     () => {},
@@ -71,7 +73,7 @@ function makeApp(overrides = {}) {
     commitMultiMove:    () => {},
     cancelMultiMove:    () => {},
     getResizeModeId:    () => null,
-    // Bowstring handle (delight.js) — canvas.js offers every select-tool
+    // Bowstring handle (layer_delight.js) — canvas.js offers every select-tool
     // pointerdown to it before ordinary hit-testing. Declining by default
     // keeps these tests exercising the normal select/move/resize paths.
     fireGroupAction:    () => false,
@@ -308,19 +310,21 @@ describe('box-select drag calls commitMultiSelect', () => {
     expect(ToolMode._gesture).toBe('box-select')
   })
 
-  test('select-preview div is shown during drag and hidden on pointerup', () => {
-    init(makeApp(), document.getElementById('canvas'))
+  test('the select drag box is shown during the drag and hidden on pointerup', () => {
+    const shown = [], hidden = []
+    init(makeApp({
+      showDragBox: (kind, ...rect) => shown.push([kind, ...rect]),
+      hideDragBox: (kind) => hidden.push(kind),
+    }), document.getElementById('canvas'))
     setTool('select', { multi: true })
 
-    const stage   = document.getElementById('stage')
-    const preview = document.getElementById('select-preview')
-
+    const stage = document.getElementById('stage')
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 50, clientY: 50 }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 150, clientY: 150 }))
-    expect(preview.style.display).toBe('block')
+    expect(shown.at(-1)).toEqual(['select', 50, 50, 100, 100])
 
     stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 150, clientY: 150 }))
-    expect(preview.style.display).toBe('none')
+    expect(hidden).toContain('select')
   })
 })
 

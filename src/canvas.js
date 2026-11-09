@@ -6,7 +6,7 @@
  * Calls App.* for every action that changes document or selection state.
  *
  * The view transform (pan + zoom) is applied uniformly to all content layers
- * and the overlay. canvas.js has no opinion about which layer is "primary".
+ * and the overlay layers. canvas.js has no opinion about which layer is "primary".
  *
  * Depends on: App (bus object). No ui.js imports. No Yjs imports.
  */
@@ -183,44 +183,12 @@ function handleUnder(e) {
 }
 
 // A corner handle's data-corner as the RESIZE_CORNER_* index (0-3, in
-// toys.js's NW, NE, SE, SW order), or 'r' for the single radius handle.
+// layer_toys.js's NW, NE, SE, SW order), or 'r' for the single radius handle.
 const CORNERS = ['nw', 'ne', 'se', 'sw'];
 function cornerOf(handleEl) {
   const c = handleEl.dataset.corner;
   return c === 'r' ? 'r' : CORNERS.indexOf(c);
 }
-
-// ── Draw preview (rubber-band div) ────────────────────────────────────────────
-const _preview = {
-  el: null,
-  show(x, y, w, h) {
-    if (!this.el) this.el = document.getElementById('draw-preview');
-    if (!this.el) return;
-    this.el.style.cssText = `display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
-  },
-  hide() {
-    if (!this.el) this.el = document.getElementById('draw-preview');
-    if (this.el) this.el.style.display = 'none';
-  },
-};
-
-// ── Select preview (rubber-band div for multi-select box) ─────────────────────
-const _selectPreview = {
-  el: null,
-  _get() {
-    if (!this.el || !this.el.isConnected) this.el = document.getElementById('select-preview');
-    return this.el;
-  },
-  show(x, y, w, h) {
-    const el = this._get();
-    if (!el) return;
-    el.style.cssText = `display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
-  },
-  hide() {
-    const el = this._get();
-    if (el) el.style.display = 'none';
-  },
-};
 
 // ── Pointer handling ──────────────────────────────────────────────────────────
 // These handlers are the only way pointer input selects anything. Nothing
@@ -284,7 +252,7 @@ function onPointerDown(e) {
     // hit-testing: the handles mostly sit just outside the element's own
     // hit-testable bounds, so hitId alone would miss them. Each App call
     // still checks that the selection is in the mode the handle belongs
-    // to. A bowstring gesture (delight.js) takes over the pointer
+    // to. A bowstring gesture (layer_delight.js) takes over the pointer
     // completely; no move/select gesture starts for it.
     if (handle === 'group-action' && App.fireGroupAction()) return;
 
@@ -372,7 +340,7 @@ function onPointerDown(e) {
     ToolMode._gesture = 'draw';
     const p = toCanvas(e.clientX, e.clientY);
     ToolMode._draft = { type: ToolMode.tool, ox: p.x, oy: p.y };
-    _preview.hide();
+    App.hideDragBox('draw');
   }
 }
 
@@ -418,16 +386,16 @@ function onPointerMove(e) {
     if (d.type === 'rect' || d.type === 'boundary' || d.type === 'pos-grid-sq' || d.type === 'pos-grid-hex' || d.type === 'pos-grid-flat-hex') {
       const x = Math.min(p.x, d.ox), y = Math.min(p.y, d.oy);
       const w = Math.abs(p.x - d.ox), h = Math.abs(p.y - d.oy);
-      // Show rubber-band preview as a fixed div (simpler than an SVG draft element)
+      // Rubber-band preview: an HTML box over the canvas, in stage px
       const stageRect = _stageEl.getBoundingClientRect();
       const sx = Math.min(e.clientX, _view.x + d.ox * _view.scale) - stageRect.left;
       const sy = Math.min(e.clientY, _view.y + d.oy * _view.scale) - stageRect.top;
-      _preview.show(sx, sy, w * _view.scale, h * _view.scale);
+      App.showDragBox('draw', sx, sy, w * _view.scale, h * _view.scale);
     } else if (d.type === 'circle') {
       const r = Math.hypot(p.x - d.ox, p.y - d.oy);
       const sx = (_view.x + d.ox * _view.scale) - r * _view.scale - _stageEl.getBoundingClientRect().left;
       const sy = (_view.y + d.oy * _view.scale) - r * _view.scale - _stageEl.getBoundingClientRect().top;
-      _preview.show(sx, sy, r * 2 * _view.scale, r * 2 * _view.scale);
+      App.showDragBox('draw', sx, sy, r * 2 * _view.scale, r * 2 * _view.scale);
     }
     return;
   }
@@ -500,7 +468,7 @@ function onPointerMove(e) {
       const sy = Math.min(e.clientY, ref.sy) - stageRect.top;
       const sw = Math.abs(ddx);
       const sh = Math.abs(ddy);
-      _selectPreview.show(sx, sy, sw, sh);
+      App.showDragBox('select', sx, sy, sw, sh);
 
       const candidates = App.getBoxCandidates({
         x:      (Math.min(e.clientX, ref.sx) - _view.x) / _view.scale,
@@ -515,8 +483,8 @@ function onPointerMove(e) {
 
 function onPointerUp(e) {
   ToolMode._pointers.delete(e.pointerId);
-  _preview.hide();
-  _selectPreview.hide();
+  App.hideDragBox('draw');
+  App.hideDragBox('select');
   _stageEl.classList.remove('dragging');
   _stageEl.classList.remove('pivot-dragging');
 
@@ -752,7 +720,7 @@ function drawAttrs() {
 
 function cancelDraft() {
   ToolMode._draft = null;
-  _preview.hide();
+  App.hideDragBox('draw');
 }
 
 // ── Wheel (trackpad + mouse) ──────────────────────────────────────────────────

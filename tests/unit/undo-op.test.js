@@ -7,7 +7,7 @@
  */
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { TOYS_LAYER, runGesture } from '../../src/toys.js'
+import { TOYS_LAYER, runGesture } from '../../src/layer_toys.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import * as OpLayer from '../../src/op_layer.js'
 

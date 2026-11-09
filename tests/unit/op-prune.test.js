@@ -16,10 +16,10 @@ import {
   buildLayerForkSeed, pruneAfterCheckpoint, receiveLayerOp, resolveBranchConflict, resolveOrphanedTips, settleBranchConflict,
 } from '../../src/op_layer.js'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
-  placeToy, makeLayerAPI, activateAllToyScriptsDom, _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+  placeToy, makeLayerAPI, activateLayerToyScripts, _clearSvgTextCache, _resetToyScriptState,
+} from '../../src/layer_toys.js'
 import {
   getOps, getContent, appendOp, appendCheckpoint, ancestors, ancestorsInclusive,
   isOrphan, sharedTips, heads, lca, pathFrom, totalOrder, labelBranches,
@@ -30,7 +30,7 @@ import {
   PRUNE_AGE_MS, _setPruneAgeForTests, noteSeen, noteAllSeen, resetFirstSeen, ageOf, assertPrunable, prune,
 } from '../../src/op_prune.js'
 import {
-  canUndoToyGesture, undoToyGesture, } from '../../src/toys.js'
+  canUndoToyGesture, undoToyGesture, } from '../../src/layer_toys.js'
 import { RECEIVED_CONFLICT, RECEIVED_ORPHAN } from '../../src/op_replay.js'
 import { serializeNode } from '../../src/op_wire_mutation.js'
 
@@ -92,7 +92,7 @@ function seedGenesis(peers) {
 async function place(peer, id, x = 0, y = 0) {
   await placeToy(peer.ydoc, peer.layer, { id, toyType: 'dice_d6', x, y, color: '#fff' },
     { authorId: peer.id, tableId: peer.tableId })
-  activateAllToyScriptsDom(peer.ydoc, peer.layer)
+  activateLayerToyScripts(peer.ydoc, peer.layer)
   await new Promise(r => setTimeout(r, 0))
   return getOps(peer.ydoc, TOYS_LAYER).get(getHead(peer.tableId, TOYS_LAYER))
 }

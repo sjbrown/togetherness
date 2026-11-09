@@ -7,7 +7,7 @@
  */
 
 import { describe, test, expect, beforeEach } from 'vitest'
-import { T, createReceiver, receiverIntroR0 } from '../../src/attention_mode.js'
+import { T, createReceiver, receiverIntroR0 } from '../../src/layer_attention.js'
 
 const ME = 1, BOB = 2
 const SKEW = 3_600_000            // Bob's clock runs an hour ahead

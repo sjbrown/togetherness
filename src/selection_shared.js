@@ -11,22 +11,17 @@
 
 import * as SoftLock from './soft_lock.js';
 
-// { c1, c2, angle }, or null for a player who hasn't broadcast a gradient.
-function gradientSpec(g) {
-  return g?.c1 ? { c1: g.c1, c2: g.c2 ?? g.c1, angle: g.angle ?? 90 } : null;
-}
-
 /**
  * holders:  Map<elId, { mode: 'remote', peerName, color, gradId }> — one per
  *           element a peer (never me) holds. gradId names the peer's own
  *           <linearGradient id="grad-{id}"> (user.js's upsertUserGradient),
  *           or is null when they haven't broadcast one.
- * requests: Map<elId, { ts, requesterGrad }> — one per contested element:
- *           the earliest request, matching the one resolveElementWinner
- *           would pick. The requester may be me, whose gradient comes from
- *           `myGradient` rather than my own awareness state.
+ * requests: Map<elId, { ts, requesterGradId }> — one per contested
+ *           element: the earliest request, matching the one
+ *           resolveElementWinner would pick. requesterGradId is the
+ *           requester's grad-{id}, like a holder's gradId, mine included.
  */
-export function derive(awarenessStates, myClientId, myGradient = null) {
+export function derive(awarenessStates, myClientId) {
   const holders = new Map();
   awarenessStates.forEach((state, clientId) => {
     if (clientId === myClientId) return;
@@ -47,8 +42,8 @@ export function derive(awarenessStates, myClientId, myGradient = null) {
   for (const elId of SoftLock.getAllContestedElementIds(awarenessStates)) {
     const first = SoftLock.getAcquirersOf(elId, awarenessStates)
       .sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
-    const g = first.clientId === myClientId ? myGradient : awarenessStates.get(first.clientId)?.user?.gradient;
-    requests.set(elId, { ts: first.ts, requesterGrad: gradientSpec(g) });
+    const user = awarenessStates.get(first.clientId)?.user;
+    requests.set(elId, { ts: first.ts, requesterGradId: user?.gradient?.c1 ? `grad-${user.id}` : null });
   }
 
   return { holders, requests };

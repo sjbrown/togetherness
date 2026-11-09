@@ -94,7 +94,7 @@ var tray = {
 
   /**
    * Resolve a contained toy's own value via its declared namespace(s)'
-   * getValue(), using the same toyType -> namespace-list registry toys.js
+   * getValue(), using the same toyType -> namespace-list registry layer_toys.js
    * already builds during script activation (bridged onto globalThis)
    *
    * Returns null if subElem's toy type

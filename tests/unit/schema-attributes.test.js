@@ -9,11 +9,11 @@
  */
 
 import { describe, test, expect } from 'vitest';
-import { DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI } from '../../src/drawing.js';
+import { DRAWING_LAYER, SHAPE_TYPES, makeLayerAPI } from '../../src/layer_drawing.js';
 import { ensureLayerId } from '../../src/op_layers.js';
 import {
-  BOUN_POS_LAYER, BOUNPOS_TYPES, makeLayerAPI as makeBounPosAPI, toolParamsToCreateParams,
-} from '../../src/boun_pos.js';
+  BOUN_POS_LAYER, BOUN_POS_TYPES, makeLayerAPI as makeBounPosAPI, toolParamsToCreateParams,
+} from '../../src/layer_boun_pos.js';
 import { tablesAPI } from '../../src/tables.js';
 
 const { makeDoc } = tablesAPI;
@@ -109,7 +109,7 @@ describe('the boundaries layer DOM carries exactly the attributes its writers se
       ['pos-grid-sq',  'sq',  { spacing: 80, snapRadius: 2 }],
       ['pos-grid-hex', 'hex', { xSpacing: 60, ySpacing: 60, snapRadius: 2 }],
     ]) {
-      const def = BOUNPOS_TYPES[toolName];
+      const def = BOUN_POS_TYPES[toolName];
       const p = toolParamsToCreateParams(def.genType, toolParams, { x: 0, y: 0, w: 200, h: 200 });
       L.add(toolName, {
         id, matches: '.toy', snapRadius: p.snapRadius, genType: def.genType,

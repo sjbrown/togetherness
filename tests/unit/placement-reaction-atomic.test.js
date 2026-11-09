@@ -24,12 +24,13 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
-  addToy, reparentToyDom, applyMove, getGeom, findEl, runGesture,
-  activateAllToyScriptsDom, undoToyGesture,
+  reparentEl, applyMove, getGeom, findEl, runGesture,
+  activateLayerToyScripts, undoToyGesture,
   _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 import { getOps } from '../../src/op_dag.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -68,7 +69,7 @@ function ownResultTspan(trayEl) {
 // Faithful re-implementation of app.js commitMove's drop-into-tray branch.
 function placeInTrayAtomic(ydoc, layerEl, dieId, trayId, dropX = 10, dropY = 10) {
   return runGesture(ydoc, layerEl, () => {
-    reparentToyDom(layerEl, dieId, trayId)
+    reparentEl(layerEl, dieId, trayId)
     const movedEl  = findEl(layerEl, dieId) ?? layerEl.querySelector(`[data-id="${dieId}"]`)
     const trayEl   = layerEl.querySelector(`[data-id="${trayId}"]`)
     const trayGeom = trayEl && getGeom(trayEl)
@@ -102,7 +103,7 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     const layerEl = document.createElementNS(SVG_NS, 'g')
     await place(ydoc, layerEl, 'tray_sum', 'tray1')
     await place(ydoc, layerEl, 'dice_d6', 'die1')
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0)) // flush script activation
     setDieFace(ydoc, layerEl, 'die1', 5)
 
@@ -117,7 +118,7 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     const layerEl = document.createElementNS(SVG_NS, 'g')
     await place(ydoc, layerEl, 'tray_sum', 'tray1')
     await place(ydoc, layerEl, 'dice_d6', 'die1')
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     setDieFace(ydoc, layerEl, 'die1', 5)
 
@@ -134,7 +135,7 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     const layerEl = document.createElementNS(SVG_NS, 'g')
     await place(ydoc, layerEl, 'tray_sum', 'tray1')
     await place(ydoc, layerEl, 'dice_d6', 'die1')
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     setDieFace(ydoc, layerEl, 'die1', 4)
 
@@ -162,11 +163,11 @@ describe('placement + reaction commit as ONE atomic operation', () => {
     await place(ydoc, layerEl, 'tray_sum', 'outer')
     await place(ydoc, layerEl, 'tray_sum', 'inner')
     await place(ydoc, layerEl, 'dice_d6', 'die1')
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
     // Nest inner inside outer first (its own operation).
     runGesture(ydoc, layerEl, () => {
-      reparentToyDom(layerEl, 'inner', 'outer')
+      reparentEl(layerEl, 'inner', 'outer')
     }, { gesture: 'reparent', authorId: AUTHOR, tableId: TABLE })
     setDieFace(ydoc, layerEl, 'die1', 6)
 

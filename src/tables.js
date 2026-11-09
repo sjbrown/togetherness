@@ -74,7 +74,7 @@ function getJoinSequenceArray(ydoc) {
  * present. Safe to call every session.
  *
  * isCreator is the same signal index.html already computes for the op
- * log's genesis checkpoint (toys.js's projectLayer): !location.hash,
+ * log's genesis checkpoint (layer_toys.js's projectLayer): !location.hash,
  * decided once at the top of boot. It matters only when the local
  * joinSequence is currently empty — indistinguishable, from this peer's
  * own replica, between "this table has genuinely just come into being"

@@ -53,7 +53,7 @@ function makeOverlayApp() {
 }
 
 // Mirrors a real drawing-layer rect: data-id directly on the shape, no
-// wrapper (see drawing.js's _toSVGEl) — unlike toys, which wrap in <g>.
+// wrapper (see layer_drawing.js's _toSVGEl) — unlike toys, which wrap in <g>.
 function placeRect(id, attrs = {}) {
   const rect = document.createElementNS(SVG_NS, 'rect')
   rect.setAttribute('data-id', id)

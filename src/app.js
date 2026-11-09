@@ -19,9 +19,10 @@
 
 import { initIcons }                              from './icons.js';
 import { rotatePoint }                            from './geometry.js';
-import * as BounPos                               from './boun_pos.js';
-import * as Drawing                               from './drawing.js';
-import * as Toys                                  from './toys.js';
+import * as Background                            from './layer_background.js';
+import * as BounPos                               from './layer_boun_pos.js';
+import * as Drawing                               from './layer_drawing.js';
+import * as Toys                                  from './layer_toys.js';
 import { tablesAPI }                              from './tables.js';
 import * as OpDag                                 from './op_dag.js';
 import * as OpHead                                from './op_head.js';
@@ -37,9 +38,9 @@ import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
-import * as Delight                               from './delight.js';
+import * as Delight                               from './layer_delight.js';
 import * as Radial                                from './ui_radial.js';
-import * as Attention                             from './attention_mode.js';
+import * as Attention                             from './layer_attention.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
@@ -52,16 +53,6 @@ import * as ExternalServices                      from './external_services.js';
 const DEBUG = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('debug') === '1';
 
-const svgNS = 'http://www.w3.org/2000/svg'
-const XLINK_NS = 'http://www.w3.org/1999/xlink';
-
-const DEFAULT_BACKGROUNDS = [
-  { label: 'Default',   url: 'img/bg_default.png',  width: 120, height: 120 },
-  { label: 'Slate Hex',   url: 'img/bg_slatehex.png',  width: 1384, height: 998 },
-  { label: 'Beige Hex',   url: 'img/bg_beigehex.png',  width: 815,  height: 718 },
-  { label: 'Green Felt',  url: 'img/bg_greenfelt.png', width: 800,  height: 600 },
-  { label: 'Iron Grid',   url: 'img/bg_irongrid.png',  width: 438,  height: 285 },
-];
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
@@ -214,16 +205,14 @@ let _previewCache = { key: null, states: null }; // getOpPreview's last result
 let _offline      = false;
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
-// Awareness state: drag: { elId, dx, dy }
-// local awareness schema: { id, color, grad, cursor, desired, drag? }
-// desired: { [elId]: { ts: number, holding: boolean } }
+// Broadcast as the awareness `drag` field (see AWARENESS.md).
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
 
 // Active multi-element drag — set by App.startMultiDrag,
 // cleared by commitMultiMove / cancelMultiMove.
-// Awareness: multidrag: { elIds: [...], offsets: [{bboxX, bboxY}] }
+// Broadcast as the awareness `multidrag` field (see AWARENESS.md).
 // No boundary/snap constraints — those are per-toy and don't compose cleanly for a group.
 let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bboxX, bboxY }],
                              //   leaderEl, boundsRects, snapPoints,
@@ -268,7 +257,7 @@ function buildToolRegistry() {
   };
   register(SELECT_TOOL);
   _toolsByLayer['background'] = [SELECT_TOOL];
-  const bounPosTools = Object.entries(BounPos.BOUNPOS_TYPES).map(([name, def]) => ({
+  const bounPosTools = Object.entries(BounPos.BOUN_POS_TYPES).map(([name, def]) => ({
     name,
     label:   def.label,
     layer:   'boun_pos',
@@ -276,7 +265,7 @@ function buildToolRegistry() {
   }));
   bounPosTools.forEach(def => {
     _toolById[def.name] = def;
-    _toolParams[def.name] = { ...BounPos.BOUNPOS_TYPES[def.name].schema.values };
+    _toolParams[def.name] = { ...BounPos.BOUN_POS_TYPES[def.name].schema.values };
   });
   _toolsByLayer['boun_pos'] = [SELECT_TOOL, ...bounPosTools];
   Toys.TOOLS.forEach(register);
@@ -791,7 +780,7 @@ const App = {
   getToolSchema:   (name)  => {
     const drawSchema = Drawing.getTtStateSchema(name);
     if (drawSchema?.types) return drawSchema;
-    if (BounPos.BOUNPOS_TYPES[name]) return BounPos.BOUNPOS_TYPES[name].schema;
+    if (BounPos.BOUN_POS_TYPES[name]) return BounPos.BOUN_POS_TYPES[name].schema;
     const def = _toolById[name];
     if (!def) return { types: {}, values: {} };
     const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
@@ -863,7 +852,7 @@ const App = {
     return ids;
   },
   // Broadcast the current rubber-band candidate set via awareness.
-  // Uses its own `candidates` awareness field, separate from `selection`,
+  // Uses its own `candidates` awareness field, separate from `desired`,
   // so that committed holdings are never clobbered during a sweep
   broadcastCandidates: (ids) => {
     _awareness.setLocalStateField('candidates', ids.length ? ids : null);
@@ -873,6 +862,10 @@ const App = {
     Overlay.clearHoverCandidates();
     _awareness.setLocalStateField('candidates', null);
   },
+
+  // The rubber-band boxes canvas.js shows while drawing or box-selecting.
+  showDragBox: (kind, x, y, w, h) => UI.showDragBox(kind, x, y, w, h),
+  hideDragBox: (kind) => UI.hideDragBox(kind),
 
   // ── Add-cursor (awareness crosshair + placement preview) ──────────────────
   // Called by canvas.js on every pointermove while a non-'select' tool is
@@ -976,13 +969,13 @@ const App = {
 
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
-    const id = newDrawingId();
+    const id = Drawing.newShapeId(App.user.id);
     _Layers.drawing.add({ ...attrs, id });
     App.addLog(`added ${attrs.type} ${id}`, 'local');
   },
 
   commitBounPos: ({ toolName, x, y, w, h }) => {
-    const def = BounPos.BOUNPOS_TYPES[toolName];
+    const def = BounPos.BOUN_POS_TYPES[toolName];
     if (!def) return;
     const { id, matches } = def.newId();
     let params;
@@ -1059,7 +1052,7 @@ const App = {
 
   /**
    * The selected toy's currently-applicable menu actions, as plain data for
-   * the Edit panel to render as buttons — see toys.js's getMenuActions.
+   * the Edit panel to render as buttons — see layer_toys.js's getMenuActions.
    * [] for non-toy selections, multi-selections, or nothing selected.
    */
   getToyMenuActions: () => {
@@ -1200,7 +1193,7 @@ const App = {
       return;
     }
     const src = _Layers.drawing.find(id);
-    if (!src || !_Layers.drawing.duplicate(src, newDrawingId())) return;
+    if (!src || !_Layers.drawing.duplicate(src, Drawing.newShapeId(App.user.id))) return;
     App.addLog(`duplicated ${id}`, 'local');
   },
 
@@ -1330,7 +1323,7 @@ const App = {
           // A container that tracks its own landing position
           // always lands the moved item exactly there
           const hasLandingPosition = containerEl && !!Toys.getLandingPosition(containerEl);
-          Toys.reparentToyDom(layerEl, id, dropContainerId);
+          Toys.reparentEl(layerEl, id, dropContainerId);
           if (!hasLandingPosition) {
             const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
             const containerGeom = containerEl && Toys.getGeom(containerEl);
@@ -1391,7 +1384,7 @@ const App = {
   // there an active mode".
   getResizeModeId: () => (SelectionLocal.activeMode() && RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) ? SelectionLocal.activeMode().id : null,
 
-  // ── Bowstring handle (delight.js) ─────────────────────────────────────────
+  // ── Bowstring handle (layer_delight.js) ───────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
   // first menu action now, or pull it back and release for the same action
   // as a "charged" gesture. canvas.js calls startBowstring for a press on
@@ -1454,9 +1447,9 @@ const App = {
   },
 
   /**
-   * Repaint the overlay. Called from delight.js's rAF loop so the bowstring
-   * charge indicators keep advancing while the pointer holds still (heldMs
-   * changes with no pointer event to hang a repaint off).
+   * Repaint the overlay. Called from layer_delight.js's rAF loop so the
+   * bowstring charge indicators keep advancing while the pointer holds still
+   * (heldMs changes with no pointer event to hang a repaint off).
    */
   requestOverlayRender: () => Overlay.render(),
 
@@ -1496,7 +1489,7 @@ const App = {
   endBowstring:  (e)              => Delight.endBowstring(e),
 
   /**
-   * Called by delight.js when a bowstring resolves — on click, or on the
+   * Called by layer_delight.js when a bowstring resolves — on click, or on the
    * far end of a charged pull's snap-back. A release on a radial spoke
    * names its action and params; otherwise the default action (the first
    * applicable one) runs with its radial defaults.
@@ -2116,19 +2109,9 @@ const App = {
     peersIce: ExternalServices.getIcePeers(),
   }),
 
-  getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
-  getBackground:   () => ({
-    url:    _yMeta.get('bg_url')    ?? '',
-    width:  _yMeta.get('bg_width')  ?? 120,
-    height: _yMeta.get('bg_height') ?? 120,
-  }),
-  setBackground:   (attrs) => {
-    _ydoc.transact(() => {
-      if (attrs.url    !== undefined) _yMeta.set('bg_url',    attrs.url);
-      if (attrs.width  !== undefined) _yMeta.set('bg_width',  Number(attrs.width));
-      if (attrs.height !== undefined) _yMeta.set('bg_height', Number(attrs.height));
-    });
-  },
+  getDefaultBackgrounds: () => Background.DEFAULT_BACKGROUNDS,
+  getBackground:   () => Background.read(_yMeta),
+  setBackground:   (attrs) => Background.write(_ydoc, _yMeta, attrs),
 };
 
 // ── History log ───────────────────────────────────────────────────────────────
@@ -2192,11 +2175,6 @@ function newestAcrossLayers(rowOf, keyOf) {
   return rows.sort((a, b) => (keyOf(b) - keyOf(a)) || (a.id < b.id ? 1 : -1))[0] ?? null;
 }
 
-// A fresh id for a drawing shape.
-function newDrawingId() {
-  return App.user.id + '_' + Math.random().toString(36).slice(2, 7);
-}
-
 // A human-readable label for an operation's gesture, for undo/redo
 // history + toast text, shared by every op layer.
 function describeGesture(gesture) {
@@ -2214,45 +2192,11 @@ function onMetaChanged() {
 }
 
 function renderBackgroundLayer() {
-  const layer = _svgEl.querySelector('#background-layer');
-  if (!layer) throw new Error("renderBackgroundLayer: '#background-layer' not found in SVG document — malformed template?");
-  layer.innerHTML = '';
-  const url    = _yMeta.get('bg_url')    || 'img/bg_default.png';
-  const width  = _yMeta.get('bg_width')  || 120;
-  const height = _yMeta.get('bg_height') || 120;
-  const SVGNS = 'http://www.w3.org/2000/svg';
-  // Tiling pattern so the image repeats across infinite canvas
-  const defs    = _svgEl.querySelector('defs');
-  // Remove stale bg pattern if present
-  defs.querySelector('#bg-pattern')?.remove();
-  const pattern = document.createElementNS(SVGNS, 'pattern');
-  pattern.setAttribute('id',           'bg-pattern');
-  pattern.setAttribute('x',            '0');
-  pattern.setAttribute('y',            '0');
-  pattern.setAttribute('width',        width);
-  pattern.setAttribute('height',       height);
-  pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-  const img = document.createElementNS(SVGNS, 'image');
-  img.setAttribute('href',   url);
-  img.setAttribute('x',      '0');
-  img.setAttribute('y',      '0');
-  img.setAttribute('width',  width);
-  img.setAttribute('height', height);
-  pattern.appendChild(img);
-  defs.appendChild(pattern);
-  const rect = document.createElementNS(SVGNS, 'rect');
-  rect.setAttribute('x',              '0');
-  rect.setAttribute('y',              '0');
-  rect.setAttribute('width',          '100%');
-  rect.setAttribute('height',         '100%');
-  rect.setAttribute('fill',           'url(#bg-pattern)');
-  rect.setAttribute('pointer-events', 'none');
-  layer.appendChild(rect);
+  Background.render(_svgEl, _yMeta);
   // The pattern was just rebuilt from scratch, so it has no patternTransform
   // yet — re-sync it to the current view so the tile doesn't jump to the
   // origin if the table is panned/zoomed when the background changes.
   Canvas.syncBackgroundTransform();
 }
-
 
 export { App };

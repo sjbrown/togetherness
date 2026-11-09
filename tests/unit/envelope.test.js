@@ -16,9 +16,10 @@
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { addToy, _clearSvgTextCache } from '../../src/toys.js'
+import { _clearSvgTextCache } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 import { runInEnvelope } from '../../src/envelope.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'

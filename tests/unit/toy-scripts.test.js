@@ -7,14 +7,15 @@ import {
   isToyTypeActivated,
   _resetToyScriptState,
   _getScriptsFragment,
-  addToy, activateAllToyScriptsDom, _clearSvgTextCache,
-} from '../../src/toys.js'
+  activateLayerToyScripts, _clearSvgTextCache,
+} from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 // ── low-level fixture: a "foreign" toyType's scripts, hoisted by hand ──────
 //
 // Scripts hoisted into the document are how a toyType with no local
 // TOY_TYPES entry (a different deployment's custom toy, or one since
-// removed/renamed here) recovers its behavior — see toys.js, "Script
+// removed/renamed here) recovers its behavior — see layer_toys.js, "Script
 // hoisting". Seeding the scripts fragment directly here simulates "this
 // namespace was already hoisted by whichever session first placed an
 // instance of it" without needing a real toyType/file on disk.
@@ -146,11 +147,11 @@ describe('activateToyScripts — a registered toyType (real file), fetched fresh
     vi.stubGlobal('fetch', fetchMock)
 
     await addToy(ydoc, layer, { id: 't1', toyType: 'dice_d6', x: 0, y: 0, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layer)
+    activateLayerToyScripts(ydoc, layer)
     await new Promise(r => setTimeout(r, 0))
 
     await addToy(ydoc, layer, { id: 't2', toyType: 'dice_d6', x: 10, y: 10, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layer)
+    activateLayerToyScripts(ydoc, layer)
     await new Promise(r => setTimeout(r, 0))
 
     expect(globalThis.__d6ActivationCount).toBe(1)
@@ -162,7 +163,7 @@ describe('activateToyScripts — a registered toyType (real file), fetched fresh
   })
 
   test('a fresh session (cold _svgTextCache) re-fetches the template to activate an already-placed toy', async () => {
-    // activateAllToyScriptsDom is the path a table-open takes (not
+    // activateLayerToyScripts is the path a table-open takes (not
     // addToy's own placement fetch) — the case of opening a table that
     // already has toys in it.
     const ydoc  = new Y.Doc()
@@ -176,7 +177,7 @@ describe('activateToyScripts — a registered toyType (real file), fetched fresh
     delete globalThis.d6
     delete globalThis.dice
 
-    activateAllToyScriptsDom(ydoc, layer)
+    activateLayerToyScripts(ydoc, layer)
     await new Promise(r => setTimeout(r, 0))
 
     expect(globalThis.d6).toBeDefined()

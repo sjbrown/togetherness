@@ -2,11 +2,11 @@
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach } from 'vitest'
 import {
-  addToyDom, computeResizeRect, applyResize,
+  addToyEl, computeResize, applyResize,
   RESIZE_CORNER_SE,
-  reparentToyDom,
+  reparentEl,
   _clearSvgTextCache,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
 import { resizeCorners, PAD } from '../../src/overlay.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -33,21 +33,21 @@ function freshLayer() {
 }
 
 function place(ydoc, layerEl, id, toyType, svgText, cx, cy) {
-  return addToyDom(ydoc, layerEl, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
+  return addToyEl(ydoc, layerEl, { id, toyType, x: cx, y: cy, color: '#fff' }, svgText)
 }
 
 beforeEach(() => {
   _clearSvgTextCache()
 })
 
-describe('computeResizeRect — toys.js’s own wrapper around the shared corner algorithm', () => {
+describe('computeResize — layer_toys.js’s own wrapper around the shared corner algorithm', () => {
   // Full corner-by-corner coverage of the algorithm itself (same fixture
   // numbers) lives in tests/unit/geometry.test.js now — this just checks
-  // toys.js wires MIN_TOY_SIZE through as the clamp floor.
+  // layer_toys.js wires MIN_TOY_SIZE through as the clamp floor.
   const startRect = { x: 100, y: 100, width: 200, height: 150 } // right=300, bottom=250
 
   test('delegates to computeResizeCornerRect with MIN_TOY_SIZE as the floor', () => {
-    const rect = computeResizeRect(startRect, RESIZE_CORNER_SE, 50, 50)
+    const rect = computeResize('sel-resize', startRect, RESIZE_CORNER_SE, 50, 50)
     expect(rect).toEqual({ x: 100, y: 100, width: 30, height: 30 }) // MIN_TOY_SIZE
   })
 })
@@ -137,7 +137,7 @@ describe('applyResize — nested-toy isolation (ownYClassSelector)', () => {
     const layerEl = freshLayer()
     place(ydoc, layerEl, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
-    reparentToyDom(layerEl, 'inner', 'outer')
+    reparentEl(layerEl, 'inner', 'outer')
 
     applyResize(layerEl.querySelector('[data-id="outer"]'), 40, 50, 300, 220)
 
@@ -156,8 +156,8 @@ describe('applyResize — nested-toy isolation (ownYClassSelector)', () => {
     place(ydoc, layerEl, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'mid', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
-    reparentToyDom(layerEl, 'mid', 'outer')
-    reparentToyDom(layerEl, 'inner', 'mid')
+    reparentEl(layerEl, 'mid', 'outer')
+    reparentEl(layerEl, 'inner', 'mid')
 
     applyResize(layerEl.querySelector('[data-id="outer"]'), 0, 0, 400, 400)
 
@@ -175,7 +175,7 @@ describe('applyResize — nested-toy isolation (ownYClassSelector)', () => {
     const layerEl = freshLayer()
     place(ydoc, layerEl, 'outer', 'tray_fixture', TRAY_SVG, 100, 100)
     place(ydoc, layerEl, 'inner', 'tray_fixture', TRAY_SVG, 100, 100)
-    reparentToyDom(layerEl, 'inner', 'outer')
+    reparentEl(layerEl, 'inner', 'outer')
 
     applyResize(layerEl.querySelector('[data-id="inner"]'), 0, 0, 90, 90)
 

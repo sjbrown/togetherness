@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ensureLayerId } from '../../src/op_layers.js'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
   checkpointOp, nearestCheckpoint, applyOps, projectFrom, projectTips,
   isCheckpoint, opsSinceCheckpoint, shouldCheckpoint, CHECKPOINT_MIN_OPS,
@@ -24,9 +24,10 @@ import { getOps, getContent, appendOp, appendCheckpoint, isAncestor } from '../.
 import { tablesAPI } from '../../src/tables.js'
 import { snapshot, serialize } from '../../src/op_wire_mutation.js'
 import {
-  addToy, activateAllToyScriptsDom,
+  activateLayerToyScripts,
   _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
 const __dir   = path.dirname(fileURLToPath(import.meta.url))
@@ -82,7 +83,7 @@ async function toyLayer(...toys) {
   for (const [id, toyType] of toys) {
     await addToy(ydoc, layerEl, { id, toyType, x: 0, y: 0, color: '#fff' })
   }
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
   return layerEl
 }
