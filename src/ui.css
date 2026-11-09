@@ -857,6 +857,24 @@ svg.tt-icon-letter {
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
 }
 
+/* Dust puff from a toy landing (delight_landing.js). Travel and growth ease
+ * out; the fade is linear after a quick fade-in. */
+.landing-puff {
+  pointer-events: none;
+  animation:
+    landing-puff-move var(--puff-ms, 500ms) cubic-bezier(.2,.7,.3,1) forwards,
+    landing-puff-fade var(--puff-ms, 500ms) linear forwards;
+}
+@keyframes landing-puff-move {
+  0%   { transform: translate(0px, 0px); r: var(--r0); }
+  100% { transform: translate(var(--tx), var(--ty)); r: var(--r1); }
+}
+@keyframes landing-puff-fade {
+  0%    { opacity: 0; }
+  12.5% { opacity: var(--peak); }
+  100%  { opacity: 0; }
+}
+
 /* ── Radial menu (ui_radial.js / #delight-layer) ─────────────────────────────
  * Colours only: sizes and stroke widths are attributes, divided by the view
  * scale so the menu is the same size at any zoom. --radial-grad and
