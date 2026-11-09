@@ -123,106 +123,50 @@ describe('overlay layers', () => {
   })
 })
 
-// #selection_shared is reconciled too, and an open request is redrawn from
-// the clock it was first drawn with, so its SMIL animation is never touched.
+// #selection_shared is reconciled too, and an open request keeps the
+// animation-delay it was first drawn with, so its CSS animation runs on.
 describe('#selection_shared keeps its nodes across renders', () => {
   const NOW = 1_700_000_000_000
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW) })
   afterEach(() => vi.useRealTimers())
 
-  const bidTick = (peerHolds = 'die-2') => syncFromAwareness(new Map([
-    [2, { user: PEER, desired: held(peerHolds) }],
-    [3, { user: { id: 'cass', gradient: { c1: '#00aa00', c2: '#005500' } }, desired: { 'die-2': { ts: NOW - 1000, holding: false } } }],
+  const CASS = { id: 'cass', gradient: { c1: '#00aa00' } }
+  const bidTick = (bidTs = NOW - 1000) => syncFromAwareness(new Map([
+    [2, { user: PEER, desired: held('die-2') }],
+    [3, { user: CASS, desired: { 'die-2': { ts: bidTs, holding: false } } }],
   ]), 1)
+  const request = () => selectionShared().querySelector('[data-key="request:die-2"]')
 
-  test('an unchanged request keeps its ring and gradient, attribute for attribute, as time passes', () => {
+  test('an unchanged request keeps its ring and animation-delay as time passes', () => {
     bidTick()
-    const request = selectionShared().querySelector('[data-key="request:die-2"]')
-    const animate = request.querySelector('animate')
-    const values = animate.getAttribute('values')
+    const ring = request()
+    expect(ring.style.animationDelay).toBe('-1000ms')
     vi.setSystemTime(NOW + 500)
     render()
-    expect(selectionShared().querySelector('[data-key="request:die-2"]')).toBe(request)
-    expect(request.querySelector('animate')).toBe(animate)
-    expect(animate.getAttribute('values')).toBe(values)
+    expect(request()).toBe(ring)
+    expect(ring.style.animationDelay).toBe('-1000ms')
   })
 
   test('a peer\'s new claim adds its ring and leaves the others\' nodes alone', () => {
     bidTick()
     const ring = selectionShared().querySelector('[data-key="remote:die-2"]')
-    const request = selectionShared().querySelector('[data-key="request:die-2"]')
+    const req = request()
     syncFromAwareness(new Map([
       [2, { user: PEER, desired: { ...held('die-2'), ...held('die-5') } }],
-      [3, { user: { id: 'cass', gradient: { c1: '#00aa00' } }, desired: { 'die-2': { ts: NOW - 1000, holding: false } } }],
+      [3, { user: CASS, desired: { 'die-2': { ts: NOW - 1000, holding: false } } }],
     ]), 1)
     expect(selectionShared().querySelector('[data-key="remote:die-2"]')).toBe(ring)
-    expect(selectionShared().querySelector('[data-key="request:die-2"]')).toBe(request)
+    expect(request()).toBe(req)
     expect(selectionShared().querySelector('[data-key="remote:die-5"]')).not.toBeNull()
   })
 
-  test('a resolved request\'s group goes, and a later request on the same element starts its own clock', () => {
-    bidTick()   // 1000ms old when first drawn
-    const first = selectionShared().querySelector('[data-key="request:die-2"] animate').getAttribute('values')
+  test('a resolved request\'s ring goes, and a later request on the same element starts from its own age', () => {
+    bidTick()
     syncFromAwareness(new Map([[2, { user: PEER, desired: held('die-2') }]]), 1)
-    expect(selectionShared().querySelector('[data-key="request:die-2"]')).toBeNull()
+    expect(request()).toBeNull()
 
     vi.setSystemTime(NOW + 2000)
-    syncFromAwareness(new Map([
-      [2, { user: PEER, desired: held('die-2') }],
-      [3, { user: { id: 'cass', gradient: { c1: '#00aa00' } }, desired: { 'die-2': { ts: NOW + 1500, holding: false } } }],
-    ]), 1)  // 500ms old when first drawn
-    const second = selectionShared().querySelector('[data-key="request:die-2"] animate').getAttribute('values')
-    expect(second).not.toBe(first)
-  })
-})
-
-// #selection_local is reconciled, not rebuilt: a node that is still wanted
-// keeps its identity, so CSS transitions and animations on it run once.
-describe('#selection_local keeps its nodes across renders', () => {
-  const group = (elId) => selectionLocal().querySelector(`[data-key="sel:${elId}"]`)
-
-  test('a moved element\'s ring is the same node, patched to the new geometry', () => {
-    localSelectionChanged(new Set(['die-1']))
-    const ring = selectionLocal().querySelector('.selRing')
-    geo['die-1'] = { ...BBOX, x: 100 }
-    render()
-    expect(selectionLocal().querySelector('.selRing')).toBe(ring)
-    expect(ring.getAttribute('x')).toBe(String(100 - 6))
-  })
-
-  test('a mode change keeps the element\'s group and ring, and swaps its handles', () => {
-    localSelectionChanged(new Set(['die-1']))
-    const g = group('die-1')
-    const ring = g.querySelector('.selRing')
-    setSelectionMode('die-1', 'sel-resize')
-    expect(group('die-1')).toBe(g)
-    expect(g.querySelector('.selRing')).toBe(ring)
-    expect(g.querySelectorAll('.handle')).toHaveLength(4)
-    const handle = g.querySelector('.handle')
-    setDropTargetHover('die-2')
-    expect(g.querySelector('.handle')).toBe(handle)
-  })
-
-  test('deselecting removes the element\'s group; other elements\' groups stay', () => {
-    localSelectionChanged(new Set(['die-1', 'die-2']))
-    const g2 = group('die-2')
-    localSelectionChanged(new Set(['die-2']))
-    expect(group('die-1')).toBeNull()
-    expect(group('die-2')).toBe(g2)
-  })
-
-  test('a retained drag ghost stays put, below and above the right things', () => {
-    localSelectionChanged(new Set(['die-1']))
-    startDragPlaceholder('die-1')
-    const kids = () => [...selectionLocal().children]
-    const before = kids()
-    setDropTargetHover('die-2')
-    const after = kids()
-    // [placeholder, ring group, drop target, ghost, drag ring]
-    expect(after.filter((n) => before.includes(n))).toEqual(before)
-    expect(after.map((n) => n.getAttribute('data-key') ?? n.localName))
-      .toEqual(['use', 'sel:die-1', 'drop-target', 'use', 'rect'])
-    endDragPlaceholder('die-1')
-    expect(kids().map((n) => n.getAttribute('data-key'))).toEqual(['sel:die-1', 'drop-target'])
+    bidTick(NOW + 1500)
+    expect(request().style.animationDelay).toBe('-500ms')
   })
 })

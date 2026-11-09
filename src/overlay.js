@@ -80,9 +80,7 @@
  *   field.
  */
 
-import * as SoftLock from './soft_lock.js';
 import * as SelectionShared from './selection_shared.js';
-import { gradientVector } from './entity_gradient.js';
 import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './toys.js';
 import { previewResize as previewBounPosResize } from './boun_pos.js';
 import {
@@ -172,7 +170,7 @@ const _remoteAddCursors = new Map();
 // { tool, groupEl } | null.
 let _localAddCursor = null;
 
-// Soft-lock "requested" indicator — Map<elId, { ts, requesterGrad }>
+// Soft-lock "requested" indicator — Map<elId, { ts, requesterGradId }>
 // for every element with an outstanding acquisition request, rebuilt on each
 // syncFromAwareness() call from selection_shared.js's derive().
 // Deliberately independent of the selection modes: an element can be
@@ -283,7 +281,7 @@ export function clearHoverCandidates() {
 
 // Called by App when awareness changes — rebuilds remote selection + drag entries
 export function syncFromAwareness(awarenessStates, myClientId) {
-  const shared = SelectionShared.derive(awarenessStates, myClientId, App.user?.gradient);
+  const shared = SelectionShared.derive(awarenessStates, myClientId);
   SelectionModeShared.clear();
   for (const [elId, entry] of shared.holders) SelectionModeShared.set(elId, entry);
   _requests = shared.requests;
@@ -644,56 +642,6 @@ export function setDropTargetHover(containerElId) {
   renderSelectionLocal();
 }
 
-function reducedMotion() {
-  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-}
-
-function requestGradientId(elId) {
-  return `req-grow-${elId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
-}
-
-/**
- * Builds a <linearGradient> into `defs` from the requester's gradient run
- * backwards (vector and colour order reversed), so the full ring looks like
- * their normal one but the colours emerge from the opposite corner over the
- * request window. Returns its id.
- *
- * Stops 1 and 2 carry the motion as SMIL <animate>s. Each begins at the
- * clock's `begin` (document time when the request was first drawn), with
- * its keyframes rotated to the phase the request's age had then, so it
- * starts mid-cycle on the right frame. (Backdating `begin` instead would
- * leave the browser's animation timer unscheduled.) Redrawn from the same
- * clock, the gradient's attributes come out identical, and reconcile()
- * leaves the running animation alone. Reduced motion gets the static full
- * ring.
- */
-function buildVanishGradient(defs, id, spec, { elapsed, begin }) {
-  const vec = gradientVector(spec.angle);
-  const lg = el('linearGradient', { id, x1: vec.x2, y1: vec.y2, x2: vec.x1, y2: vec.y1 });
-  const from = spec.c2, to = spec.c1;
-  const calm = reducedMotion();
-  const { a, b } = SoftLock.vanishOffsets(calm ? 0 : SoftLock.growVanish(SoftLock.windowProgress(elapsed)));
-
-  lg.appendChild(el('stop', { offset: 0, 'stop-color': from, 'stop-opacity': 0 }));
-  const s1 = el('stop', { offset: a, 'stop-color': from, 'stop-opacity': 0 });
-  const s2 = el('stop', { offset: b, 'stop-color': from });
-  lg.appendChild(s1);
-  lg.appendChild(s2);
-  lg.appendChild(el('stop', { offset: 1, 'stop-color': to }));
-
-  if (!calm) {
-    const frames = SoftLock.vanishFrames(SoftLock.growVanish, SoftLock.cycleMs(elapsed));
-    for (const [stop, values] of [[s1, frames.a], [s2, frames.b]]) {
-      stop.appendChild(el('animate', {
-        attributeName: 'offset', values, keyTimes: frames.keyTimes,
-        dur: `${SoftLock.CYCLE_MS / 1000}s`, begin, repeatCount: 'indefinite',
-      }));
-    }
-  }
-  defs.appendChild(lg);
-  return id;
-}
-
 // ── Render ────────────────────────────────────────────────────────────────────
 export function render() {
   renderSelectionLocal();
@@ -801,10 +749,10 @@ function renderSelectionLocal() {
 // clears it to force a redraw.
 let _selectionSharedKey = null;
 
-// Each open request's animation clock, `${elId}:${ts}` → { elapsed, begin }:
-// the request's age and the document time when it was first drawn. See
-// buildVanishGradient.
-let _requestClocks = new Map();
+// Each open request's age when it was first drawn, `${elId}:${ts}` → ms.
+// Its ring's animation-delay comes from this and never changes, so a redraw
+// leaves the running CSS animation alone (see renderRequestedIndicator).
+let _requestAges = new Map();
 
 // #selection_shared: peers' claims and every open request. Reconciled like
 // #selection_local, so a ring that is still wanted keeps its node.
@@ -826,19 +774,16 @@ function renderSelectionShared() {
   // ── Requested/contested indicator — independent of the selection modes ──
   // Drawn regardless of who (if anyone) currently holds the element from
   // this client's point of view.
-  const clocks = new Map();
+  const ages = new Map();
   for (const [elId, req] of _requests) {
-    const clockKey = `${elId}:${req.ts}`;
-    const clock = _requestClocks.get(clockKey) ?? {
-      elapsed: Date.now() - req.ts,
-      begin:   `${((_svgEl?.getCurrentTime?.() ?? 0) + 0.001).toFixed(3)}s`,
-    };
-    clocks.set(clockKey, clock);
+    const ageKey = `${elId}:${req.ts}`;
+    const age = _requestAges.get(ageKey) ?? Math.max(0, Date.now() - req.ts);
+    ages.set(ageKey, age);
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, clock, layer);
+    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, age, layer);
   }
-  _requestClocks = clocks;
+  _requestAges = ages;
 
   reconcile(_selectionSharedEl, next);
 }
@@ -1294,36 +1239,40 @@ function renderRemoteSelection(geo, entry, scale, rot, layerEl, key = null) {
   layerEl.appendChild(group);
 }
 
-// Contested/"requested" indicator — a dashed ring on the element's own
-// selection-ring rectangle, in the requester's gradient, growing from the
-// bottom-left corner over the request window. Drawn on top of whatever else
-// is rendered for the element (local/remote selection ring, or nothing at
-// all). Without a known requester gradient it falls back to a static warn
-// ring.
-function renderRequestedIndicator(geo, scale, rot, elId, req, clock, layerEl) {
-  const { x, y, width, height } = geo;
-  // The ring and its gradient ride together in one keyed group.
-  const group = el('g', { 'data-key': `request:${elId}` });
-  let stroke = 'var(--warn)';
-  if (req.requesterGrad) {
-    const defs = group.appendChild(el('defs', {}));
-    stroke = `url(#${buildVanishGradient(defs, requestGradientId(elId), req.requesterGrad, clock)})`;
-  }
-  const ring = el('rect', {
-    x:      x - PAD,
-    y:      y - PAD,
-    width:  width  + PAD * 2,
-    height: height + PAD * 2,
-    rx:     4,
-    fill:               'none',
-    stroke,
-    'stroke-width':     SoftLock.RING_WIDTH / scale,
-    'stroke-dasharray': `${3 / scale} ${3 / scale}`,
-    class:              'requestedRing',
+// The request ring's geometry. Gap and radius are canvas units, like PAD,
+// so the ring always clears the holder's own ring; the width is screen px.
+const REQUEST_RING_PAD    = 10;
+const REQUEST_RING_RADIUS = 6;
+const REQUEST_RING_WIDTH  = 6;
+
+// Contested/"requested" indicator — a ring in the requester's own gradient
+// that draws itself on clockwise from the top-left over the request window,
+// then repeats (ui.css's request-ring keyframes). Drawn on top of whatever
+// else is rendered for the element (my ring, a peer's, or nothing at all).
+// pathLength="1" lets the CSS animate stroke-dashoffset from 1 to 0 at any
+// size. The animation-delay starts it as far in as the request already was
+// when first drawn. Without a known requester gradient it is the warn
+// colour.
+function renderRequestedIndicator(geo, scale, rot, elId, req, ageMs, layerEl) {
+  const pad = REQUEST_RING_PAD;
+  const x = geo.x - pad, y = geo.y - pad;
+  const w = geo.width + pad * 2, h = geo.height + pad * 2;
+  const r = Math.min(REQUEST_RING_RADIUS, w / 2, h / 2);
+  const ring = el('path', {
+    d: `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} `
+     + `V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} `
+     + `H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} `
+     + `V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y}`,
+    pathLength:     1,
+    fill:           'none',
+    stroke:         req.requesterGradId ? `url(#${req.requesterGradId})` : 'var(--warn)',
+    'stroke-width': REQUEST_RING_WIDTH / scale,
+    class:          'requestedRing',
+    style:          `animation-delay: ${-ageMs}ms`,
+    'data-key':     `request:${elId}`,
   });
   if (rot) ring.setAttribute('transform', rotationTransform(rot));
-  group.appendChild(ring);
-  layerEl.appendChild(group);
+  layerEl.appendChild(ring);
 }
 
 function renderDropTargetHover(geo, scale, layerEl) {

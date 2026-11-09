@@ -126,6 +126,20 @@ html, body {
 .selRing   { pointer-events: none; }
 .peer-ring { pointer-events: none; }
 .requestedRing { pointer-events: none; }
+
+/* The request ring draws itself on over REQUEST_WINDOW_MS (3000ms, see
+   soft_lock.js), holds full for 100ms, and repeats until the request
+   resolves: 3000 / 3100 = 96.774%. overlay.js sets a negative
+   animation-delay for a request already under way. Reduced motion: the
+   full ring, still. */
+@media (prefers-reduced-motion: no-preference) {
+  .requestedRing { stroke-dasharray: 1 1; animation: request-ring 3100ms linear infinite both; }
+}
+@keyframes request-ring {
+  0%      { stroke-dashoffset: 1; animation-timing-function: ease-in-out; }
+  96.774% { stroke-dashoffset: 0; }
+  100%    { stroke-dashoffset: 0; }
+}
 .remote-sel     { pointer-events: none; }
 .handle    { pointer-events: auto; }
 .handleHit { pointer-events: auto; }

@@ -9,7 +9,6 @@ import { describe, test, expect } from 'vitest'
 import { derive } from '../../src/selection_shared.js'
 
 const ME = 1
-const MY_GRAD = { c1: '#111111', c2: '#222222', angle: 30 }
 const ALICE = { id: 'alice', name: 'Alice', color: '#2f80f0', gradient: { c1: '#2f80f0', c2: '#12b5c4', angle: 45 } }
 const BAILEY = { id: 'bailey', name: 'Bailey', color: '#ee4a82', gradient: { c1: '#ee4a82' } }
 
@@ -49,13 +48,13 @@ describe('derive — holders', () => {
 })
 
 describe('derive — requests', () => {
-  test('a contested element gets one request, carrying the earliest bid\'s timestamp and that requester\'s gradient', () => {
+  test('a contested element gets one request, carrying the earliest bid\'s timestamp and that requester\'s gradient id', () => {
     const { requests } = derive(new Map([
       [2, { user: ALICE,  desired: held('a') }],
       [3, { user: BAILEY, desired: bid('a', 200) }],
-      [4, { user: { id: 'cass', gradient: { c1: '#00aa00', c2: '#005500', angle: 90 } }, desired: bid('a', 100) }],
+      [4, { user: { id: 'cass', gradient: { c1: '#00aa00' } }, desired: bid('a', 100) }],
     ]), ME)
-    expect(requests.get('a')).toEqual({ ts: 100, requesterGrad: { c1: '#00aa00', c2: '#005500', angle: 90 } })
+    expect(requests.get('a')).toEqual({ ts: 100, requesterGradId: 'grad-cass' })
   })
 
   test('a tie on timestamp goes to the lower clientId', () => {
@@ -64,25 +63,17 @@ describe('derive — requests', () => {
       [5, { user: { id: 'late', gradient: { c1: '#555555' } }, desired: bid('a', 100) }],
       [3, { user: BAILEY, desired: bid('a', 100) }],
     ]), ME)
-    expect(requests.get('a').requesterGrad.c1).toBe('#ee4a82')
+    expect(requests.get('a').requesterGradId).toBe('grad-bailey')
   })
 
-  test('when I am the requester, my gradient comes from the argument, not my awareness state', () => {
+  test('my own request names my gradient too; a requester without one has none', () => {
     const { requests } = derive(new Map([
-      [2,  { user: ALICE, desired: held('a') }],
-      [ME, { user: { id: 'me', gradient: { c1: '#stale0' } }, desired: bid('a', 10) }],
-    ]), ME, MY_GRAD)
-    expect(requests.get('a').requesterGrad).toEqual(MY_GRAD)
-  })
-
-  test('a partial gradient is completed, and a missing one is null', () => {
-    const { requests } = derive(new Map([
-      [2, { user: ALICE,  desired: held('a', 'b') }],
-      [3, { user: BAILEY, desired: bid('a', 1) }],
-      [4, { user: { id: 'nograd' }, desired: bid('b', 1) }],
+      [2,  { user: ALICE, desired: held('a', 'b') }],
+      [ME, { user: { id: 'me', gradient: { c1: '#111111' } }, desired: bid('a', 10) }],
+      [4,  { user: { id: 'nograd' }, desired: bid('b', 1) }],
     ]), ME)
-    expect(requests.get('a').requesterGrad).toEqual({ c1: '#ee4a82', c2: '#ee4a82', angle: 90 })
-    expect(requests.get('b').requesterGrad).toBeNull()
+    expect(requests.get('a').requesterGradId).toBe('grad-me')
+    expect(requests.get('b').requesterGradId).toBeNull()
   })
 
   test('an uncontested element has no request', () => {
