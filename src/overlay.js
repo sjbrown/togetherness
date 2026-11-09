@@ -606,9 +606,8 @@ export function endGhost(elId) {
 
 // ── Pivot drag preview ───────────────────────────────────────────────────────
 // Where a pivot drag currently has the handle, before it commits. Module
-// state rather than a DOM node, because this layer is wiped on every render
-// and has to rebuild the handle from scratch each time — same rationale as
-// the bowstring charge above.
+// state rather than a DOM node, because each render draws the handle from
+// state — same rationale as the bowstring charge below.
 let _pivotPreview = null;   // { elId, fx, fy } | null
 
 /** Set (or clear, with null) the live pivot position for elId. */
@@ -736,7 +735,7 @@ function renderSelectionLocal() {
   }
 
   const local = getBowstringState();
-  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale, layer);
+  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale, layer, local.elId);
 
   // Retained between renders, same as the drag/resize ghosts.
   if (_localAddCursor) layer.appendChild(_localAddCursor.groupEl);
@@ -791,16 +790,17 @@ function renderSelectionShared() {
 // #awareness: peers' movement. Rebuilt on every awareness tick.
 function renderAwareness() {
   if (!_awarenessEl) return;
-  _awarenessEl.innerHTML = '';
+  const next = [];
+  const layer = { appendChild: (node) => (next.push(node), node) };
 
   const scale = App.getViewScale();
 
   // ── Remote drag placeholders — z-bottom ────────────────────────────────
   for (const [elId] of _remoteDrags) {
-    const ph = el('use', {});
+    const ph = el('use', { 'data-key': `drag-ph:${elId}` });
     ph.setAttribute('href',   `#${elId}`);
     ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
-    _awarenessEl.appendChild(ph);
+    layer.appendChild(ph);
   }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
@@ -810,30 +810,33 @@ function renderAwareness() {
     const tdx = drag.bboxX - bbox.x; // relative to current committed
     const tdy = drag.bboxY - bbox.y;
 
-    const ghostEl = el('use', { opacity: '0.85' });
+    const ghostEl = el('use', { opacity: '0.85', 'data-key': `drag-ghost:${elId}` });
     ghostEl.setAttribute('href', `#${elId}`);
     ghostEl.setAttribute('transform', `translate(${tdx}, ${tdy})`);
-    _awarenessEl.appendChild(ghostEl);
+    layer.appendChild(ghostEl);
 
     renderRemoteSelection(
       { x: drag.bboxX, y: drag.bboxY, width: bbox.width, height: bbox.height },
       { color: drag.color, gradId: drag.gradId, peerName: drag.peerName },
       scale,
       null,
-      _awarenessEl,
+      layer,
+      `drag-ring:${elId}`,
     );
   }
 
-  renderRemoteBowstringCharges(scale);
-  renderRemoteAddCursors();
+  renderRemoteBowstringCharges(scale, layer);
+  renderRemoteAddCursors(layer);
+
+  reconcile(_awarenessEl, next);
 }
 
 // ── Bowstring charge indicators ──────────────────────────────────────────────
 // Read (never written) from delight.js's live gesture state. Pull-based on
-// purpose: this layer is wiped on every render, so it must be able to
-// rebuild itself from scratch each frame off a source that survives the
-// wipe. delight.js's rAF loop calls App.requestOverlayRender() to keep this
-// ticking even when the pointer isn't moving.
+// purpose: the charge is redrawn every frame, so it reads from a source that
+// outlives any one render. delight.js's rAF loop calls
+// App.requestOverlayRender() to keep this ticking even when the pointer
+// isn't moving.
 //
 // Nothing here is persisted: pull and heldMs describe how someone is
 // manipulating a toy right now, not what the toy is, so they stay out of
@@ -842,10 +845,10 @@ function renderAwareness() {
 // Peers' charges are drawn like the local one (see renderSelectionLocal), in
 // their own colour, with the fade timed from when this client first saw the
 // charge rather than from the sender's clock.
-function renderRemoteBowstringCharges(scale) {
+function renderRemoteBowstringCharges(scale, layerEl) {
   const now = performance.now();
-  for (const bs of _remoteBowstrings.values()) {
-    drawCharge(bs.elId, bs.pull, now - bs.firstSeenAt, `url(#${bs.gradId})`, scale, _awarenessEl);
+  for (const [clientId, bs] of _remoteBowstrings) {
+    drawCharge(bs.elId, bs.pull, now - bs.firstSeenAt, `url(#${bs.gradId})`, scale, layerEl, `peer-${clientId}`);
   }
 }
 
@@ -867,7 +870,8 @@ function _pumpRemoteCharge() {
   _remoteChargeRafId = requestAnimationFrame(step);
 }
 
-function drawCharge(elId, pull, heldMs, stroke, scale, layerEl) {
+// `key` names this charge's nodes for reconcile(): one charge per key.
+function drawCharge(elId, pull, heldMs, stroke, scale, layerEl, key) {
   const geo = App.getBBox(elId);
   if (!geo) return;
   const rot = App.getRotation?.(elId) ?? null;
@@ -893,11 +897,11 @@ function drawCharge(elId, pull, heldMs, stroke, scale, layerEl) {
     clone.setAttribute('opacity', chargeOpacityFor(heldMs).toFixed(3));
     clone.setAttribute('pointer-events', 'none');
     if (rot) {
-      const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})`, 'data-key': `charge-clone:${elId}` });
+      const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})`, 'data-key': `charge-clone:${key}` });
       wrap.appendChild(clone);
       layerEl.appendChild(wrap);
     } else {
-      clone.setAttribute('data-key', `charge-clone:${elId}`);
+      clone.setAttribute('data-key', `charge-clone:${key}`);
       layerEl.appendChild(clone);
     }
   }
@@ -916,7 +920,7 @@ function drawCharge(elId, pull, heldMs, stroke, scale, layerEl) {
       stroke,
       'stroke-width': 2 / scale,
       class: 'bowstring-charge-ring',
-      'data-key': `charge-ring:${elId}`,
+      'data-key': `charge-ring:${key}`,
     }));
   }
 }
@@ -1396,11 +1400,12 @@ export function clearLocalAddCursor() {
 // Draws one group per remote peer currently in an add-tool, from
 // _remoteAddCursors. Called at the end of renderAwareness() — z-top, like the
 // bowstring charge.
-function renderRemoteAddCursors() {
-  for (const cursor of _remoteAddCursors.values()) {
+function renderRemoteAddCursors(layerEl) {
+  for (const [clientId, cursor] of _remoteAddCursors) {
     const groupEl = _buildAddCursorGroup(cursor.tool, cursor.color);
     groupEl.setAttribute('transform', `translate(${cursor.x}, ${cursor.y})`);
-    _awarenessEl.appendChild(groupEl);
+    groupEl.setAttribute('data-key', `cursor:${clientId}`);
+    layerEl.appendChild(groupEl);
   }
 }
 

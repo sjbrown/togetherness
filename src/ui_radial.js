@@ -13,8 +13,8 @@
  * greyed, so the others never shift under the player's muscle memory.
  *
  * The menu lives in #delight-layer, under the bowstring's own chrome, for
- * the same reason the bowstring does: the overlay layers are wiped on every
- * render. It's local only; peers see just the action's result.
+ * the same reason the bowstring does: a redraw of the overlay layers removes
+ * anything overlay.js didn't draw. It's local only; peers see just the action's result.
  *
  * Geometry is in screen px and divided by the view scale at draw time, so
  * the menu is the same size at any zoom, and it stays upright however the

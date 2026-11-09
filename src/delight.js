@@ -7,23 +7,25 @@
  *
  * ── Why this is its own module, and its own layer ─────────────────────────
  *
- * Overlay.render() rebuilds each of its layers with `innerHTML = ''`, and
- * #selection_local, where the resting square lives, is rebuilt on every
- * local selection, ghost or doc change. A bowstring pull lasts seconds.
- * Anything live that lived in an overlay layer would be destroyed mid-gesture:
+ * Overlay.render() makes each of its layers match what it draws: a node it
+ * still draws is patched to match, anything else is removed. #selection_local,
+ * where the resting square lives, is redrawn on every local selection, ghost
+ * or doc change. A bowstring pull lasts seconds and builds nodes overlay.js
+ * knows nothing about, so anything live in an overlay layer would be removed
+ * or overwritten mid-gesture:
  * the rAF spin loop's target node, the CSS transition on the handle group,
  * the pending transitionend listener that fires the sparks, and the delight
  * clones.
  *
- * So the live gesture runs in its own #delight-layer, which nothing ever
- * wipes. This mirrors the existing reasoning for user gradients living in
+ * So the live gesture runs in its own #delight-layer, which overlay.js never
+ * touches. This mirrors the existing reasoning for user gradients living in
  * their own page-root <defs> rather than the overlay layer (see user.js's
  * upsertUserGradient).
  *
  * Division of labour with overlay.js:
  *   overlay.js  — draws the RESTING affordance (the SE square, wrapped in
- *                 <g class="bowstring">), and nothing else. It may be wiped
- *                 and redrawn freely.
+ *                 <g class="bowstring">), and nothing else. It may be
+ *                 redrawn freely.
  *   delight.js  — owns the LIVE gesture. On pointerdown it builds its own
  *                 handle chrome in #delight-layer and drives it to
  *                 completion, independent of any overlay re-render.
@@ -103,11 +105,10 @@ export function wobbleAmpFor(dist, velocity) {
  * Charge-clone opacity: fades 0 -> 1 over CHARGE_FADE_MS, then holds.
  *
  * Deliberately computed in JS from heldMs rather than expressed as a CSS
- * transition/keyframe, because the overlay layer this is drawn on is wiped
- * and rebuilt every frame — a CSS animation would restart from 0 on each
- * rebuild and the clone would never actually appear. Anything drawn on a
- * layer that gets recreated per frame must derive its state from elapsed
- * time, not from animation state stored on the element.
+ * transition/keyframe: a peer's charge is timed from when this client first
+ * saw it, the local one from its own gesture, and both are redrawn every
+ * frame, so each derives its state from elapsed time rather than from
+ * animation state stored on the element.
  */
 export function chargeOpacityFor(heldMs) {
   return Math.min(Math.max(heldMs, 0) / CHARGE_FADE_MS, 1);
@@ -143,7 +144,7 @@ export function stringPathD(origin, x, y, wobble) {
 // ── Module state ──────────────────────────────────────────────────────────
 
 let App = null;
-let _layerEl = null;   // #delight-layer <g> — never wiped by Overlay.render()
+let _layerEl = null;   // #delight-layer <g> — never touched by Overlay.render()
 let _svgEl = null;
 let _active = null;    // the in-flight gesture, or null when idle
 
@@ -164,12 +165,11 @@ export function isDragging() {
 /**
  * The live gesture's ephemeral state, or null when idle.
  *
- * This is the whole bridge to overlay.js. #selection_local is wiped and
- * rebuilt wholesale on every render(), so it cannot HOLD state across a
- * gesture — but it can READ it. Keeping the flow pull-based (overlay asks
- * delight at render time) rather than push-based (delight reaches into
- * overlay's DOM) means a wipe is harmless: the next render reconstructs
- * itself from a source that outlived it.
+ * This is the whole bridge to overlay.js. #selection_local is redrawn on
+ * every render(), so it cannot HOLD state across a gesture — but it can READ
+ * it. Keeping the flow pull-based (overlay asks delight at render time)
+ * rather than push-based (delight reaches into overlay's DOM) means a redraw
+ * is harmless: the next render draws itself from a source that outlived it.
  *
  * Both fields are ephemeral by the project's own taxonomy — they describe
  * how someone is manipulating a toy right now, not what the toy IS. They
@@ -315,8 +315,8 @@ function buildChrome(origin, scale) {
  * one value CSS can't originate (the pull parallax, via --drag-x/--drag-y).
  *
  * The ring clones go in #delight-layer rather than next to the real ring,
- * because the real ring lives in #selection_local and would take them with it
- * on the next wipe.
+ * because the real ring lives in #selection_local, whose next redraw would
+ * remove anything overlay.js didn't draw.
  *
  * rot ({ deg, cx, cy } or null) is applied via a wrapping <g>, never as a
  * transform on the delight nodes themselves: each already carries a CSS

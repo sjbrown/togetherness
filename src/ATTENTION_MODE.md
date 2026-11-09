@@ -482,7 +482,7 @@ layer in the SVG and so above everything else.
 It pans and zooms with the rest (canvas.js's transformed layers).
 Only attention_mode.js writes to it.
 
-It is not `#awareness` because overlay.js rebuilds every node there, on
+It is not `#awareness` because overlay.js redraws every node there, on
 every awareness change from any peer. Drawing attention there would mean a
 full rebuild of that layer on every animation frame for as long as any
 attention was live.

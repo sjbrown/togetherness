@@ -5,6 +5,7 @@
  * tick redraws. #selection_local is drawn from this client's own state only,
  * so syncFromAwareness must leave its nodes alone; #selection_shared only
  * changes with peers' claims and requests; #awareness changes every tick.
+ * Every layer is reconciled, not rebuilt, so a node still drawn is kept.
  */
 
 // @vitest-environment jsdom
@@ -80,20 +81,22 @@ describe('overlay layers', () => {
     expect(awareness().querySelectorAll('.selRing, .requestedRing')).toHaveLength(0)
   })
 
-  test('a movement-only tick redraws #awareness and leaves both selection layers\' nodes in place', () => {
+  test('a movement-only tick moves the peer\'s drag ghost and leaves every other node in place', () => {
     localSelectionChanged(new Set(['die-1']))
     tick({ dragX: 0, peerBid: true })
     const myRing = selectionLocal().querySelector('.selRing')
     const peerRing = selectionShared().querySelector('.remote-sel')
     const request = selectionShared().querySelector('.requestedRing')
-    const ghost = awareness().querySelector('use')
+    const ghost = awareness().querySelector('[data-key="drag-ghost:die-4"]')
+    expect(ghost.getAttribute('transform')).toBe('translate(-10, -10)')
 
     tick({ dragX: 5, peerBid: true })
 
     expect(selectionLocal().querySelector('.selRing')).toBe(myRing)
     expect(selectionShared().querySelector('.remote-sel')).toBe(peerRing)
     expect(selectionShared().querySelector('.requestedRing')).toBe(request)
-    expect(awareness().querySelector('use')).not.toBe(ghost)
+    expect(awareness().querySelector('[data-key="drag-ghost:die-4"]')).toBe(ghost)
+    expect(ghost.getAttribute('transform')).toBe('translate(-5, -10)')
   })
 
   test('a change in a peer\'s claims redraws #selection_shared', () => {
@@ -110,16 +113,16 @@ describe('overlay layers', () => {
     expect(selectionShared().querySelectorAll('.requestedRing')).toHaveLength(1)
   })
 
-  test('a full render rebuilds #awareness and keeps both selection layers\' nodes', () => {
+  test('a full render keeps every layer\'s nodes', () => {
     localSelectionChanged(new Set(['die-1']))
     tick()
     const myRing = selectionLocal().querySelector('.selRing')
     const peerRing = selectionShared().querySelector('.remote-sel')
-    const ghost = awareness().querySelector('use')
+    const ghost = awareness().querySelector('[data-key="drag-ghost:die-4"]')
     render()
     expect(selectionLocal().querySelector('.selRing')).toBe(myRing)
     expect(selectionShared().querySelector('.remote-sel')).toBe(peerRing)
-    expect(awareness().querySelector('use')).not.toBe(ghost)
+    expect(awareness().querySelector('[data-key="drag-ghost:die-4"]')).toBe(ghost)
   })
 })
 
