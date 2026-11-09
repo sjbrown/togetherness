@@ -658,18 +658,20 @@ function requestGradientId(elId) {
  * their normal one but the colours emerge from the opposite corner over the
  * request window. Returns its id.
  *
- * Stops 1 and 2 carry the motion as SMIL <animate>s. Each begins now, with
- * its keyframes rotated to the phase the request's age puts it at, so a
- * re-render lands on the same frame instead of restarting the animation.
- * (Backdating `begin` instead would leave the browser's animation timer
- * unscheduled.) Reduced motion gets the static full ring.
+ * Stops 1 and 2 carry the motion as SMIL <animate>s. Each begins at the
+ * clock's `begin` (document time when the request was first drawn), with
+ * its keyframes rotated to the phase the request's age had then, so it
+ * starts mid-cycle on the right frame. (Backdating `begin` instead would
+ * leave the browser's animation timer unscheduled.) Redrawn from the same
+ * clock, the gradient's attributes come out identical, and reconcile()
+ * leaves the running animation alone. Reduced motion gets the static full
+ * ring.
  */
-function buildVanishGradient(defs, id, spec, ts) {
+function buildVanishGradient(defs, id, spec, { elapsed, begin }) {
   const vec = gradientVector(spec.angle);
   const lg = el('linearGradient', { id, x1: vec.x2, y1: vec.y2, x2: vec.x1, y2: vec.y1 });
   const from = spec.c2, to = spec.c1;
   const calm = reducedMotion();
-  const elapsed = Date.now() - ts;
   const { a, b } = SoftLock.vanishOffsets(calm ? 0 : SoftLock.growVanish(SoftLock.windowProgress(elapsed)));
 
   lg.appendChild(el('stop', { offset: 0, 'stop-color': from, 'stop-opacity': 0 }));
@@ -681,7 +683,6 @@ function buildVanishGradient(defs, id, spec, ts) {
 
   if (!calm) {
     const frames = SoftLock.vanishFrames(SoftLock.growVanish, SoftLock.cycleMs(elapsed));
-    const begin = `${((_svgEl?.getCurrentTime?.() ?? 0) + 0.001).toFixed(3)}s`;
     for (const [stop, values] of [[s1, frames.a], [s2, frames.b]]) {
       stop.appendChild(el('animate', {
         attributeName: 'offset', values, keyTimes: frames.keyTimes,
@@ -796,36 +797,50 @@ function renderSelectionLocal() {
 }
 
 // What #selection_shared was last drawn from. Awareness ticks that change
-// only peers' movement leave it equal, so the layer and its request
-// animations are left in place. render() clears it to force a redraw.
+// only peers' movement leave it equal, so the layer is left alone. render()
+// clears it to force a redraw.
 let _selectionSharedKey = null;
 
-// #selection_shared: peers' claims and every open request.
+// Each open request's animation clock, `${elId}:${ts}` → { elapsed, begin }:
+// the request's age and the document time when it was first drawn. See
+// buildVanishGradient.
+let _requestClocks = new Map();
+
+// #selection_shared: peers' claims and every open request. Reconciled like
+// #selection_local, so a ring that is still wanted keeps its node.
 function renderSelectionShared() {
   if (!_selectionSharedEl) return;
   const scale = App.getViewScale();
   const key = JSON.stringify([scale, [...SelectionModeShared], [..._requests]]);
   if (key === _selectionSharedKey) return;
   _selectionSharedKey = key;
-  _selectionSharedEl.innerHTML = '';
-
-  const requestDefs = el('defs', {});   // attached only if a request filled it
+  const next = [];
+  const layer = { appendChild: (node) => (next.push(node), node) };
 
   for (const [elId, entry] of SelectionModeShared) {
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRemoteSelection(geo, entry, scale, App.getRotation?.(elId) ?? null, _selectionSharedEl);
+    renderRemoteSelection(geo, entry, scale, App.getRotation?.(elId) ?? null, layer, `remote:${elId}`);
   }
 
   // ── Requested/contested indicator — independent of the selection modes ──
   // Drawn regardless of who (if anyone) currently holds the element from
   // this client's point of view.
+  const clocks = new Map();
   for (const [elId, req] of _requests) {
+    const clockKey = `${elId}:${req.ts}`;
+    const clock = _requestClocks.get(clockKey) ?? {
+      elapsed: Date.now() - req.ts,
+      begin:   `${((_svgEl?.getCurrentTime?.() ?? 0) + 0.001).toFixed(3)}s`,
+    };
+    clocks.set(clockKey, clock);
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, requestDefs);
+    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, clock, layer);
   }
-  if (requestDefs.firstChild) _selectionSharedEl.appendChild(requestDefs);
+  _requestClocks = clocks;
+
+  reconcile(_selectionSharedEl, next);
 }
 
 // #awareness: peers' movement. Rebuilt on every awareness tick.
@@ -1229,9 +1244,9 @@ function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host, key) 
   if (parent !== host) host.appendChild(parent);
 }
 
-function renderRemoteSelection(geo, entry, scale, rot, layerEl) {
+function renderRemoteSelection(geo, entry, scale, rot, layerEl, key = null) {
   const { x, y, width, height } = geo;
-  const group = el('g', { class: 'remote-sel' });
+  const group = el('g', { class: 'remote-sel', ...(key && { 'data-key': key }) });
 
   // Ring strokes with the peer's own <linearGradient id="grad-{id}"> (see
   // user.js's upsertUserGradient) when one is available; solid color is
@@ -1285,11 +1300,15 @@ function renderRemoteSelection(geo, entry, scale, rot, layerEl) {
 // is rendered for the element (local/remote selection ring, or nothing at
 // all). Without a known requester gradient it falls back to a static warn
 // ring.
-function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
+function renderRequestedIndicator(geo, scale, rot, elId, req, clock, layerEl) {
   const { x, y, width, height } = geo;
-  const stroke = req.requesterGrad
-    ? `url(#${buildVanishGradient(defs, requestGradientId(elId), req.requesterGrad, req.ts)})`
-    : 'var(--warn)';
+  // The ring and its gradient ride together in one keyed group.
+  const group = el('g', { 'data-key': `request:${elId}` });
+  let stroke = 'var(--warn)';
+  if (req.requesterGrad) {
+    const defs = group.appendChild(el('defs', {}));
+    stroke = `url(#${buildVanishGradient(defs, requestGradientId(elId), req.requesterGrad, clock)})`;
+  }
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1303,7 +1322,8 @@ function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
     class:              'requestedRing',
   });
   if (rot) ring.setAttribute('transform', rotationTransform(rot));
-  _selectionSharedEl.appendChild(ring);
+  group.appendChild(ring);
+  layerEl.appendChild(group);
 }
 
 function renderDropTargetHover(geo, scale, layerEl) {

@@ -142,12 +142,13 @@ html, body {
    would be lost the moment the pointer left the handle it is dragging. */
 #stage.pivot-dragging, #stage.pivot-dragging * { cursor: crosshair; }
 
-/* #selection_local keeps its nodes across renders (overlay.js's
-   reconcile), so these run once, as a ring or handle first appears. The
-   ring fades only: a drag ring carries a rotate transform attribute, which
-   a CSS transform would override while it ran. */
+/* #selection_local and #selection_shared keep their nodes across renders
+   (overlay.js's reconcile), so these run once, as a ring or handle first
+   appears. Rings fade only: a ring may carry a rotate transform attribute,
+   which a CSS transform would override while it ran. */
 @media (prefers-reduced-motion: no-preference) {
-  #selection_local .selRing { animation: sel-ring-in 140ms ease-out; }
+  #selection_local .selRing,
+  #selection_shared .remote-sel { animation: sel-ring-in 140ms ease-out; }
   #selection_local .handle  { animation: sel-handle-in 160ms cubic-bezier(.34, 1.56, .64, 1);
                               transform-box: fill-box; transform-origin: center; }
 }

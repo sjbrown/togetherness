@@ -8,7 +8,7 @@
  */
 
 // @vitest-environment jsdom
-import { describe, test, expect, beforeEach } from 'vitest'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   SelectionModeLocal,
   SelectionModeShared,
@@ -110,15 +110,69 @@ describe('overlay layers', () => {
     expect(selectionShared().querySelectorAll('.requestedRing')).toHaveLength(1)
   })
 
-  test('a full render redraws the peer layers and keeps #selection_local\'s nodes', () => {
+  test('a full render rebuilds #awareness and keeps both selection layers\' nodes', () => {
     localSelectionChanged(new Set(['die-1']))
     tick()
     const myRing = selectionLocal().querySelector('.selRing')
     const peerRing = selectionShared().querySelector('.remote-sel')
+    const ghost = awareness().querySelector('use')
     render()
     expect(selectionLocal().querySelector('.selRing')).toBe(myRing)
-    expect(selectionShared().querySelector('.remote-sel')).not.toBe(peerRing)
-    expect(selectionShared().querySelectorAll('.remote-sel')).toHaveLength(1)
+    expect(selectionShared().querySelector('.remote-sel')).toBe(peerRing)
+    expect(awareness().querySelector('use')).not.toBe(ghost)
+  })
+})
+
+// #selection_shared is reconciled too, and an open request is redrawn from
+// the clock it was first drawn with, so its SMIL animation is never touched.
+describe('#selection_shared keeps its nodes across renders', () => {
+  const NOW = 1_700_000_000_000
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOW) })
+  afterEach(() => vi.useRealTimers())
+
+  const bidTick = (peerHolds = 'die-2') => syncFromAwareness(new Map([
+    [2, { user: PEER, desired: held(peerHolds) }],
+    [3, { user: { id: 'cass', gradient: { c1: '#00aa00', c2: '#005500' } }, desired: { 'die-2': { ts: NOW - 1000, holding: false } } }],
+  ]), 1)
+
+  test('an unchanged request keeps its ring and gradient, attribute for attribute, as time passes', () => {
+    bidTick()
+    const request = selectionShared().querySelector('[data-key="request:die-2"]')
+    const animate = request.querySelector('animate')
+    const values = animate.getAttribute('values')
+    vi.setSystemTime(NOW + 500)
+    render()
+    expect(selectionShared().querySelector('[data-key="request:die-2"]')).toBe(request)
+    expect(request.querySelector('animate')).toBe(animate)
+    expect(animate.getAttribute('values')).toBe(values)
+  })
+
+  test('a peer\'s new claim adds its ring and leaves the others\' nodes alone', () => {
+    bidTick()
+    const ring = selectionShared().querySelector('[data-key="remote:die-2"]')
+    const request = selectionShared().querySelector('[data-key="request:die-2"]')
+    syncFromAwareness(new Map([
+      [2, { user: PEER, desired: { ...held('die-2'), ...held('die-5') } }],
+      [3, { user: { id: 'cass', gradient: { c1: '#00aa00' } }, desired: { 'die-2': { ts: NOW - 1000, holding: false } } }],
+    ]), 1)
+    expect(selectionShared().querySelector('[data-key="remote:die-2"]')).toBe(ring)
+    expect(selectionShared().querySelector('[data-key="request:die-2"]')).toBe(request)
+    expect(selectionShared().querySelector('[data-key="remote:die-5"]')).not.toBeNull()
+  })
+
+  test('a resolved request\'s group goes, and a later request on the same element starts its own clock', () => {
+    bidTick()   // 1000ms old when first drawn
+    const first = selectionShared().querySelector('[data-key="request:die-2"] animate').getAttribute('values')
+    syncFromAwareness(new Map([[2, { user: PEER, desired: held('die-2') }]]), 1)
+    expect(selectionShared().querySelector('[data-key="request:die-2"]')).toBeNull()
+
+    vi.setSystemTime(NOW + 2000)
+    syncFromAwareness(new Map([
+      [2, { user: PEER, desired: held('die-2') }],
+      [3, { user: { id: 'cass', gradient: { c1: '#00aa00' } }, desired: { 'die-2': { ts: NOW + 1500, holding: false } } }],
+    ]), 1)  // 500ms old when first drawn
+    const second = selectionShared().querySelector('[data-key="request:die-2"] animate').getAttribute('values')
+    expect(second).not.toBe(first)
   })
 })
 
