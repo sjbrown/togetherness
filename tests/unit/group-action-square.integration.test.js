@@ -91,25 +91,25 @@ describe('group action square', () => {
     const { render } = await import('../../src/overlay.js')
     render()
     expect(svgEl.querySelectorAll('#selection_local .groupAction .actionSquare').length).toBe(1)
+    expect(svgEl.querySelector('#selection_local .groupAction').dataset.handle).toBe('group-action')
   })
 
-  test('clicking the square invokes the action on every die', async () => {
+  test('firing the group action invokes it on every die', async () => {
     const { App } = await bootApp(dice())
     App.select('a'); App.toggleSelection('b'); App.toggleSelection('c')
     const spy = vi.spyOn(App, 'invokeToyMenuActions')
-    const { origin } = App.getGroupAction()
-    expect(App.fireGroupActionAt({ x: origin.x + 3, y: origin.y - 3 })).toBe(true)
+    expect(App.fireGroupAction()).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)
     const [ids, , key] = spy.mock.calls[0]
     expect([...ids].sort()).toEqual(['a', 'b', 'c'])
     expect(key).toBe('Roll')
   })
 
-  test('a click away from the square does nothing', async () => {
-    const { App } = await bootApp(dice())
-    App.select('a'); App.toggleSelection('b')
+  test('firing with no group action does nothing', async () => {
+    const { App } = await bootApp([dice()[0], { id: 'p', toyType: 'meeple', x: 200, y: 0 }])
+    App.select('a'); App.toggleSelection('p')
     const spy = vi.spyOn(App, 'invokeToyMenuActions')
-    expect(App.fireGroupActionAt({ x: -500, y: -500 })).toBe(false)
+    expect(App.fireGroupAction()).toBe(false)
     expect(spy).not.toHaveBeenCalled()
   })
 

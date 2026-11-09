@@ -6,7 +6,7 @@
  * and shows corner grab handles; dragging one and releasing commits a new
  * extent (regenerating the circle grid for a position set). This exercises
  * the whole path through the real App bus — the same generic
- * select/nextSelectionMode/getResizeCorner/startResize/resize/commitResize
+ * select/nextSelectionMode/startResize/resize/commitResize
  * plumbing toys.js and drawing.js already use — to lock in that boun_pos.js
  * now plugs into it too.
  *
@@ -130,10 +130,8 @@ describe('boundary resize mode', () => {
     App.nextSelectionMode(id)
     expect(App.getResizeModeId()).toBe(id)
 
-    const geo = App.getBBox(id)
-    // SE corner sits just outside the shape, past the overlay's PAD.
-    const corner = App.getResizeCorner(id, geo.x + geo.width + 6, geo.y + geo.height + 6)
-    expect(corner).toBe(2) // SE — [NW, NE, SE, SW]
+    expect(svgEl.querySelector('#selection_local [data-handle="resize"][data-corner="se"]')).not.toBeNull()
+    const corner = 2 // SE — [NW, NE, SE, SW]
 
     App.startResize(id, corner)
     App.resize(id, corner, 400, 350)
@@ -149,18 +147,6 @@ describe('boundary resize mode', () => {
     expect(translationOf(el)).toEqual({ tx: 100, ty: 100 })
   })
 
-  test('a plain click-drag on a resize-mode boundary that misses the handles still moves it', async () => {
-    const { App, ydoc } = await bootApp()
-    App.setLayer('boun_pos')
-    App.commitBoundary({ x: 100, y: 100, w: 200, h: 150 })
-    const id = App.getSelectedIds()[0]
-    App.nextSelectionMode(id)
-
-    // Center of the shape, nowhere near a corner handle.
-    const geo = App.getBBox(id)
-    const corner = App.getResizeCorner(id, geo.x + geo.width / 2, geo.y + geo.height / 2)
-    expect(corner).toBeNull()
-  })
 })
 
 describe('position-set resize mode', () => {
@@ -174,9 +160,8 @@ describe('position-set resize mode', () => {
     App.nextSelectionMode(id)
     expect(App.getResizeModeId()).toBe(id)
 
-    const geo = App.getBBox(id)
-    const corner = App.getResizeCorner(id, geo.x + geo.width + 6, geo.y + geo.height + 6)
-    expect(corner).toBe(2)
+    expect(svgEl.querySelector('#selection_local [data-handle="resize"][data-corner="se"]')).not.toBeNull()
+    const corner = 2
 
     App.startResize(id, corner)
     App.resize(id, corner, 400, 400)

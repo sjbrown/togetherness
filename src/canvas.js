@@ -176,6 +176,20 @@ function hitForActiveLayer(e) {
   return el.dataset.module === App.getActiveLayer() ? el : null;
 }
 
+// The #selection_local handle under the pointer, or null. Each one carries
+// data-handle naming what a press on it does (see overlay.js).
+function handleUnder(e) {
+  return e.target.closest?.('[data-handle]') ?? null;
+}
+
+// A corner handle's data-corner as the RESIZE_CORNER_* index (0-3, in
+// toys.js's NW, NE, SE, SW order), or 'r' for the single radius handle.
+const CORNERS = ['nw', 'ne', 'se', 'sw'];
+function cornerOf(handleEl) {
+  const c = handleEl.dataset.corner;
+  return c === 'r' ? 'r' : CORNERS.indexOf(c);
+}
+
 // ── Draw preview (rubber-band div) ────────────────────────────────────────────
 const _preview = {
   el: null,
@@ -261,52 +275,45 @@ function onPointerDown(e) {
 
   const hitEl = hitForActiveLayer(e);
   const hitId = hitEl?.dataset?.id ?? null;
+  const handleEl = handleUnder(e);
+  const handle = handleEl?.dataset.handle ?? null;
 
   if (ToolMode.tool === 'select') {
-    // Resize mode: the corner handles are drawn just outside the tray's
-    // own hit-testable bounds (overlay PAD — see overlay.js), so a click on
-    // one of them often lands on nothing hitForActiveLayer() can see
-    // Check the pointer position against the resize-mode tray's corners FIRST,
-    // independent of hitId, before falling through to ordinary hit-testing.
-    // The bowstring handle (delight.js) sits on the selection ring's SE
-    // corner, outside the toy's own hit-testable bounds — same problem the
-    // resize corners have, so it gets the same treatment: check the pointer
-    // against it FIRST, independent of hitId. A bowstring gesture takes over
-    // the pointer completely; no move/select gesture starts for it.
-    if (App.fireGroupActionAt(toCanvas(e.clientX, e.clientY))) return;
+    // A press on a selection handle (overlay.js's [data-handle] elements in
+    // #selection_local) is that handle's gesture, ahead of ordinary
+    // hit-testing: the handles mostly sit just outside the element's own
+    // hit-testable bounds, so hitId alone would miss them. Each App call
+    // still checks that the selection is in the mode the handle belongs
+    // to. A bowstring gesture (delight.js) takes over the pointer
+    // completely; no move/select gesture starts for it.
+    if (handle === 'group-action' && App.fireGroupAction()) return;
 
-    if (App.startBowstringAt(e, toCanvas(e.clientX, e.clientY))) {
+    if (handle === 'bowstring' && App.startBowstring(e)) {
       ToolMode._gesture = 'bowstring';
       return;
     }
 
     const resizeId = App.getResizeModeId();
-    if (resizeId) {
-      const rp = toCanvas(e.clientX, e.clientY);
-      const corner = App.getResizeCorner(resizeId, rp.x, rp.y);
-      if (corner != null) {
-        ToolMode._gesture = 'resize';
-        ToolMode._moveRef = { id: resizeId, corner, moved: false };
-        App.startResize(resizeId, corner);
-        return;
-      }
+    if (resizeId && handle === 'resize') {
+      const corner = cornerOf(handleEl);
+      ToolMode._gesture = 'resize';
+      ToolMode._moveRef = { id: resizeId, corner, moved: false };
+      App.startResize(resizeId, corner);
+      return;
     }
 
-    // Rotate mode's corner handles sit exactly where resize mode's do, and
-    // are just as far outside the element's own hit-testable bounds, so
-    // they get the same pointer-position check rather than relying on hitId.
+    // Rotate mode: the pivot, or a rotate corner.
     const rotateId = App.getRotateModeId();
     if (rotateId) {
-      const rp = toCanvas(e.clientX, e.clientY);
-      const corner = App.getRotateHandle(rotateId, rp.x, rp.y);
-      if (corner === 'pivot') {
+      if (handle === 'pivot') {
         ToolMode._gesture = 'pivot';
         ToolMode._moveRef = { id: rotateId, moved: false };
         _stageEl.classList.add('pivot-dragging');
         App.startPivotDrag(rotateId);
         return;
       }
-      if (corner != null) {
+      if (handle === 'rotate') {
+        const corner = cornerOf(handleEl);
         ToolMode._gesture = 'rotate';
         ToolMode._moveRef = { id: rotateId, corner, moved: false };
         App.startRotate(rotateId, corner);

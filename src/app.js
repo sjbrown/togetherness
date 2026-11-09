@@ -1394,16 +1394,15 @@ const App = {
   // ── Bowstring handle (delight.js) ─────────────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
   // first menu action now, or pull it back and release for the same action
-  // as a "charged" gesture. canvas.js calls startBowstringAt on pointerdown
-  // ahead of ordinary hit-testing; if it takes, the pointer belongs to the
-  // bowstring for the rest of the gesture.
+  // as a "charged" gesture. canvas.js calls startBowstring for a press on
+  // the square ahead of ordinary hit-testing; if it takes, the pointer
+  // belongs to the bowstring for the rest of the gesture.
 
   /**
-   * Try to begin a bowstring gesture at a canvas-space point. Returns true
-   * if the point landed on the affordance (and the gesture started), false
-   * to let canvas.js fall through to normal hit-testing.
+   * Try to begin a bowstring gesture on the sole selection. Returns true if
+   * it started, false to let canvas.js fall through to normal hit-testing.
    */
-  startBowstringAt: (e, canvasPoint) => {
+  startBowstring: (e) => {
     const id = _singleSelectedId();
     if (!id) return false;
     const { domEl, layer } = _layerFor(id);
@@ -1414,9 +1413,6 @@ const App = {
     // otherwise avoids intercepting a corner that no longer shows it.
     if (defaultMode !== 'sel-action' || SelectionLocal.activeMode()?.mode !== defaultMode) return false;
     if (!App.hasToyActions(id)) return false;
-    const geo = App.getBBox(id);
-    if (!geo) return false;
-    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
     return Delight.startBowstring(id, e, _svgEl);
   },
 
@@ -1446,13 +1442,12 @@ const App = {
   },
 
   /**
-   * Fire the group action if canvasPoint lands on its square. Returns true
-   * when it did, so canvas.js can swallow the click.
+   * Fire the group action, if the selection has one. canvas.js calls this
+   * for a press on its square; true means it fired and the press is spent.
    */
-  fireGroupActionAt: (canvasPoint) => {
+  fireGroupAction: () => {
     const group = App.getGroupAction();
     if (!group) return false;
-    if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
     App.invokeToyMenuActions(group.ids, group.namespace, group.key);
     App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
     return true;
@@ -1519,16 +1514,6 @@ const App = {
     App.addLog(`bowstring ${how} → ${key}${params ? ` ${JSON.stringify(params)}` : ''}`, 'local');
   },
 
-  // getResizeCorner   — hit-test a canvas-space point against id's corner
-  //                     handles; used by canvas.js on pointerdown to decide
-  //                     whether a click on an already-resize-mode container
-  //                     starts a resize gesture or falls through.
-  getResizeCorner: (id, cx, cy) => {
-    if (SelectionLocal.activeMode()?.id !== id || !RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) return null;
-    const geo = App.getBBox(id);
-    const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale());
-  },
 
   startResize: (id, corner) => {
     if (SelectionLocal.activeMode()?.id !== id || !RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;
@@ -1594,13 +1579,6 @@ const App = {
   getPivotSnapFraction: () => _pivotSnapFraction,
   setPivotSnapFraction: (f) => { _pivotSnapFraction = Number(f) || 0; },
 
-  getRotateHandle: (id, cx, cy) => {
-    if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) return null;
-    const geo = App.getBBox(id);
-    const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(
-      SelectionLocal.activeMode().mode, geo, p.x, p.y, App.getViewScale(), App.getPivot(id));
-  },
 
   startRotate: (id, corner) => {
     if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;
@@ -1680,8 +1658,10 @@ const App = {
     const p     = _toLocalPoint(id, px, py, _rotationOf(id));
     const pivot = _Layers[mtype].computePivot(startRect, p.x, p.y, _pivotSnapFraction);
     _pivotState = null;
-    Overlay.setPivotPreview(id, null);
     _writePivot(id, mtype, startRect, fromPivot, pivot, deg);
+    // After the write, same reasoning as commitResize: clearing the preview
+    // redraws the handle where the DOM now has the pivot.
+    Overlay.setPivotPreview(id, null);
   },
 
   cancelPivot: () => {

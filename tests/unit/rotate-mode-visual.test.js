@@ -14,8 +14,6 @@ import { describe, test, expect, beforeEach } from 'vitest'
 import {
   localSelectionChanged,
   setSelectionMode,
-  hitTestSelectionHandle,
-  hitTestPivot,
   handleCursor,
   resizeCorners,
   setPivotPreview,
@@ -44,12 +42,12 @@ function makeOverlayDOM() {
 // App.getRotation answers with a RESOLVED rotation — { deg, cx, cy } — so
 // overlay.js never derives a pivot itself. `centre` defaults to the middle
 // of BBOX; pass another to stand in for a pivot the user has moved.
-function boot({ rotation = 0, centre = { cx: 200, cy: 150 }, pivot = { fx: 0.5, fy: 0.5 } } = {}) {
+function boot({ rotation = 0, centre = { cx: 200, cy: 150 }, pivot = { fx: 0.5, fy: 0.5 }, scale = 1 } = {}) {
   makeOverlayDOM()
   setPivotPreview(null, null)   // module state — clear anything a prior test left
   overlayInit({
     user:         { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
-    getViewScale: () => 1,
+    getViewScale: () => scale,
     getBBox:      (id) => (id === 'rect1' ? BBOX : null),
     getRotation:  (id) => (id === 'rect1' && rotation ? { deg: rotation, ...centre } : null),
     getPivot:     (id) => (id === 'rect1'
@@ -126,21 +124,25 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
   })
 })
 
-describe('hitTestSelectionHandle in rotate mode', () => {
-  const scale = 1
+describe('corner handle grab areas', () => {
+  // canvas.js dispatches a press by the [data-handle] element under it, so a
+  // handle's grab area is just the invisible .handleHit square drawn with it.
+  const hitAt = (corner) => document.querySelector(`#selection_local .handleHit[data-handle="resize"][data-corner="${corner}"]`)
 
-  test('returns the corner index under the pointer, like resize mode does', () => {
-    const corners = resizeCorners(BBOX)
-    for (const mode of ['sel-rotate', 'sel-rotate-pivot']) {
-      corners.forEach((c, i) => {
-        expect(hitTestSelectionHandle(mode, BBOX, c.x, c.y, scale)).toBe(i)
-      })
+  test('reach HANDLE_SIZE / 2 + HANDLE_HIT_PAD (12) screen px either side of the corner, at any zoom', () => {
+    const [, , se] = resizeCorners(BBOX)
+    for (const scale of [1, 4]) {
+      boot({ scale }); enter('sel-resize')
+      const hit = hitAt('se')
+      expect(Number(hit.getAttribute('width'))).toBe(24 / scale)
+      expect(Number(hit.getAttribute('x')) + 12 / scale).toBe(se.x)
+      expect(Number(hit.getAttribute('y')) + 12 / scale).toBe(se.y)
     }
   })
 
-  test('returns null well away from every corner', () => {
-    expect(hitTestSelectionHandle('sel-rotate', BBOX, 200, 150, scale)).toBeNull()
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, 200, 150, scale)).toBeNull()
+  test('turn with a rotated shape, inside its rotated furniture group', () => {
+    boot({ rotation: 90 }); enter('sel-resize')
+    expect(hitAt('nw').closest('[transform]').getAttribute('transform')).toBe('rotate(90 200 150)')
   })
 })
 
@@ -365,50 +367,26 @@ describe('the pivot handle', () => {
     expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x + BBOX.width / 2)
   })
 
-  test('carries an invisible circle sized to the real hit radius, so hovering it shows the cursor', () => {
+  test('carries an invisible circle giving it its grab radius, so hovering or pressing it works', () => {
     // The rays/dot opt out of pointer-events (see icons.js), and a <g> has no
     // paintable geometry of its own — without a painted, non-glyph shape here,
-    // .pivotHandle's `cursor: crosshair` rule never has anything to hover.
+    // .pivotHandle's `cursor: crosshair` rule never has anything to hover,
+    // and a press would never land on [data-handle="pivot"].
     boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
     const hit = document.querySelector('#selection_local .pivotHandle circle:not(.pivotGlyph)')
     expect(hit).not.toBeNull()
     expect(hit.getAttribute('fill')).toBe('transparent')
-
-    const cx = Number(hit.getAttribute('cx'))
-    const cy = Number(hit.getAttribute('cy'))
-    const r = Number(hit.getAttribute('r'))
-    const pt = { cx: BBOX.x, cy: BBOX.y }
-    expect(hitTestPivot(pt, cx + r - 0.5, cy, 1)).toBe(true)
-    expect(hitTestPivot(pt, cx + r + 0.5, cy, 1)).toBe(false)
-  })
-})
-
-describe('hit-testing the pivot', () => {
-  const pt = { cx: 200, cy: 150 }
-
-  test('a point on the handle is a hit; one well away is not', () => {
-    expect(hitTestPivot(pt, 200, 150, 1)).toBe(true)
-    expect(hitTestPivot(pt, 260, 150, 1)).toBe(false)
-    expect(hitTestPivot(null, 200, 150, 1)).toBe(false)
+    expect(Number(hit.getAttribute('cx'))).toBe(BBOX.x)
+    expect(Number(hit.getAttribute('cy'))).toBe(BBOX.y)
+    expect(Number(hit.getAttribute('r'))).toBe(9 / 2 + 6)  // PIVOT_SIZE / 2 + HANDLE_HIT_PAD, at scale 1
   })
 
-  test('sel-rotate-pivot reports the pivot before the corner it is parked on', () => {
-    const [nw] = resizeCorners(BBOX)
-    const onNW = { cx: nw.x, cy: nw.y }
-    // Same point hits the corner when no pivot is offered...
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, nw.x, nw.y, 1)).toBe(0)
-    // ...and the pivot when one is sitting there.
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, nw.x, nw.y, 1, onNW)).toBe('pivot')
-  })
-
-  test('corners still answer when the pivot is elsewhere', () => {
-    const [, ne] = resizeCorners(BBOX)
-    const centre = { cx: 200, cy: 150 }
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, ne.x, ne.y, 1, centre)).toBe(1)
-  })
-
-  test('the fixed-pivot mode never reports a pivot, even if one is passed', () => {
-    expect(hitTestSelectionHandle('sel-rotate', BBOX, 200, 150, 1, { cx: 200, cy: 150 })).toBeNull()
+  test('is drawn after the rotate handles, so a pivot parked on a corner is the one pressed', () => {
+    boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
+    const pivot = document.querySelector('#selection_local .pivotHandle')
+    for (const handle of document.querySelectorAll('#selection_local .rotateHandle')) {
+      expect(handle.compareDocumentPosition(pivot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
   })
 })
 
