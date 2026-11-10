@@ -1145,6 +1145,10 @@ const App = {
    *   place:release { placementId } — the pointer came up; placement starts
    *   place:placed  { placementId, id } — the toy is in its layer
    *   place:cancel  { placementId } — nothing will be placed
+   * Moving with the pointer sends, once committed:
+   *   move:placed   { layer, moves: [{ id, x, y }] } — each element now
+   *                 rests with its anchor at (x, y), in its layer's terms
+   *                 (a toy's anchor is its centre)
    */
   on: (type, handler) => {
     const listener = (e) => handler(e.detail);
@@ -1414,6 +1418,7 @@ const App = {
 
       // A toy landing inside a container leaves selection
       SelectionLocal.clearClaims();
+      _emit('move:placed', { layer: mtype, moves: [{ id, x: rx, y: ry }] });
 
       return;
     }
@@ -1424,6 +1429,7 @@ const App = {
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
     // the selection ring from whatever the DOM currently shows.
     Overlay.endDragPlaceholder(id);
+    _emit('move:placed', { layer: mtype, moves: [{ id, x: rx, y: ry }] });
   },
 
   cancelMove: () => {
@@ -1851,6 +1857,7 @@ const App = {
 
     App.addLog(`moved ${elements.length} objects`, 'local');
     _multiDragState = null;
+    _emit('move:placed', { layer: mtype, moves });
   },
 
   cancelMultiMove: () => {
