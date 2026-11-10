@@ -1,5 +1,5 @@
 /**
- * delight_place.js — a toy lands with squash and stretch when the local
+ * delight_plop.js — a toy lands with squash and stretch when the local
  * player places it
  *
  * Pressing with a toy tool squashes a ghost of the toy at the press point
@@ -48,7 +48,7 @@ const SETTLE_EPS = 0.002;         // spring stops once its envelope is this smal
 const CANCEL_MS = 160;
 const SHADOW_OPACITY = 0.2;
 const SHADOW_RATIO = 0.48;        // shadow radii as a fraction of the toy's size
-const SHADOW_FILTER_ID = 'delight-place-shadow';
+const SHADOW_FILTER_ID = 'delight-plop-shadow';
 
 const EASE_OUT = cubicBezier(0.2, 0.7, 0.3, 1);
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -110,7 +110,7 @@ export function init(appBus, svgElement) {
   App = appBus;
   _svgEl = svgElement;
   _layerEl = svgElement.querySelector('#delight-layer');
-  if (!_layerEl) throw new Error("delight_place.init: '#delight-layer' not found");
+  if (!_layerEl) throw new Error("delight_plop.init: '#delight-layer' not found");
   if (!svgElement.querySelector(`#${SHADOW_FILTER_ID}`)) {
     (svgElement.querySelector('defs') ?? svgElement).appendChild(blurFilter(SHADOW_FILTER_ID, 3));
   }

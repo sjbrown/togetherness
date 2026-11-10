@@ -1,5 +1,5 @@
 /**
- * delight_move.js — a puff of dust where the local player's moved toys come
+ * delight_skid.js — a puff of dust where the local player's moved toys come
  * to rest
  *
  * Driven by App's move:* notifications (see App.on):
@@ -23,7 +23,7 @@ export function init(appBus, svgElement) {
   App = appBus;
   _svgEl = svgElement;
   _layerEl = svgElement.querySelector('#delight-layer');
-  if (!_layerEl) throw new Error("delight_move.init: '#delight-layer' not found");
+  if (!_layerEl) throw new Error("delight_skid.init: '#delight-layer' not found");
   for (const off of _unsubscribe) off();
   _unsubscribe = [
     App.on('move:placed', ({ layer, moves }) => {

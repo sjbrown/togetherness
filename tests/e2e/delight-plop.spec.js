@@ -1,5 +1,5 @@
 /**
- * tests/e2e/delight-place.spec.js
+ * tests/e2e/delight-plop.spec.js
  *
  * Placing a toy plays a squash and stretch for the placing player only, on
  * a <use> of the toy in #delight-layer. The real toy in #toys-layer is

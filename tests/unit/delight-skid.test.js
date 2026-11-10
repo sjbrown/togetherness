@@ -1,5 +1,5 @@
 /**
- * tests/unit/delight-move.test.js
+ * tests/unit/delight-skid.test.js
  *
  * The move puff: a small dust puff where each moved toy now rests, for the
  * local player only, leaving the toys themselves untouched.
@@ -7,9 +7,9 @@
 
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { init } from '../../src/delight_move.js'
+import { init } from '../../src/delight_skid.js'
 
-describe('move puff', () => {
+describe('skid', () => {
   const SVGNS = 'http://www.w3.org/2000/svg'
   let svg, toysLayer, delightLayer, bus
 

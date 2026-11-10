@@ -56,10 +56,10 @@
 import { LOCAL_ACTION_FILTER_ID, GLOW_FILTER_ID } from './defs.js';
 import { rotatePoint } from './geometry.js';
 import * as Radial from './ui_radial.js';
-import * as Place from './delight_place.js';
-import * as Move from './delight_move.js';
+import * as Plop from './delight_plop.js';
+import * as Skid from './delight_skid.js';
 
-const DELIGHT_EFFECTS = [Place, Move];
+const DELIGHT_EFFECTS = [Plop, Skid];
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 

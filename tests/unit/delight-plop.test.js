@@ -1,5 +1,5 @@
 /**
- * tests/unit/delight-place.test.js
+ * tests/unit/delight-plop.test.js
  *
  * The toy-landing squash and stretch: its timing math, and the DOM
  * lifecycle in #delight-layer — including that the real toy in #toys-layer
@@ -13,7 +13,7 @@ import {
   SQUASH, SQUASH_MS, HOLD_EXTRA, HOLD_MS, STRETCH, STRETCH_MS,
   pressDeform, releaseDeform, releaseMs, settleMsFor, scaleFor,
   init, press, release, attach, cancel,
-} from '../../src/delight_place.js'
+} from '../../src/delight_plop.js'
 import { PUFF } from '../../src/delight_puff.js'
 
 describe('pressDeform', () => {
@@ -207,7 +207,7 @@ describe('landing lifecycle', () => {
 
   it('puffs at the view scale, and brings its own shadow filter', () => {
     const L = press(50, 60, toy('ghost', 50, 60, 80, 100))
-    expect(svg.querySelector('defs #delight-place-shadow')).not.toBeNull()
+    expect(svg.querySelector('defs #delight-plop-shadow')).not.toBeNull()
     release(L)
     expect(svg.querySelector('#delight-puff feGaussianBlur').getAttribute('stdDeviation')).toBe(String(PUFF.blur / 2))
     cancel(L)

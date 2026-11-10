@@ -1,5 +1,5 @@
 /**
- * tests/e2e/delight-move.spec.js
+ * tests/e2e/delight-skid.spec.js
  *
  * Moving a toy puffs a little dust where it comes to rest, for the moving
  * player only, without touching the toy; the peer sees no puff.
