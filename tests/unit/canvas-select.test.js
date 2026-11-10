@@ -94,8 +94,8 @@ function makeApp(overrides = {}) {
     movePivot:          () => {},
     commitPivot:        () => {},
     cancelPivot:        () => {},
-    placePress:         () => null,
-    placeCancel:        () => {},
+    toyAddPress:        () => null,
+    toyAddCancel:       () => {},
     ...overrides,
   }
 }

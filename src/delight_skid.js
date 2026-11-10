@@ -2,9 +2,9 @@
  * delight_skid.js — a puff of dust where the local player's moved toys come
  * to rest
  *
- * Driven by App's move:* notifications (see App.on):
- *   move:placed → a small puff around each moved toy, centred on where it
- *                 now rests
+ * Driven by App's toy:move:* signals (see App.on):
+ *   toy:move:place → a small puff around each moved toy, centred on where
+ *                    it now rests
  *
  * Local only. Nothing here reaches the doc or awareness, and the toys in
  * #toys-layer are never touched: the puff plays in #delight-layer.
@@ -26,8 +26,8 @@ export function init(appBus, svgElement) {
   if (!_layerEl) throw new Error("delight_skid.init: '#delight-layer' not found");
   for (const off of _unsubscribe) off();
   _unsubscribe = [
-    App.on('move:placed', ({ layer, moves }) => {
-      if (layer !== 'toys' || reducedMotion()) return;
+    App.on('toy:move:place', ({ moves }) => {
+      if (reducedMotion()) return;
       const scale = App.getViewScale?.() ?? 1;
       for (const { id, x, y } of moves) {
         const toyEl = _svgEl.querySelector(`#toys-layer [data-id="${id}"]`);

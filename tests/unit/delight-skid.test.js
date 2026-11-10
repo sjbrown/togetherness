@@ -51,7 +51,7 @@ describe('skid', () => {
   it('puffs three particles around each moved toy’s resting centre', () => {
     toysLayer.append(toy('a', 100, 100, 80, 100), toy('b', 300, 100, 80, 80))
     const before = toysLayer.innerHTML
-    emit('move:placed', { layer: 'toys', moves: [{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 300, y: 100 }] })
+    emit('toy:move:place', { pressId: 1, moves: [{ id: 'a', x: 100, y: 100 }, { id: 'b', x: 300, y: 100 }] })
 
     expect(puffs()).toHaveLength(6)
     const near = (cx) => puffs().filter(c => Math.abs(+c.getAttribute('cx') - cx) <= 50)
@@ -60,15 +60,18 @@ describe('skid', () => {
     expect(toysLayer.innerHTML).toBe(before)
   })
 
-  it('ignores moves on other layers', () => {
-    emit('move:placed', { layer: 'drawing', moves: [{ id: 'r', x: 0, y: 0 }] })
+  it('ignores the rest of the toy:move:* signals', () => {
+    toysLayer.append(toy('a', 100, 100, 80, 100))
+    emit('toy:move:press', { pressId: 2, ids: ['a'] })
+    emit('toy:move:release', { pressId: 2 })
+    emit('toy:move:cancel', { pressId: 2 })
     expect(puffs()).toHaveLength(0)
   })
 
   it('does nothing when motion is reduced', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }))
     toysLayer.append(toy('a', 100, 100, 80, 100))
-    emit('move:placed', { layer: 'toys', moves: [{ id: 'a', x: 100, y: 100 }] })
+    emit('toy:move:place', { pressId: 1, moves: [{ id: 'a', x: 100, y: 100 }] })
     expect(puffs()).toHaveLength(0)
     vi.unstubAllGlobals()
   })
@@ -77,7 +80,7 @@ describe('skid', () => {
     const first = bus
     init({ getViewScale: () => 1, on: () => () => {} }, svg)
     toysLayer.append(toy('a', 100, 100, 80, 100))
-    first.dispatchEvent(new CustomEvent('move:placed', { detail: { layer: 'toys', moves: [{ id: 'a', x: 100, y: 100 }] } }))
+    first.dispatchEvent(new CustomEvent('toy:move:place', { detail: { pressId: 1, moves: [{ id: 'a', x: 100, y: 100 }] } }))
     expect(puffs()).toHaveLength(0)
   })
 })

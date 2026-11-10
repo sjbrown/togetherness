@@ -220,20 +220,20 @@ describe('landing lifecycle', () => {
     vi.unstubAllGlobals()
   })
 
-  describe('driven by place:* notifications', () => {
+  describe('driven by toy:add:* signals', () => {
     const emit = (type, detail) => bus.dispatchEvent(new CustomEvent(type, { detail }))
 
-    it('runs press → release → placed by placementId, building the preview only on press', () => {
+    it('runs press → release → place by pressId, building the preview only on press', () => {
       const preview = vi.fn(() => toy('ghost', 50, 60, 80, 100))
-      emit('place:press', { placementId: 3, tool: 'd6', x: 50, y: 60, preview })
+      emit('toy:add:press', { pressId: 3, tool: 'd6', x: 50, y: 60, preview })
       expect(preview).toHaveBeenCalledTimes(1)
       expect(delightLayer.querySelector('.landing')).not.toBeNull()
 
-      emit('place:release', { placementId: 3 })
+      emit('toy:add:release', { pressId: 3 })
       expect(delightLayer.querySelectorAll('.delight-puff')).toHaveLength(PUFF.count)
 
       toysLayer.appendChild(toy('tt-t-v1-ev', 50, 60, 80, 100))
-      emit('place:placed', { placementId: 3, id: 'tt-t-v1-ev' })
+      emit('toy:add:place', { pressId: 3, id: 'tt-t-v1-ev' })
       expect(delightLayer.querySelector('.landing use').getAttribute('href')).toBe('#tt-t-v1-ev')
 
       advance(releaseMs() + 50)
@@ -241,18 +241,18 @@ describe('landing lifecycle', () => {
       expect(hideRules()).toBe('')
     })
 
-    it('place:cancel removes the landing', () => {
-      emit('place:press', { placementId: 4, x: 50, y: 60, preview: () => toy('ghost', 50, 60, 80, 100) })
-      emit('place:cancel', { placementId: 4 })
+    it('toy:add:cancel removes the landing', () => {
+      emit('toy:add:press', { pressId: 4, x: 50, y: 60, preview: () => toy('ghost', 50, 60, 80, 100) })
+      emit('toy:add:cancel', { pressId: 4 })
       advance(500)
       expect(delightLayer.querySelector('.landing')).toBeNull()
     })
 
-    it('ignores notifications for placements it never saw', () => {
+    it('ignores signals for presses it never saw', () => {
       expect(() => {
-        emit('place:release', { placementId: 99 })
-        emit('place:placed', { placementId: 99, id: 'nope' })
-        emit('place:cancel', { placementId: 99 })
+        emit('toy:add:release', { pressId: 99 })
+        emit('toy:add:place', { pressId: 99, id: 'nope' })
+        emit('toy:add:cancel', { pressId: 99 })
       }).not.toThrow()
       expect(delightLayer.querySelector('.landing')).toBeNull()
     })
@@ -260,7 +260,7 @@ describe('landing lifecycle', () => {
     it('does not build a preview when motion is reduced', () => {
       vi.stubGlobal('matchMedia', () => ({ matches: true }))
       const preview = vi.fn()
-      emit('place:press', { placementId: 5, x: 50, y: 60, preview })
+      emit('toy:add:press', { pressId: 5, x: 50, y: 60, preview })
       expect(preview).not.toHaveBeenCalled()
       vi.unstubAllGlobals()
     })
@@ -268,7 +268,7 @@ describe('landing lifecycle', () => {
     it('a second init drops the first subscription', () => {
       const first = bus
       init({ getViewScale: () => 1, on: () => () => {} }, svg)
-      first.dispatchEvent(new CustomEvent('place:press', { detail: { placementId: 6, x: 0, y: 0, preview: () => null } }))
+      first.dispatchEvent(new CustomEvent('toy:add:press', { detail: { pressId: 6, x: 0, y: 0, preview: () => null } }))
       expect(delightLayer.querySelector('.landing')).toBeNull()
     })
   })

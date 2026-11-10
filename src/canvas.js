@@ -341,7 +341,7 @@ function onPointerDown(e) {
     const p = toCanvas(e.clientX, e.clientY);
     ToolMode._draft = { type: ToolMode.tool, ox: p.x, oy: p.y };
     // Placement happens on release, but a toy tool announces the press now.
-    ToolMode._draft.placementId = App.placePress(ToolMode.tool, Math.round(p.x), Math.round(p.y));
+    ToolMode._draft.pressId = App.toyAddPress(ToolMode.tool, Math.round(p.x), Math.round(p.y));
     App.hideDragBox('draw');
   }
 }
@@ -707,7 +707,7 @@ function finishDraft(e) {
   } else {
     // Toy tools (marker, d6, etc.) and future drawing tools (pen, text):
     // drop the toy centered on the tap/drag origin.
-    App.commitToy(d.type, Math.round(d.ox), Math.round(d.oy), d.placementId);
+    App.commitToy(d.type, Math.round(d.ox), Math.round(d.oy), d.pressId);
   }
 }
 
@@ -721,7 +721,7 @@ function drawAttrs() {
 }
 
 function cancelDraft() {
-  if (ToolMode._draft?.placementId != null) App.placeCancel(ToolMode._draft.placementId);
+  if (ToolMode._draft?.pressId != null) App.toyAddCancel(ToolMode._draft.pressId);
   ToolMode._draft = null;
   App.hideDragBox('draw');
 }

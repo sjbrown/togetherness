@@ -15,13 +15,12 @@
  *     its data-id, which the <use> instance does not inherit. The rule sets
  *     opacity rather than visibility so the toy can still be grabbed.
  *
- * Driven by App's place:* notifications (see App.on), one landing per
- * placementId:
- *   place:press   → press(x, y, preview())
- *   place:release → release(landing)
- *   place:placed  → attach(landing, toyEl)
- *   place:cancel  → cancel(landing), when the press is abandoned (pinch) or
- *                   placement fails.
+ * Driven by App's toy:add:* signals (see App.on), one landing per pressId:
+ *   toy:add:press   → press(x, y, preview())
+ *   toy:add:release → release(landing)
+ *   toy:add:place   → attach(landing, toyEl)
+ *   toy:add:cancel  → cancel(landing), when the press is abandoned (pinch)
+ *                     or placement fails.
  * release and attach may come in either order: placement is async.
  *
  * The pose is a JS rAF loop because the press depth depends on how long the
@@ -103,7 +102,7 @@ let _layerEl = null;     // #delight-layer
 let _styleEl = null;     // page <style> holding the hide rules
 let _rafId = null;
 const _landings = new Set();
-const _byPlacement = new Map();   // placementId -> landing
+const _byPress = new Map();   // pressId -> landing
 let _unsubscribe = [];
 
 export function init(appBus, svgElement) {
@@ -115,7 +114,7 @@ export function init(appBus, svgElement) {
     (svgElement.querySelector('defs') ?? svgElement).appendChild(blurFilter(SHADOW_FILTER_ID, 3));
   }
   _landings.clear();
-  _byPlacement.clear();
+  _byPress.clear();
   _rafId = null;
   _styleEl?.remove();
   _styleEl = document.createElement('style');
@@ -123,19 +122,19 @@ export function init(appBus, svgElement) {
   document.head.appendChild(_styleEl);
   for (const off of _unsubscribe) off();
   _unsubscribe = [
-    App.on('place:press', ({ placementId, x, y, preview }) => {
+    App.on('toy:add:press', ({ pressId, x, y, preview }) => {
       if (reducedMotion()) return;
       const L = press(x, y, preview());
-      if (L) _byPlacement.set(placementId, L);
+      if (L) _byPress.set(pressId, L);
     }),
-    App.on('place:release', ({ placementId }) => release(_byPlacement.get(placementId))),
-    App.on('place:placed', ({ placementId, id }) => {
-      attach(_byPlacement.get(placementId), _svgEl.querySelector(`#toys-layer [data-id="${id}"]`));
-      _byPlacement.delete(placementId);
+    App.on('toy:add:release', ({ pressId }) => release(_byPress.get(pressId))),
+    App.on('toy:add:place', ({ pressId, id }) => {
+      attach(_byPress.get(pressId), _svgEl.querySelector(`#toys-layer [data-id="${id}"]`));
+      _byPress.delete(pressId);
     }),
-    App.on('place:cancel', ({ placementId }) => {
-      cancel(_byPlacement.get(placementId));
-      _byPlacement.delete(placementId);
+    App.on('toy:add:cancel', ({ pressId }) => {
+      cancel(_byPress.get(pressId));
+      _byPress.delete(pressId);
     }),
   ];
 }

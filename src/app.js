@@ -130,8 +130,8 @@ function _emit(type, detail) {
   _localEvents.dispatchEvent(new CustomEvent(type, { detail }));
 }
 
-// Pairs a place:press with the release, placement or cancel that follows.
-let _placementSeq = 0;
+// Pairs a :press signal with the release, place or cancel that follows it.
+let _pressSeq = 0;
 
 // computeResize keeps the corner opposite the dragged one fixed in the
 // shape's own space, but a resize also moves the pivot a rotated shape
@@ -1136,17 +1136,20 @@ const App = {
 
   /**
    * Subscribe to a local-only notification; handler gets its detail.
-   * Returns the unsubscribe function. Placing a toy with the pointer sends,
-   * all keyed by one placementId:
-   *   place:press   { placementId, tool, x, y, preview } — preview() builds
-   *                 a fresh App.toolPreview of what will be placed, at (x, y)
-   *   place:release { placementId } — the pointer came up; placement starts
-   *   place:placed  { placementId, id } — the toy is in its layer
-   *   place:cancel  { placementId } — nothing will be placed
-   * Moving with the pointer sends, once committed:
-   *   move:placed   { layer, moves: [{ id, x, y }] } — each element now
-   *                 rests with its anchor at (x, y), in its layer's terms
-   *                 (a toy's anchor is its centre)
+   * Returns the unsubscribe function. Signals are <thing>:<verb>:<phase>;
+   * a pointer gesture sends :press, then :release, then :place or :cancel
+   * (:cancel can also follow :release, when the change fails), all with the
+   * same pressId.
+   *   toy:add:press    { pressId, tool, x, y, preview } — preview() builds a
+   *                    fresh App.toolPreview of what will be added, at (x, y)
+   *   toy:add:release  { pressId } — placement starts
+   *   toy:add:place    { pressId, id } — the toy is in its layer
+   *   toy:add:cancel   { pressId }
+   *   toy:move:press   { pressId, ids }
+   *   toy:move:release { pressId }
+   *   toy:move:place   { pressId, moves: [{ id, x, y }] } — each toy now
+   *                    rests centred on (x, y)
+   *   toy:move:cancel  { pressId } — a tap that didn't move, or a failed drop
    */
   on: (type, handler) => {
     const listener = (e) => handler(e.detail);
@@ -1171,44 +1174,44 @@ const App = {
   },
 
   /**
-   * A press that will place toolName's toy at (x, y) on release. Returns
-   * the placementId to hand to commitToy or placeCancel, or null for a tool
-   * that doesn't place a toy.
+   * A press that will add toolName's toy at (x, y) on release. Returns the
+   * pressId to hand to commitToy or toyAddCancel, or null for a tool that
+   * doesn't add a toy.
    */
-  placePress: (toolName, x, y) => {
+  toyAddPress: (toolName, x, y) => {
     if (!_toolById[toolName]?.toyType) return null;
-    const placementId = ++_placementSeq;
-    _emit('place:press', { placementId, tool: toolName, x, y, preview: () => App.toolPreview(toolName, { x, y }) });
-    return placementId;
+    const pressId = ++_pressSeq;
+    _emit('toy:add:press', { pressId, tool: toolName, x, y, preview: () => App.toolPreview(toolName, { x, y }) });
+    return pressId;
   },
 
-  /** The press from placePress was abandoned. */
-  placeCancel: (placementId) => {
-    if (placementId != null) _emit('place:cancel', { placementId });
+  /** The press from toyAddPress was abandoned. */
+  toyAddCancel: (pressId) => {
+    if (pressId != null) _emit('toy:add:cancel', { pressId });
   },
 
   /**
    * Place a toy on the table, then run its namespace(s)' initialize(elem)
-   * hook exactly once. placementId, from placePress, keys the place:*
-   * notifications.
+   * hook exactly once. pressId, from toyAddPress, keys the toy:add:*
+   * signals.
    */
-  commitToy: (toolName, x, y, placementId = null) => {
+  commitToy: (toolName, x, y, pressId = null) => {
     const def = _toolById[toolName];
-    if (!def?.toyType) { App.placeCancel(placementId); UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
+    if (!def?.toyType) { App.toyAddCancel(pressId); UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = Toys.newToyId();
     const layerEl = layerElOf('toys');
-    if (!layerEl) { App.placeCancel(placementId); return; }
+    if (!layerEl) { App.toyAddCancel(pressId); return; }
     const params = _toolParams[toolName] ?? {};
     // initialize()'s options always carries color + every other tool option
     const initArgs = Toys.toolInitArgs(def, params, App.user.color);
     const color    = initArgs.color;
-    if (placementId != null) _emit('place:release', { placementId });
+    if (pressId != null) _emit('toy:add:release', { pressId });
     // initializeToy below runs its own gesture, so initialize commits as a
     // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
     _Layers.toys.add({ id, toyType: def.toyType, x, y, color }).then(async () => {
       App.addLog(`placed ${def.label} ${id}`, 'local');
-      if (placementId != null) _emit('place:placed', { placementId, id });
+      if (pressId != null) _emit('toy:add:place', { pressId, id });
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace]. Placing the toy
@@ -1220,7 +1223,7 @@ const App = {
         Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, App.user.id, _tableId, initArgs);
       }
     }).catch(err => {
-      App.placeCancel(placementId);
+      App.toyAddCancel(pressId);
       UI.toast(`Failed to place ${def.label}`, 'warn');
       App.addLog(`place failed: ${err.message}`, 'del');
     });
@@ -1294,9 +1297,11 @@ const App = {
       lastValidX: anchor.x,
       lastValidY: anchor.y,
       snapPoints,
+      pressId: isToy ? ++_pressSeq : null,
     };
     Overlay.startDragPlaceholder(id);
     _awareness.setLocalStateField('drag', { elId: id, bboxX: bbox.x, bboxY: bbox.y });
+    if (isToy) _emit('toy:move:press', { pressId: _dragState.pressId, ids: [id] });
   },
 
   move: (id, x, y) => {
@@ -1376,9 +1381,11 @@ const App = {
       ? Toys.findDropTarget(layerElOf('toys'), id, rx, ry)
       : null;
 
+    const { pressId } = _dragState;
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
+    if (pressId != null) _emit('toy:move:release', { pressId });
 
     if (dropContainerId) {
       // Drop into a container = reparent + reposition into it, plus its
@@ -1407,6 +1414,7 @@ const App = {
         // Surface it, else the pointerup handler may crash silently mid-drag.
         UI.toast(`Could not move into container: ${err.message}`, 'warn');
         Overlay.endDragPlaceholder(id);
+        if (pressId != null) _emit('toy:move:cancel', { pressId });
         return;
       }
 
@@ -1416,7 +1424,7 @@ const App = {
 
       // A toy landing inside a container leaves selection
       SelectionLocal.clearClaims();
-      _emit('move:placed', { layer: mtype, moves: [{ id, x: rx, y: ry }] });
+      if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, x: rx, y: ry }] });
 
       return;
     }
@@ -1427,16 +1435,17 @@ const App = {
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
     // the selection ring from whatever the DOM currently shows.
     Overlay.endDragPlaceholder(id);
-    _emit('move:placed', { layer: mtype, moves: [{ id, x: rx, y: ry }] });
+    if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, x: rx, y: ry }] });
   },
 
   cancelMove: () => {
     if (!_dragState) return;
-    const id = _dragState.id;
+    const { id, pressId } = _dragState;
     Overlay.endDragPlaceholder(id);
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
+    if (pressId != null) _emit('toy:move:cancel', { pressId });
   },
 
   // The generic "further click" gesture: asks id's own owning LayerAPI
@@ -1767,6 +1776,7 @@ const App = {
       snapPoints,
       lastValidDx: 0,
       lastValidDy: 0,
+      pressId: isToy ? ++_pressSeq : null,
     };
 
     for (const el of elements) Overlay.startDragPlaceholder(el.id);
@@ -1779,6 +1789,7 @@ const App = {
       elIds:   elements.map(e => e.id),
       offsets: elements.map(e => ({ bboxX: e.bboxX, bboxY: e.bboxY })),
     });
+    if (isToy) _emit('toy:move:press', { pressId: _multiDragState.pressId, ids: elements.map(e => e.id) });
   },
 
   moveMulti: (ddx, ddy) => {
@@ -1831,9 +1842,10 @@ const App = {
 
   commitMultiMove: (ddx, ddy) => {
     if (!_multiDragState) return;
-    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy } = _multiDragState;
+    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy, pressId } = _multiDragState;
 
     _awareness.setLocalStateField('multidrag', null);
+    if (pressId != null) _emit('toy:move:release', { pressId });
 
     // Use the last constrained (dx, dy) from moveMulti, falling back to
     // the raw offset only if no pointermove fired (immediate pointerup).
@@ -1855,14 +1867,16 @@ const App = {
 
     App.addLog(`moved ${elements.length} objects`, 'local');
     _multiDragState = null;
-    _emit('move:placed', { layer: mtype, moves });
+    if (pressId != null) _emit('toy:move:place', { pressId, moves });
   },
 
   cancelMultiMove: () => {
     if (!_multiDragState) return;
-    for (const el of _multiDragState.elements) Overlay.endDragPlaceholder(el.id);
+    const { elements, pressId } = _multiDragState;
+    for (const el of elements) Overlay.endDragPlaceholder(el.id);
     _awareness.setLocalStateField('multidrag', null);
     _multiDragState = null;
+    if (pressId != null) _emit('toy:move:cancel', { pressId });
   },
 
   setTool: (name) => {
