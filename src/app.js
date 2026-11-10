@@ -39,7 +39,6 @@ import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
 import * as Delight                               from './layer_delight.js';
-import * as Delights                              from './delights.js';
 import * as Radial                                from './ui_radial.js';
 import * as Attention                             from './layer_attention.js';
 import * as Events                                from './events.js';
@@ -411,9 +410,8 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   // Awareness layer - indicators of peers and for peers
   Overlay.init(App, _svgEl, user);
 
-  // Delight (bowstring handle and sparks)
+  // Delight (bowstring handle, sparks, and the delight effects)
   Delight.init(App, _svgEl);
-  Delights.init(App, _svgEl);
 
   // Attention mode (triple-click pointing), on its own top layer
   Attention.init({
