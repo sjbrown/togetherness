@@ -1,5 +1,5 @@
 /**
- * tests/unit/delight-landing.test.js
+ * tests/unit/delight-place.test.js
  *
  * The toy-landing squash and stretch: its timing math, and the DOM
  * lifecycle in #delight-layer — including that the real toy in #toys-layer
@@ -10,10 +10,11 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
-  SQUASH, SQUASH_MS, HOLD_EXTRA, HOLD_MS, STRETCH, STRETCH_MS, PUFF,
-  pressDeform, releaseDeform, releaseMs, settleMsFor, scaleFor, puffParticles,
+  SQUASH, SQUASH_MS, HOLD_EXTRA, HOLD_MS, STRETCH, STRETCH_MS,
+  pressDeform, releaseDeform, releaseMs, settleMsFor, scaleFor,
   init, press, release, attach, cancel,
-} from '../../src/delight_landing.js'
+} from '../../src/delight_place.js'
+import { PUFF } from '../../src/delight_puff.js'
 
 describe('pressDeform', () => {
   it('starts at rest', () => {
@@ -84,33 +85,6 @@ describe('scaleFor', () => {
   })
 })
 
-describe('puffParticles', () => {
-  const mid = () => 0.5   // no jitter
-
-  it('makes PUFF.count particles', () => {
-    expect(puffParticles(0, 0, 80, 100, 1)).toHaveLength(PUFF.count)
-  })
-
-  it('starts on a flattened ring around the centre and travels outward', () => {
-    const ring = 50 * PUFF.spread
-    for (const p of puffParticles(10, 20, 80, 100, 1, mid)) {
-      const nx = (p.x - 10) / ring, ny = (p.y - 20) / (ring * PUFF.flatten)
-      expect(Math.hypot(nx, ny)).toBeCloseTo(1)
-      expect(Math.sign(p.tx)).toBe(Math.sign(Math.round((p.x - 10) * 1e6)))
-      expect(p.r1).toBeCloseTo(p.r0 * PUFF.grow)
-      expect(p.ms).toBe(PUFF.ms)
-    }
-  })
-
-  it('keeps screen-px sizes constant across zoom', () => {
-    const [a] = puffParticles(0, 0, 80, 100, 1, mid)
-    const [b] = puffParticles(0, 0, 80, 100, 2, mid)
-    expect(b.r0).toBeCloseTo(a.r0 / 2)
-    expect(b.tx).toBeCloseTo(a.tx / 2)
-    expect(b.x).toBeCloseTo(a.x)
-  })
-})
-
 describe('landing lifecycle', () => {
   const SVGNS = 'http://www.w3.org/2000/svg'
   let svg, toysLayer, delightLayer, bus
@@ -134,7 +108,7 @@ describe('landing lifecycle', () => {
     document.head.innerHTML = ''
     document.body.innerHTML = `
       <svg id="canvas" xmlns="${SVGNS}">
-        <defs><filter id="landing-puff"><feGaussianBlur stdDeviation="1"/></filter></defs>
+        <defs></defs>
         <g id="toys-layer"></g>
         <g id="delight-layer"></g>
       </svg>`
@@ -173,7 +147,7 @@ describe('landing lifecycle', () => {
     const L = press(50, 60, toy('ghost', 50, 60, 80, 100))
     advance(200)
     release(L)
-    expect(delightLayer.querySelectorAll('.landing-puff')).toHaveLength(PUFF.count)
+    expect(delightLayer.querySelectorAll('.delight-puff')).toHaveLength(PUFF.count)
 
     const real = toy('tt-t-v1-abc', 50, 60, 80, 100)
     toysLayer.appendChild(real)
@@ -197,12 +171,12 @@ describe('landing lifecycle', () => {
     release(L)
     advance(releaseMs() + 50)
     expect(delightLayer.querySelector('.landing')).not.toBeNull()
-    expect(delightLayer.querySelectorAll('.landing-puff')).toHaveLength(0)
+    expect(delightLayer.querySelectorAll('.delight-puff')).toHaveLength(0)
 
     const real = toy('tt-t-v1-late', 50, 60, 80, 100)
     toysLayer.appendChild(real)
     attach(L, real)
-    expect(delightLayer.querySelectorAll('.landing-puff')).toHaveLength(PUFF.count)
+    expect(delightLayer.querySelectorAll('.delight-puff')).toHaveLength(PUFF.count)
     advance(releaseMs() + 50)
     expect(delightLayer.querySelector('.landing')).toBeNull()
   })
@@ -227,14 +201,15 @@ describe('landing lifecycle', () => {
     cancel(L)
     advance(500)
     expect(delightLayer.querySelector('.landing')).toBeNull()
-    expect(delightLayer.querySelectorAll('.landing-puff')).toHaveLength(0)
+    expect(delightLayer.querySelectorAll('.delight-puff')).toHaveLength(0)
     expect(hideRules()).toBe('')
   })
 
-  it('sets the puff blur in screen px', () => {
+  it('puffs at the view scale, and brings its own shadow filter', () => {
     const L = press(50, 60, toy('ghost', 50, 60, 80, 100))
+    expect(svg.querySelector('defs #delight-place-shadow')).not.toBeNull()
     release(L)
-    expect(svg.querySelector('#landing-puff feGaussianBlur').getAttribute('stdDeviation')).toBe(String(PUFF.blur / 2))
+    expect(svg.querySelector('#delight-puff feGaussianBlur').getAttribute('stdDeviation')).toBe(String(PUFF.blur / 2))
     cancel(L)
   })
 
@@ -255,7 +230,7 @@ describe('landing lifecycle', () => {
       expect(delightLayer.querySelector('.landing')).not.toBeNull()
 
       emit('place:release', { placementId: 3 })
-      expect(delightLayer.querySelectorAll('.landing-puff')).toHaveLength(PUFF.count)
+      expect(delightLayer.querySelectorAll('.delight-puff')).toHaveLength(PUFF.count)
 
       toysLayer.appendChild(toy('tt-t-v1-ev', 50, 60, 80, 100))
       emit('place:placed', { placementId: 3, id: 'tt-t-v1-ev' })

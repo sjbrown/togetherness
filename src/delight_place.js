@@ -1,5 +1,6 @@
 /**
- * delight_landing.js — squash and stretch when the local player places a toy
+ * delight_place.js — a toy lands with squash and stretch when the local
+ * player places it
  *
  * Pressing with a toy tool squashes a ghost of the toy at the press point
  * (it spreads, viewed from above), deepening while held. Releasing stretches
@@ -24,12 +25,11 @@
  * release and attach may come in either order: placement is async.
  *
  * The pose is a JS rAF loop because the press depth depends on how long the
- * pointer is held. The puff's start and end are known when it fires, so it
- * is a CSS animation (.landing-puff in ui.css), like the bowstring sparks.
+ * pointer is held. The dust puff is delight_puff.js's.
  */
 
 import { cubicBezier } from './ui_radial.js';
-import { LANDING_SHADOW_FILTER_ID, LANDING_PUFF_FILTER_ID } from './defs.js';
+import { spawnPuff, blurFilter } from './delight_puff.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -48,22 +48,7 @@ const SETTLE_EPS = 0.002;         // spring stops once its envelope is this smal
 const CANCEL_MS = 160;
 const SHADOW_OPACITY = 0.2;
 const SHADOW_RATIO = 0.48;        // shadow radii as a fraction of the toy's size
-
-// Puff sizes are screen px, divided by the view scale when drawn.
-export const PUFF = {
-  count: 5,
-  spread: 0.6,     // starting ring radius, as a fraction of half the toy's larger side
-  dist: 30,        // outward travel
-  rise: 10,        // upward drift on top of the travel
-  flatten: 0.8,    // vertical squeeze of the ring and the travel
-  size: 2.5,       // starting radius
-  grow: 3,         // end radius = start radius * grow
-  ms: 500,
-  jitter: 0.4,
-  color: '#ece6d6',
-  alpha: 0.4,
-  blur: 2.3,
-};
+const SHADOW_FILTER_ID = 'delight-place-shadow';
 
 const EASE_OUT = cubicBezier(0.2, 0.7, 0.3, 1);
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
@@ -110,33 +95,6 @@ export function scaleFor(d) {
   return Math.max(0.05, 1 - d * SPREAD_GAIN);
 }
 
-/**
- * The puff's particles for a toy of w×h centred on (cx, cy), at view scale
- * `scale`. Canvas units. rand is injectable for tests.
- */
-export function puffParticles(cx, cy, w, h, scale, rand = Math.random) {
-  const { count, spread, dist, rise, flatten, size, grow, ms, jitter } = PUFF;
-  const ring = Math.max(w, h) * 0.5 * spread;
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    const step = (Math.PI * 2) / count;
-    const ang = i * step + (rand() - 0.5) * jitter * step;
-    const ca = Math.cos(ang), sa = Math.sin(ang);
-    const travel = (dist * (1 + (rand() - 0.5) * jitter)) / scale;
-    const r0 = (size * (1 + (rand() - 0.5) * jitter * 0.8)) / scale;
-    out.push({
-      x: cx + ca * ring,
-      y: cy + sa * ring * flatten,
-      tx: ca * travel,
-      ty: sa * travel * flatten - rise / scale,
-      r0,
-      r1: r0 * grow,
-      ms: ms * (1 + (rand() - 0.5) * jitter * 0.5),
-    });
-  }
-  return out;
-}
-
 // ── Module state ──────────────────────────────────────────────────────────
 
 let App = null;
@@ -152,7 +110,10 @@ export function init(appBus, svgElement) {
   App = appBus;
   _svgEl = svgElement;
   _layerEl = svgElement.querySelector('#delight-layer');
-  if (!_layerEl) throw new Error("delight_landing.init: '#delight-layer' not found");
+  if (!_layerEl) throw new Error("delight_place.init: '#delight-layer' not found");
+  if (!svgElement.querySelector(`#${SHADOW_FILTER_ID}`)) {
+    (svgElement.querySelector('defs') ?? svgElement).appendChild(blurFilter(SHADOW_FILTER_ID, 3));
+  }
   _landings.clear();
   _byPlacement.clear();
   _rafId = null;
@@ -221,7 +182,7 @@ export function press(x, y, ghost) {
     toyId: null, hasContent: !!ghost, done: false,
   };
   L.root = el('g', { class: 'landing' }, _layerEl);
-  L.shadow = el('ellipse', { cx: x, cy: y, rx: 0, ry: 0, fill: '#000', opacity: 0, filter: `url(#${LANDING_SHADOW_FILTER_ID})` }, L.root);
+  L.shadow = el('ellipse', { cx: x, cy: y, rx: 0, ry: 0, fill: '#000', opacity: 0, filter: `url(#${SHADOW_FILTER_ID})` }, L.root);
   L.pose = el('g', {}, L.root);
   if (ghost) {
     Object.assign(L, sizeOf(ghost));
@@ -244,7 +205,7 @@ export function release(L) {
 
 function startRelease(L) {
   L.t0 = performance.now();
-  spawnPuff(L);
+  spawnPuff(_layerEl, L, App?.getViewScale?.() ?? 1);
   tick();
 }
 
@@ -317,25 +278,4 @@ function frame() {
 
 function tick() {
   if (_rafId == null) _rafId = requestAnimationFrame(frame);
-}
-
-function spawnPuff(L) {
-  const scale = App?.getViewScale?.() ?? 1;
-  _svgEl.querySelector(`#${LANDING_PUFF_FILTER_ID} feGaussianBlur`)
-    ?.setAttribute('stdDeviation', PUFF.blur / scale);
-  for (const p of puffParticles(L.x, L.y, L.w, L.h, scale)) {
-    const c = el('circle', {
-      class: 'landing-puff', cx: p.x, cy: p.y, r: p.r0,
-      fill: PUFF.color, opacity: 0, filter: `url(#${LANDING_PUFF_FILTER_ID})`,
-    }, _layerEl);
-    c.style.setProperty('--tx', `${p.tx}px`);
-    c.style.setProperty('--ty', `${p.ty}px`);
-    c.style.setProperty('--r0', `${p.r0}px`);
-    c.style.setProperty('--r1', `${p.r1}px`);
-    c.style.setProperty('--peak', PUFF.alpha * 0.875);
-    c.style.setProperty('--puff-ms', `${p.ms}ms`);
-    c.addEventListener('animationend', (e) => {
-      if (e.animationName === 'landing-puff-fade') c.remove();
-    });
-  }
 }

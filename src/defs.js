@@ -45,23 +45,6 @@ export const dragPlaceholderFilterSVG = `\
 
 
 
-/**
- * Blurs for the toy-landing animation (see delight_landing.js): the contact
- * shadow under the toy, and the dust puff. The puff's stdDeviation is
- * rewritten per puff so its softness stays the same in screen px.
- */
-export const LANDING_SHADOW_FILTER_ID = 'landing-shadow';
-export const LANDING_PUFF_FILTER_ID = 'landing-puff';
-
-export const landingFiltersSVG = `\
-<filter id="${LANDING_SHADOW_FILTER_ID}" x="-50%" y="-50%" width="200%" height="200%">
-  <feGaussianBlur stdDeviation="3"/>
-</filter>
-<filter id="${LANDING_PUFF_FILTER_ID}" x="-100%" y="-100%" width="300%" height="300%">
-  <feGaussianBlur stdDeviation="2.3"/>
-</filter>
-`;
-
 export const SNAP_POINT_GRADIENT_ID = 'snap-point-gradient';
 
 /**

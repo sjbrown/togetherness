@@ -1,5 +1,5 @@
 /**
- * tests/e2e/toy-landing.spec.js
+ * tests/e2e/delight-place.spec.js
  *
  * Placing a toy plays a squash and stretch for the placing player only, on
  * a <use> of the toy in #delight-layer. The real toy in #toys-layer is
@@ -79,7 +79,7 @@ test('the landing plays locally on a clone and leaves the toy untouched', async 
   expect(await toy.getAttribute('style')).toBeNull();
   expect(await toy.evaluate(el => getComputedStyle(el).opacity)).toBe('1');
   expect(await page1.locator('#landing-hide-rules').textContent()).toBe('');
-  await expect(page1.locator('#delight-layer .landing-puff')).toHaveCount(0, { timeout: 2000 });
+  await expect(page1.locator('#delight-layer .delight-puff')).toHaveCount(0, { timeout: 2000 });
 
   // The peer got the toy, and never drew a landing for it.
   await expect(page2.locator(`#toys-layer [data-id="${toyId}"]`)).toHaveCount(1, { timeout: 5000 });
