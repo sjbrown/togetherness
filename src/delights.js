@@ -9,8 +9,9 @@
  */
 
 import * as Place from './delight_place.js';
+import * as Move from './delight_move.js';
 
-const DELIGHTS = [Place];
+const DELIGHTS = [Place, Move];
 
 export function init(App, svgEl) {
   for (const d of DELIGHTS) d.init(App, svgEl);
