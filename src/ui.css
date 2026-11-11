@@ -809,6 +809,17 @@ svg.tt-icon-letter {
  * #delight-layer on pointerdown and is a separate DOM tree entirely. */
 .bowstring { pointer-events: auto; cursor: grab; }
 .groupAction { pointer-events: auto; cursor: pointer; }
+/* On a touchscreen the square's grab area grows to 44px. The transparent
+ * stroke is measured in screen px (non-scaling-stroke), so it holds at any
+ * zoom, and extends half its width past each edge of the 22px drawn square. */
+@media (any-pointer: coarse) {
+  .bowstring .actionSquare, .groupAction .actionSquare {
+    stroke: transparent;
+    stroke-width: 22px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: all;
+  }
+}
 #delight-layer { pointer-events: none; }
 
 /* Press-scale lives on its own transform layer, separate from the
