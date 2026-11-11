@@ -395,6 +395,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   _awareness = awareness;
   _provider  = provider;
   App.user   = user;
+  UI.setFavicon(user);
   _tableId   = tableId;
   _isCreator = isCreator;
   _svgEl     = svgElement ?? document.querySelector('#stage svg');
