@@ -1446,6 +1446,9 @@ const App = {
     if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, from, x: rx, y: ry }] });
   },
 
+  /** Abandon the pointer gesture in flight; false if there was none. */
+  cancelGesture: () => Canvas.cancelGesture(),
+
   cancelMove: () => {
     if (!_dragState) return;
     const { id, pressId } = _dragState;

@@ -726,6 +726,33 @@ function cancelDraft() {
   App.hideDragBox('draw');
 }
 
+// What each cancellable gesture undoes, as its pointercancel would.
+const GESTURE_CANCELS = {
+  'move':       () => App.cancelMove(),
+  'multi-move': () => App.cancelMultiMove(),
+  'resize':     () => App.cancelResize(),
+  'rotate':     () => App.cancelRotate(),
+  'pivot':      () => App.cancelPivot(),
+  'draw':       () => cancelDraft(),
+  'box-select': () => { App.clearBoxCandidates(); App.hideDragBox('select'); },
+};
+
+/**
+ * Abandon the pointer gesture in flight (Escape): a drag, resize, rotate
+ * or pivot snaps back, a draft or rubber band is dropped, and nothing is
+ * committed. The pointer is ignored until it lifts, and its release
+ * doesn't count as a tap. Returns false when nothing was in flight.
+ */
+export function cancelGesture() {
+  const cancel = GESTURE_CANCELS[ToolMode._gesture];
+  if (!cancel) return false;
+  cancel();
+  _stageEl?.classList.remove('dragging', 'pivot-dragging');
+  ToolMode._gesture = 'cancelled';
+  ToolMode._moveRef = { moved: true };
+  return true;
+}
+
 // ── Wheel (trackpad + mouse) ──────────────────────────────────────────────────
 function onWheel(e) {
   e.preventDefault();

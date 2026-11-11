@@ -157,7 +157,9 @@ export function keyboardHandlers(App) {
   function onKeyDown(e) {
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
     const keys = {
-      'Escape': (e) => App.attentionActive() ? App.attentionExit() : App.select(null),
+      // A gesture in flight is cancelled first; only then does Escape leave
+      // attention mode or deselect.
+      'Escape': (e) => App.cancelGesture() || (App.attentionActive() ? App.attentionExit() : App.select(null)),
       'Delete': (e) => App.deleteSelected(),
       'Backspace': (e) => App.deleteSelected(),
       's': (e) => App.setTool('select'),
