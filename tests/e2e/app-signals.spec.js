@@ -64,6 +64,7 @@ test('pointer gestures on toys send toy:add:* and toy:move:* in order, paired by
   expect(types(tap)).toEqual(['toy:move:press', 'toy:move:cancel']);
   onePress(tap);
   expect(tap[0].moves).toEqual([{ id: idA, from: { x: 200, y: 200 } }]);
+  expect(tap[1].pointer).toBeNull();
 
   // One toy, dragged 100 down.
   await page.mouse.down();

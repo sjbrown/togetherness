@@ -1181,6 +1181,7 @@ describe('cancelGesture (Escape mid-gesture)', () => {
 
     expect(cancelGesture()).toBe(true)
     expect(app.cancelMove).toHaveBeenCalledTimes(1)
+    expect(app.cancelMove).toHaveBeenCalledWith({ from: { x: 100, y: 100 }, x: 200, y: 100 })
 
     stage().dispatchEvent(makePointerEvent('pointermove', { clientX: 260, clientY: 100 }))
     stage().dispatchEvent(makePointerEvent('pointerup',   { clientX: 260, clientY: 100 }))
@@ -1233,5 +1234,31 @@ describe('cancelGesture (Escape mid-gesture)', () => {
     vi.advanceTimersByTime(400)
     expect(app.onViewReset).not.toHaveBeenCalled()
     vi.useRealTimers()
+  })
+})
+
+describe('the pointer path handed to cancelMove', () => {
+  const stage = () => document.getElementById('stage')
+
+  test('a pointercancel after moving passes where the pointer pressed and is now', () => {
+    const app = makeApp({ getSelectedIds: () => ['shape-a'], cancelMove: vi.fn() })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage().dispatchEvent(makePointerEvent('pointermove', { clientX: 150, clientY: 130 }))
+    stage().dispatchEvent(makePointerEvent('pointercancel', { clientX: 160, clientY: 140 }))
+    expect(app.cancelMove).toHaveBeenCalledWith({ from: { x: 100, y: 100 }, x: 160, y: 140 })
+  })
+
+  test('a tap passes none', () => {
+    const app = makeApp({ getSelectedIds: () => ['shape-a'], cancelMove: vi.fn() })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage().dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+    expect(app.cancelMove).toHaveBeenCalledTimes(1)
+    expect(app.cancelMove.mock.calls[0][0] ?? null).toBeNull()
   })
 })

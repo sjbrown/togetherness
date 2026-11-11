@@ -1,12 +1,13 @@
 /**
  * delight_skid.js — a puff of dust where the local player's moved toys come
- * to rest
+ * to rest, or where the pointer let go of a cancelled drag
  *
  * Driven by App's toy:move:* signals (see App.on):
- *   toy:move:place → a small puff at each moved toy where it now rests,
- *                    kicked forward: each particle heads off at a random
- *                    angle within ARC of the direction it travelled, and
- *                    further the further the toy went (puffDistFor)
+ *   toy:move:place  → a skid at each moved toy where it now rests
+ *   toy:move:cancel → a skid at the pointer, for a drag that had moved
+ * A skid is a small puff kicked forward: each particle heads off at a
+ * random angle within ARC of the direction of travel, and further the
+ * further the toy (or pointer) went (puffDistFor).
  *
  * Local only. Nothing here reaches the doc or awareness, and the toys in
  * #toys-layer are never touched: the puff plays in #delight-layer.
@@ -42,16 +43,24 @@ export function init(appBus, svgElement) {
   _unsubscribe = [
     App.on('toy:move:place', ({ moves }) => {
       if (reducedMotion()) return;
-      const scale = App.getViewScale?.() ?? 1;
       for (const { id, from, x, y } of moves) {
-        const toyEl = _svgEl.querySelector(`#toys-layer [data-id="${id}"]`);
-        const travel = from ? Math.hypot(x - from.x, y - from.y) * scale : 0;
-        spawnPuff(_layerEl, { x, y, ...sizeOf(toyEl) }, scale, {
-          ...PUFF, ...headingOf(from, x, y), dist: puffDistFor(travel),
-        });
+        skid(from, x, y, sizeOf(_svgEl.querySelector(`#toys-layer [data-id="${id}"]`)));
       }
     }),
+    App.on('toy:move:cancel', ({ pointer }) => {
+      if (!pointer || reducedMotion()) return;
+      skid(pointer.from, pointer.x, pointer.y, { w: 0, h: 0 });
+    }),
   ];
+}
+
+// A skid at (x, y) around something w×h, for travel from `from`.
+function skid(from, x, y, { w, h }) {
+  const scale = App.getViewScale?.() ?? 1;
+  const travel = from ? Math.hypot(x - from.x, y - from.y) * scale : 0;
+  spawnPuff(_layerEl, { x, y, w, h }, scale, {
+    ...PUFF, ...headingOf(from, x, y), dist: puffDistFor(travel),
+  });
 }
 
 // The puff's direction and arc for a move from `from` to (x, y). A move

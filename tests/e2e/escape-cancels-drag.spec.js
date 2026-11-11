@@ -2,7 +2,7 @@
  * tests/e2e/escape-cancels-drag.spec.js
  *
  * Escape mid-drag cancels the drag: the toy goes back where it was, stays
- * selected, and the release commits nothing.
+ * selected, the release commits nothing, and a skid puffs at the pointer.
  */
 
 import { test, expect } from '@playwright/test';
@@ -32,7 +32,7 @@ test('Escape while dragging a toy cancels the move', async ({ page }) => {
   await page.evaluate(() => {
     window.__signals = [];
     for (const p of ['press', 'release', 'place', 'cancel']) {
-      window.App.on(`toy:move:${p}`, () => window.__signals.push(p));
+      window.App.on(`toy:move:${p}`, (d) => window.__signals.push({ p, pointer: d.pointer }));
     }
   });
 
@@ -41,6 +41,10 @@ test('Escape while dragging a toy cancels the move', async ({ page }) => {
   await page.mouse.move(sc(202, 200).x, sc(202, 200).y);
   await page.mouse.move(sc(300, 200).x, sc(300, 200).y, { steps: 8 });
   await page.keyboard.press('Escape');
+  const puffs = page.locator('#delight-layer .delight-puff');
+  await expect(puffs).toHaveCount(3);
+  expect(await puffs.evaluateAll(cs => cs.map(c => [+c.getAttribute('cx'), +c.getAttribute('cy')])))
+    .toEqual([[300, 200], [300, 200], [300, 200]]);
   await page.mouse.move(sc(350, 200).x, sc(350, 200).y, { steps: 4 });
   await page.mouse.up();
   await page.waitForTimeout(200);
@@ -48,8 +52,11 @@ test('Escape while dragging a toy cancels the move', async ({ page }) => {
   expect(await anchor()).toEqual({ x: 200, y: 200 });
   expect(await page.evaluate(() => window.App.getSelectedIds())).toEqual([id]);
   await expect(page.locator('#selection_local .selRing')).toHaveCount(1);
-  expect(await page.evaluate(() => window.__signals)).toEqual(['press', 'cancel']);
-  await expect(page.locator('#delight-layer .delight-puff')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__signals)).toEqual([
+    { p: 'press' },
+    { p: 'cancel', pointer: { from: { x: 200, y: 200 }, x: 300, y: 200 } },
+  ]);
+  await expect(puffs).toHaveCount(0, { timeout: 2000 });
 
   // With nothing in flight, Escape still deselects.
   await page.keyboard.press('Escape');

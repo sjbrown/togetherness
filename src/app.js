@@ -1156,7 +1156,11 @@ const App = {
    *   toy:move:place   { pressId, moves: [{ id, from: { x, y }, x, y }] } —
    *                    each toy moved from `from` and now rests centred on
    *                    (x, y)
-   *   toy:move:cancel  { pressId } — a tap that didn't move, or a failed drop
+   *   toy:move:cancel  { pressId, pointer } — Escape, a pointercancel, a
+   *                    tap that didn't move, or a failed drop. pointer is
+   *                    { from: { x, y }, x, y }: where the pointer pressed
+   *                    and where it is now; null for a tap, or a failed
+   *                    drop
    */
   on: (type, handler) => {
     const listener = (e) => handler(e.detail);
@@ -1422,7 +1426,7 @@ const App = {
         // Surface it, else the pointerup handler may crash silently mid-drag.
         UI.toast(`Could not move into container: ${err.message}`, 'warn');
         Overlay.endDragPlaceholder(id);
-        if (pressId != null) _emit('toy:move:cancel', { pressId });
+        if (pressId != null) _emit('toy:move:cancel', { pressId, pointer: null });
         return;
       }
 
@@ -1449,14 +1453,15 @@ const App = {
   /** Abandon the pointer gesture in flight; false if there was none. */
   cancelGesture: () => Canvas.cancelGesture(),
 
-  cancelMove: () => {
+  /** pointer: the drag's pointer path for toy:move:cancel, or null. */
+  cancelMove: (pointer = null) => {
     if (!_dragState) return;
     const { id, pressId } = _dragState;
     Overlay.endDragPlaceholder(id);
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
-    if (pressId != null) _emit('toy:move:cancel', { pressId });
+    if (pressId != null) _emit('toy:move:cancel', { pressId, pointer });
   },
 
   // The generic "further click" gesture: asks id's own owning LayerAPI
@@ -1883,13 +1888,14 @@ const App = {
     }
   },
 
-  cancelMultiMove: () => {
+  /** pointer: the drag's pointer path for toy:move:cancel, or null. */
+  cancelMultiMove: (pointer = null) => {
     if (!_multiDragState) return;
     const { elements, pressId } = _multiDragState;
     for (const el of elements) Overlay.endDragPlaceholder(el.id);
     _awareness.setLocalStateField('multidrag', null);
     _multiDragState = null;
-    if (pressId != null) _emit('toy:move:cancel', { pressId });
+    if (pressId != null) _emit('toy:move:cancel', { pressId, pointer });
   },
 
   setTool: (name) => {

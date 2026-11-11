@@ -158,6 +158,25 @@ describe('skid', () => {
     })
   })
 
+  describe('on a cancelled drag', () => {
+    it('skids at the pointer, kicked along the pointer\u2019s travel', () => {
+      for (let i = 0; i < 10; i++) {
+        emit('toy:move:cancel', { pressId: i, pointer: { from: { x: 100, y: 100 }, x: 300, y: 100 } })
+      }
+      expect(puffs()).toHaveLength(30)
+      for (const c of puffs()) {
+        expect(+c.getAttribute('cx')).toBe(300)
+        expect(+c.getAttribute('cy')).toBe(100)
+        expect(parseFloat(c.style.getPropertyValue('--tx'))).toBeGreaterThan(0)
+      }
+    })
+
+    it('does nothing for a tap, which has no pointer path', () => {
+      emit('toy:move:cancel', { pressId: 1, pointer: null })
+      expect(puffs()).toHaveLength(0)
+    })
+  })
+
   it('ignores the rest of the toy:move:* signals', () => {
     toysLayer.append(toy('a', 100, 100, 80, 100))
     emit('toy:move:press', { pressId: 2, moves: [{ id: 'a', from: { x: 100, y: 100 } }] })
