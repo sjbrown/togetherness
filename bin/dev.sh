@@ -8,10 +8,10 @@ fi
 
 echo "▶ Starting togetherness dev environment..."
 echo "  App:       http://localhost:3000"
+echo "  Dev pages: http://localhost:3000/dev/"
 echo "  Signaling: ws://localhost:4444"
 echo ""
 echo "  Press Ctrl-C to stop."
 echo ""
 
 docker compose up --build
-

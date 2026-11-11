@@ -2,19 +2,20 @@
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { HEAD_MARKER } from '../../src/op_layer.js'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import { ensureLayerId, getOpLayer } from '../../src/op_layers.js'
 import { populateFromSvgDoc, buildExportSvg } from '../../src/storage.js'
 import { getOps, getContent } from '../../src/op_dag.js'
 import { projectFrom } from '../../src/op_checkpoint.js'
-import * as Toys from '../../src/toys.js'
-import { addToy, findToy, _clearSvgTextCache, _getScriptsFragment } from '../../src/toys.js'
-import { DRAWING_LAYER } from '../../src/drawing.js'
+import * as Toys from '../../src/layer_toys.js'
+import { _clearSvgTextCache, _getScriptsFragment } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
+import { DRAWING_LAYER } from '../../src/layer_drawing.js'
 import { getOps, getContent } from '../../src/op_dag.js'
 import { isCheckpoint } from '../../src/op_checkpoint.js'
 import { ensureLayerId, LAYER_MARKER } from '../../src/op_layers.js'
-import * as BounPos from '../../src/boun_pos.js'
-import { BOUN_POS_LAYER } from '../../src/boun_pos.js'
+import * as BounPos from '../../src/layer_boun_pos.js'
+import { BOUN_POS_LAYER } from '../../src/layer_boun_pos.js'
 
 // ── Fixtures & helpers ──────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ const VALID_TOY_G = `<g class="toy" data-id="t1" data-toy-type="dice_d6">
     <svg x="0" y="0" width="64" height="64" viewBox="0 0 80 100"><circle r="5"/></svg>
   </g>`
 
-// isForeignToyG / parseForeignToy now live entirely in toys.js — see
+// isForeignToyG / parseForeignToy now live entirely in layer_toys.js — see
 // tests/unit/node-identity.test.js. storage.js no longer knows the toy
 // contract, so it has nothing of its own to test here.
 
@@ -181,9 +182,9 @@ describe('populateFromSvgDoc', () => {
     // layer, as BounPos created and the op log projected it.
     function exportedBounPosInner() {
       const layerEl = ensureLayerId(document.createElementNS('http://www.w3.org/2000/svg', 'g'), BOUN_POS_LAYER)
-      BounPos.BOUNPOS_TYPES.boundary.create(layerEl, { id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
+      BounPos.BOUN_POS_TYPES.boundary.create(layerEl, { id: 'tt-b-v1-abc', matches: '.Hand', x: 10, y: 20, w: 100, h: 50 })
       const rect = { x: 0, y: 0, w: 200, h: 200 }
-      BounPos.BOUNPOS_TYPES['pos-grid-sq'].create(layerEl, {
+      BounPos.BOUN_POS_TYPES['pos-grid-sq'].create(layerEl, {
         ...BounPos.newPositionSetId(), genType: 'square', ...rect,
         ...BounPos.toolParamsToCreateParams('square', { spacing: 80, snapRadius: 2 }, rect),
       })
@@ -208,7 +209,7 @@ describe('populateFromSvgDoc', () => {
       expect(getOps(ydoc, BOUN_POS_LAYER).size).toBe(0)
 
       const [boundary, posSet] = result.importedBounPosEls
-      expect(BounPos.getTtState(boundary)).toMatchObject({ id: 'tt-b-v1-abc', name: 'Hand', x: 10, y: 20, w: 100, h: 50 })
+      expect(BounPos.getTtState(boundary)).toMatchObject({ id: 'tt-b-v1-abc', 'data-tt-matches': '.Hand', x: 10, y: 20, w: 100, h: 50 })
       expect(BounPos.getTtState(posSet)).toMatchObject({ bounPosType: 'pos-set', genType: 'square' })
       expect(boundary.getAttribute('data-module')).toBe('boun_pos')
     })
@@ -382,15 +383,24 @@ describe('buildExportSvg', () => {
       <g id="boun_pos-layer"></g>
       <g id="toys-layer"></g>
       <g id="drawing-layer"></g>
-      <g id="overlay-layer" pointer-events="none"></g>
+      <g id="selection_shared" pointer-events="none"></g>
+      <g id="awareness" pointer-events="none"></g>
+      <g id="selection_local" pointer-events="none"></g>
       <g id="delight-layer"><g class="actionColorGroup"></g></g>
     </svg>`)
   }
 
-  test('removes the overlay layer', () => {
+  test('removes the selection_shared and awareness layers', () => {
     const ydoc = new Y.Doc()
     const clone = buildExportSvg(liveCanvasSvg(), ydoc)
-    expect(clone.querySelector('#overlay-layer')).toBeNull()
+    expect(clone.querySelector('#selection_shared')).toBeNull()
+    expect(clone.querySelector('#awareness')).toBeNull()
+  })
+
+  test('removes the selection_local layer', () => {
+    const ydoc = new Y.Doc()
+    const clone = buildExportSvg(liveCanvasSvg(), ydoc)
+    expect(clone.querySelector('#selection_local')).toBeNull()
   })
 
   test('removes the delight layer', () => {
@@ -409,7 +419,7 @@ describe('buildExportSvg', () => {
     const live = liveCanvasSvg()
     const ydoc = new Y.Doc()
     buildExportSvg(live, ydoc)
-    expect(live.querySelector('#overlay-layer')).not.toBeNull()
+    expect(live.querySelector('#selection_shared')).not.toBeNull()
   })
 
   test('writes hoisted scripts once at document root, not per-toy', async () => {

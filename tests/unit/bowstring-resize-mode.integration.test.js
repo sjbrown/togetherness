@@ -2,17 +2,20 @@
  * tests/unit/bowstring-resize-mode.integration.test.js
  *
  * Regression: clicking a resizable toy (tray_sum, bag — anything whose
- * toys.js selectModes() reports both 'sel-action' and 'sel-resize') a
+ * layer_toys.js selectModes() reports both 'sel-action' and 'sel-resize') a
  * second time to enter resize mode left its SE corner still answering to
  * the bowstring handle instead of the resize-corner handle. overlay.js's
  * render() already stops drawing the action square the moment the id
  * enters 'sel-resize'/'sel-resize-r' mode (see its `entry.mode === 'local'`
  * guard), but
- * App.startBowstringAt — which canvas.js's pointerdown consults BEFORE
- * ordinary/resize hit-testing — never checked resize mode itself, so the
- * live gesture kept firing even though nothing was drawn there any more.
+ * the bowstring's hit test — which canvas.js's pointerdown consulted
+ * BEFORE ordinary/resize hit-testing — never checked resize mode itself,
+ * so the live gesture kept firing even though nothing was drawn there any
+ * more.
  *
- * Fix: App.startBowstringAt bails out as soon as `_resizeModeId === id`.
+ * Fix: App.startBowstring only starts while the selection is still in its
+ * default 'sel-action' mode; and a press is now dispatched by the drawn
+ * square itself ([data-handle="bowstring"]), so no square, no bowstring.
  *
  * Same boot fixture as soft-lock.integration.test.js / undo-selection.
  * integration.test.js: a single real App instance, real Yjs doc, real
@@ -22,7 +25,8 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, _clearSvgTextCache } from '../../src/toys.js'
+import { _clearSvgTextCache } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -49,7 +53,7 @@ vi.mock('../../src/canvas.js', () => ({
 
 // A stand-in for tray_sum.svg — real toyType (so TOY_TYPES[toyType] exists
 // and addToy's fetch resolves), but pared down to the one thing this test
-// cares about: the tt-mode-resize class that makes toys.js's selectModes()
+// cares about: the tt-mode-resize class that makes layer_toys.js's selectModes()
 // report 'sel-resize' alongside 'sel-action'. The fetch mock below serves
 // this content for whatever toyType is requested.
 const RESIZABLE_TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
@@ -68,7 +72,9 @@ function makeCanvasDOM() {
         <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
-        <g id="overlay-layer" pointer-events="none"></g>
+        <g id="selection_shared" pointer-events="none"></g>
+        <g id="awareness" pointer-events="none"></g>
+        <g id="selection_local" pointer-events="none"></g>
         <g id="delight-layer" pointer-events="none"></g>
       </svg>
     </div>
@@ -116,43 +122,31 @@ async function bootApp() {
 
 describe('bowstring vs. resize mode on a resizable toy (tray_sum/bag-like)', () => {
   test('plain selection still offers the bowstring at the SE corner', async () => {
-    const { App } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.select('tray-1')
 
-    const geo = App.getBBox('tray-1')
-    // Mirrors delight.js's bowstringOrigin: SE corner + PAD(6).
-    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
+    expect(svgEl.querySelector('#selection_local [data-handle="bowstring"]')).not.toBeNull()
+    expect(App.startBowstring({ pointerId: 1, clientX: 0, clientY: 0 })).toBe(true)
     App.endBowstring({ pointerId: 1 })
   })
 
   test('entering resize mode stops the SE corner from starting a bowstring gesture', async () => {
-    const { App } = await bootApp()
+    const { App, svgEl } = await bootApp()
     App.select('tray-1')
     App.nextSelectionMode('tray-1')
     expect(App.getResizeModeId()).toBe('tray-1')
 
-    const geo = App.getBBox('tray-1')
-    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-
-    // Same point that fired the bowstring before resize mode — now it must
-    // decline, so canvas.js falls through to the resize-corner hit-test.
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(false)
+    // No square to press, and App declines anyway.
+    expect(svgEl.querySelector('#selection_local [data-handle="bowstring"]')).toBeNull()
+    expect(App.startBowstring({ pointerId: 1, clientX: 0, clientY: 0 })).toBe(false)
   })
 
-  test('the resize-corner hit-test itself still recognizes the SE corner once in resize mode', async () => {
-    const { App } = await bootApp()
+  test('the SE corner gets a resize handle instead once in resize mode', async () => {
+    const { App, svgEl } = await bootApp()
     App.select('tray-1')
     App.nextSelectionMode('tray-1')
 
-    const geo = App.getBBox('tray-1')
-    const corner = App.getResizeCorner('tray-1', geo.x + geo.width, geo.y + geo.height)
-
-    // Overlay.hitTestResizeCorner returns an index into resizeCorners's
-    // [NW, NE, SE, SW] order — 2 is SE, the corner nearest the bowstring's
-    // resting spot.
-    expect(corner).toBe(2)
+    expect(svgEl.querySelector('#selection_local [data-handle="resize"][data-corner="se"]')).not.toBeNull()
   })
 
 })

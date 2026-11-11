@@ -7,11 +7,10 @@ import {
   snapDurationFor,
   stringPathD,
   bowstringOrigin,
-  hitTestBowstring,
   chargeOpacityFor,
   chargeRadiusFor,
   MAX_CHARGE_RADIUS,
-} from '../../src/delight.js'
+} from '../../src/layer_delight.js'
 
 describe('spinSpeedFor — fast at the origin, stopped at max pull', () => {
   it('is at full speed (4 rot/sec) sitting on the origin', () => {
@@ -169,49 +168,6 @@ describe('bowstringOrigin — the south-east-most corner of the selection ring',
     expect(bowstringOrigin(g, null)).toEqual(bowstringOrigin(g))
   })
 })
-
-describe('hitTestBowstring', () => {
-  const geo = { x: 0, y: 0, width: 100, height: 100 }
-  const origin = bowstringOrigin(geo) // { x: 106, y: 106 }
-
-  it('hits dead centre', () => {
-    expect(hitTestBowstring(geo, origin.x, origin.y, 1)).toBe(true)
-  })
-
-  it('hits just inside the square\u2019s edge', () => {
-    expect(hitTestBowstring(geo, origin.x + 10, origin.y + 10, 1)).toBe(true)
-  })
-
-  it('misses just outside the square', () => {
-    expect(hitTestBowstring(geo, origin.x + 12, origin.y, 1)).toBe(false)
-  })
-
-  it('misses the opposite corner of the toy entirely', () => {
-    expect(hitTestBowstring(geo, geo.x, geo.y, 1)).toBe(false)
-  })
-
-  it('grows its canvas-space hit box as the view zooms out', () => {
-    // At scale 0.5 the 22px square covers 44 canvas units, so a point 20
-    // units out — a miss at scale 1 — now lands inside it.
-    expect(hitTestBowstring(geo, origin.x + 20, origin.y, 1)).toBe(false)
-    expect(hitTestBowstring(geo, origin.x + 20, origin.y, 0.5)).toBe(true)
-  })
-
-  describe('on a rotated toy', () => {
-    const rot = { deg: 180, cx: 50, cy: 50 }
-    const seMost = bowstringOrigin(geo, rot) // (106, 106)
-    const ownSE = { x: -6, y: -6 } // the toy's own SE corner, now top-left on screen
-
-    it('hits at the south-east-most corner', () => {
-      expect(hitTestBowstring(geo, seMost.x, seMost.y, 1, rot)).toBe(true)
-    })
-
-    it('misses the toy’s own rotated SE corner', () => {
-      expect(hitTestBowstring(geo, ownSE.x, ownSE.y, 1, rot)).toBe(false)
-    })
-  })
-})
-
 
 describe('chargeOpacityFor — the clone fades in, then holds', () => {
   it('is fully transparent the instant the press lands', () => {

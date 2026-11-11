@@ -14,8 +14,6 @@ import { describe, test, expect, beforeEach } from 'vitest'
 import {
   localSelectionChanged,
   setSelectionMode,
-  hitTestSelectionHandle,
-  hitTestPivot,
   handleCursor,
   resizeCorners,
   setPivotPreview,
@@ -34,7 +32,9 @@ function makeOverlayDOM() {
   document.body.innerHTML = `
     <svg id="canvas">
       <defs></defs>
-      <g id="overlay-layer"></g>
+      <g id="selection_shared"></g>
+      <g id="awareness"></g>
+      <g id="selection_local"></g>
     </svg>
   `
 }
@@ -42,12 +42,12 @@ function makeOverlayDOM() {
 // App.getRotation answers with a RESOLVED rotation — { deg, cx, cy } — so
 // overlay.js never derives a pivot itself. `centre` defaults to the middle
 // of BBOX; pass another to stand in for a pivot the user has moved.
-function boot({ rotation = 0, centre = { cx: 200, cy: 150 }, pivot = { fx: 0.5, fy: 0.5 } } = {}) {
+function boot({ rotation = 0, centre = { cx: 200, cy: 150 }, pivot = { fx: 0.5, fy: 0.5 }, scale = 1 } = {}) {
   makeOverlayDOM()
   setPivotPreview(null, null)   // module state — clear anything a prior test left
   overlayInit({
     user:         { id: 'me', name: 'Me', color: '#5a7ea8', gradient: { c1: '#5a7ea8', c2: '#3a5e88', angle: 45 } },
-    getViewScale: () => 1,
+    getViewScale: () => scale,
     getBBox:      (id) => (id === 'rect1' ? BBOX : null),
     getRotation:  (id) => (id === 'rect1' && rotation ? { deg: rotation, ...centre } : null),
     getPivot:     (id) => (id === 'rect1'
@@ -61,7 +61,7 @@ function enter(mode) {
   setSelectionMode('rect1', mode)
 }
 
-const handles = () => document.querySelectorAll('#overlay-layer .handle')
+const handles = () => document.querySelectorAll('#selection_local .handle')
 
 beforeEach(() => boot())
 
@@ -82,12 +82,12 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
 
   test('rotate handles are round discs, resize handles are squares', () => {
     enter('sel-rotate-pivot')
-    expect(document.querySelectorAll('#overlay-layer .handle circle')).toHaveLength(4)
-    expect(document.querySelectorAll('#overlay-layer rect.handle')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .handle circle')).toHaveLength(4)
+    expect(document.querySelectorAll('#selection_local rect.handle')).toHaveLength(0)
 
     enter('sel-resize')
-    expect(document.querySelectorAll('#overlay-layer rect.handle')).toHaveLength(4)
-    expect(document.querySelectorAll('#overlay-layer .handle circle')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local rect.handle')).toHaveLength(4)
+    expect(document.querySelectorAll('#selection_local .handle circle')).toHaveLength(0)
   })
 
   test('each rotate handle carries the circular-arrow glyph — the cue that says "spin"', () => {
@@ -96,7 +96,7 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
       expect(h.querySelectorAll('.rotateGlyph').length).toBeGreaterThan(0)
     }
     enter('sel-resize')
-    expect(document.querySelectorAll('#overlay-layer .rotateGlyph')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .rotateGlyph')).toHaveLength(0)
   })
 
   test('the handle class is what canvas.js and the CSS cursor hang off', () => {
@@ -108,7 +108,7 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
   // one whose pivot the user can place (rects). They share every bit of
   // rotate furniture; the placeable variant just adds the pivot handle.
   test('the two rotate modes draw identical corner handles and ring', () => {
-    const furniture = () => [...document.querySelectorAll('#overlay-layer .handle, #overlay-layer .selRing')]
+    const furniture = () => [...document.querySelectorAll('#selection_local .handle, #selection_local .selRing')]
       .map(n => n.outerHTML).join('')
     enter('sel-rotate')
     const fixed = furniture()
@@ -118,40 +118,44 @@ describe('rotate handles are visually distinct from sel-resize handles', () => {
 
   test('only the placeable variant adds a pivot handle on top', () => {
     enter('sel-rotate')
-    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .pivotHandle')).toHaveLength(0)
     enter('sel-rotate-pivot')
-    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_local .pivotHandle')).toHaveLength(1)
   })
 })
 
-describe('hitTestSelectionHandle in rotate mode', () => {
-  const scale = 1
+describe('corner handle grab areas', () => {
+  // canvas.js dispatches a press by the [data-handle] element under it, so a
+  // handle's grab area is just the invisible .handleHit square drawn with it.
+  const hitAt = (corner) => document.querySelector(`#selection_local .handleHit[data-handle="resize"][data-corner="${corner}"]`)
 
-  test('returns the corner index under the pointer, like resize mode does', () => {
-    const corners = resizeCorners(BBOX)
-    for (const mode of ['sel-rotate', 'sel-rotate-pivot']) {
-      corners.forEach((c, i) => {
-        expect(hitTestSelectionHandle(mode, BBOX, c.x, c.y, scale)).toBe(i)
-      })
+  test('reach HANDLE_SIZE / 2 + HANDLE_HIT_PAD (12) screen px either side of the corner, at any zoom', () => {
+    const [, , se] = resizeCorners(BBOX)
+    for (const scale of [1, 4]) {
+      boot({ scale }); enter('sel-resize')
+      const hit = hitAt('se')
+      expect(Number(hit.getAttribute('width'))).toBe(24 / scale)
+      expect(Number(hit.getAttribute('x')) + 12 / scale).toBe(se.x)
+      expect(Number(hit.getAttribute('y')) + 12 / scale).toBe(se.y)
     }
   })
 
-  test('returns null well away from every corner', () => {
-    expect(hitTestSelectionHandle('sel-rotate', BBOX, 200, 150, scale)).toBeNull()
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, 200, 150, scale)).toBeNull()
+  test('turn with a rotated shape, inside its rotated furniture group', () => {
+    boot({ rotation: 90 }); enter('sel-resize')
+    expect(hitAt('nw').closest('[transform]').getAttribute('transform')).toBe('rotate(90 200 150)')
   })
 })
 
 describe('a rotated element’s furniture rides its rotation', () => {
   test('no transform at all when the element is unrotated — no extra node for the common case', () => {
     enter('sel-rotate-pivot')
-    expect(document.querySelectorAll('#overlay-layer g[transform]')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local g[transform]')).toHaveLength(0)
   })
 
   test('ring and handles sit in one group turned about the element centre', () => {
     boot({ rotation: 30 })
     enter('sel-rotate-pivot')
-    const groups = [...document.querySelectorAll('#overlay-layer g[transform]')]
+    const groups = [...document.querySelectorAll('#selection_local g[transform]')]
     expect(groups).toHaveLength(1)
     // centre of BBOX: (200, 150)
     expect(groups[0].getAttribute('transform')).toBe('rotate(30 200 150)')
@@ -162,7 +166,7 @@ describe('a rotated element’s furniture rides its rotation', () => {
   test('the plain selection ring rotates too, so it hugs the shape rather than its bounds', () => {
     boot({ rotation: 45 })
     localSelectionChanged(['rect1'])
-    const group = document.querySelector('#overlay-layer g[transform]')
+    const group = document.querySelector('#selection_local g[transform]')
     expect(group.getAttribute('transform')).toBe('rotate(45 200 150)')
     expect(group.querySelectorAll('.selRing')).toHaveLength(1)
   })
@@ -171,14 +175,14 @@ describe('a rotated element’s furniture rides its rotation', () => {
     // Stands in for a user-placed pivot on the NW corner of BBOX.
     boot({ rotation: 30, centre: { cx: 100, cy: 100 } })
     enter('sel-rotate-pivot')
-    expect(document.querySelector('#overlay-layer g[transform]').getAttribute('transform'))
+    expect(document.querySelector('#selection_local g[transform]').getAttribute('transform'))
       .toBe('rotate(30 100 100)')
   })
 
   test('resize mode on an already-rotated element rotates its handles as well', () => {
     boot({ rotation: 90 })
     enter('sel-resize')
-    const group = document.querySelector('#overlay-layer g[transform]')
+    const group = document.querySelector('#selection_local g[transform]')
     expect(group.getAttribute('transform')).toBe('rotate(90 200 150)')
     expect(group.querySelectorAll('rect.handle')).toHaveLength(4)
   })
@@ -253,7 +257,7 @@ describe('handleCursor', () => {
 
 describe('handles carry their cursor inline, so it can follow the rotation', () => {
   const cursors = () => Object.fromEntries(
-    [...document.querySelectorAll('#overlay-layer .handle')]
+    [...document.querySelectorAll('#selection_local .handle')]
       .map(h => [h.getAttribute('data-corner'), h.style.cursor]))
 
   test('resize handles on an unrotated shape read like any resize handle', () => {
@@ -290,20 +294,20 @@ describe('handles carry their cursor inline, so it can follow the rotation', () 
 // them out of the way.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const pivotRays = () => document.querySelectorAll('#overlay-layer .pivotHandle line')
+const pivotRays = () => document.querySelectorAll('#selection_local .pivotHandle line')
 // .pivotGlyph, not just any circle: the handle also carries an invisible
 // hit-target circle (for the hover cursor) at the same coordinates.
-const pivotDot  = () => document.querySelector('#overlay-layer .pivotHandle circle.pivotGlyph')
+const pivotDot  = () => document.querySelector('#selection_local .pivotHandle circle.pivotGlyph')
 
 describe('the pivot handle', () => {
   test('is drawn in sel-rotate-pivot and nowhere else', () => {
     boot(); enter('sel-rotate-pivot')
-    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_local .pivotHandle')).toHaveLength(1)
 
     enter('sel-rotate')
-    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .pivotHandle')).toHaveLength(0)
     enter('sel-resize')
-    expect(document.querySelectorAll('#overlay-layer .pivotHandle')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .pivotHandle')).toHaveLength(0)
   })
 
   test('sits at the pivot point App reports', () => {
@@ -347,7 +351,7 @@ describe('the pivot handle', () => {
 
   test('rides the rotation with the rest of the furniture', () => {
     boot({ rotation: 30, pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
-    const group = document.querySelector('#overlay-layer g[transform]')
+    const group = document.querySelector('#selection_local g[transform]')
     expect(group.querySelectorAll('.pivotHandle')).toHaveLength(1)
   })
 
@@ -363,50 +367,26 @@ describe('the pivot handle', () => {
     expect(Number(pivotDot().getAttribute('cx'))).toBe(BBOX.x + BBOX.width / 2)
   })
 
-  test('carries an invisible circle sized to the real hit radius, so hovering it shows the cursor', () => {
+  test('carries an invisible circle giving it its grab radius, so hovering or pressing it works', () => {
     // The rays/dot opt out of pointer-events (see icons.js), and a <g> has no
     // paintable geometry of its own — without a painted, non-glyph shape here,
-    // .pivotHandle's `cursor: crosshair` rule never has anything to hover.
+    // .pivotHandle's `cursor: crosshair` rule never has anything to hover,
+    // and a press would never land on [data-handle="pivot"].
     boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
-    const hit = document.querySelector('#overlay-layer .pivotHandle circle:not(.pivotGlyph)')
+    const hit = document.querySelector('#selection_local .pivotHandle circle:not(.pivotGlyph)')
     expect(hit).not.toBeNull()
     expect(hit.getAttribute('fill')).toBe('transparent')
-
-    const cx = Number(hit.getAttribute('cx'))
-    const cy = Number(hit.getAttribute('cy'))
-    const r = Number(hit.getAttribute('r'))
-    const pt = { cx: BBOX.x, cy: BBOX.y }
-    expect(hitTestPivot(pt, cx + r - 0.5, cy, 1)).toBe(true)
-    expect(hitTestPivot(pt, cx + r + 0.5, cy, 1)).toBe(false)
-  })
-})
-
-describe('hit-testing the pivot', () => {
-  const pt = { cx: 200, cy: 150 }
-
-  test('a point on the handle is a hit; one well away is not', () => {
-    expect(hitTestPivot(pt, 200, 150, 1)).toBe(true)
-    expect(hitTestPivot(pt, 260, 150, 1)).toBe(false)
-    expect(hitTestPivot(null, 200, 150, 1)).toBe(false)
+    expect(Number(hit.getAttribute('cx'))).toBe(BBOX.x)
+    expect(Number(hit.getAttribute('cy'))).toBe(BBOX.y)
+    expect(Number(hit.getAttribute('r'))).toBe(9 / 2 + 6)  // PIVOT_SIZE / 2 + HANDLE_HIT_PAD, at scale 1
   })
 
-  test('sel-rotate-pivot reports the pivot before the corner it is parked on', () => {
-    const [nw] = resizeCorners(BBOX)
-    const onNW = { cx: nw.x, cy: nw.y }
-    // Same point hits the corner when no pivot is offered...
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, nw.x, nw.y, 1)).toBe(0)
-    // ...and the pivot when one is sitting there.
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, nw.x, nw.y, 1, onNW)).toBe('pivot')
-  })
-
-  test('corners still answer when the pivot is elsewhere', () => {
-    const [, ne] = resizeCorners(BBOX)
-    const centre = { cx: 200, cy: 150 }
-    expect(hitTestSelectionHandle('sel-rotate-pivot', BBOX, ne.x, ne.y, 1, centre)).toBe(1)
-  })
-
-  test('the fixed-pivot mode never reports a pivot, even if one is passed', () => {
-    expect(hitTestSelectionHandle('sel-rotate', BBOX, 200, 150, 1, { cx: 200, cy: 150 })).toBeNull()
+  test('is drawn after the rotate handles, so a pivot parked on a corner is the one pressed', () => {
+    boot({ pivot: { fx: 0, fy: 0 } }); enter('sel-rotate-pivot')
+    const pivot = document.querySelector('#selection_local .pivotHandle')
+    for (const handle of document.querySelectorAll('#selection_local .rotateHandle')) {
+      expect(handle.compareDocumentPosition(pivot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
   })
 })
 
@@ -422,7 +402,7 @@ describe('hit-testing the pivot', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('drag ghost ring on a rotated shape', () => {
-  const ring = () => document.querySelector('#overlay-layer .drag-ring')
+  const ring = () => document.querySelector('#selection_local .drag-ring')
 
   test('an unrotated shape’s ring carries no transform, as before', () => {
     boot({ rotation: 0 })
@@ -475,7 +455,7 @@ describe('drag ghost ring on a rotated shape', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // updateRotateGhost — the live-drag ghost's own rotation, shared by every
 // rotatable layer's resize/rotate ghost pair (_resizeGhosts). Reads/writes
-// data-rotate directly and resolves the transform via drawing.js's
+// data-rotate directly and resolves the transform via layer_drawing.js's
 // resolveRotation called WITH an explicit geom, which is pure
 // attribute-plus-arithmetic with zero dependency on the ghost's tagName —
 // true of a cloned <rect> (drawing) exactly as much as a cloned <g> wrapping
@@ -492,13 +472,15 @@ describe('updateRotateGhost', () => {
     document.body.innerHTML = `
       <svg id="canvas">
         <defs></defs>
-        <g id="overlay-layer"></g>
+        <g id="selection_shared"></g>
+        <g id="awareness"></g>
+        <g id="selection_local"></g>
       </svg>
     `
     document.getElementById('canvas').appendChild(liveEl)
     setPivotPreview(null, null)
     const id = liveEl.getAttribute('data-id')
-    // id-aware, not a blanket () => GEO: SelectionMode is overlay.js module
+    // id-aware, not a blanket () => GEO: SelectionModeLocal is overlay.js module
     // state that outlives any one test (earlier describe blocks in this file
     // leave a 'rect1' entry behind), so a fake that answered for EVERY id
     // would render an extra, geometry-less ghost/ring for that leftover
@@ -511,7 +493,7 @@ describe('updateRotateGhost', () => {
     }, document.getElementById('canvas'))
   }
 
-  const liveGhost = () => document.querySelector('#overlay-layer [opacity="0.85"]')
+  const liveGhost = () => document.querySelector('#selection_local [opacity="0.85"]')
 
   test('a drawing-layer rect ghost rotates about the explicit geom’s centre', () => {
     const rect = document.createElementNS(SVGNS, 'rect')
@@ -530,8 +512,8 @@ describe('updateRotateGhost', () => {
   })
 
   test('a toy-shaped <g> ghost ALSO rotates about the explicit geom’s centre — the bug this generalization fixes', () => {
-    // Before the fix, this delegated to drawing.js's previewRotate, which
-    // falls back to drawing.js's own shape-keyed getGeom() when no geom is
+    // Before the fix, this delegated to layer_drawing.js's previewRotate, which
+    // falls back to layer_drawing.js's own shape-keyed getGeom() when no geom is
     // given — undefined for a <g>, collapsing the pivot to (0, 0) instead
     // of the toy's actual centre.
     const g = document.createElementNS(SVGNS, 'g')
@@ -585,7 +567,7 @@ describe('updateRotateGhost', () => {
     startResizeGhost('shape1')
     updateRotateGhost('shape1', 45, GEO)
 
-    const ring = document.querySelector('#overlay-layer .selRing')
+    const ring = document.querySelector('#selection_local .selRing')
     expect(ring.getAttribute('transform')).toBe('rotate(45 200 150)')
     endResizeGhost('shape1')
   })

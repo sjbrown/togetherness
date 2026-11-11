@@ -46,11 +46,11 @@ test('one square for three dice sits at the south-east-most corner; clicking it 
   const ids = await placeDice(page, [[150, 150], [450, 250], [250, 450]]);
   await selectAll(page, ids);
 
-  await expect(page.locator('#overlay-layer .groupAction .actionSquare')).toHaveCount(1, { timeout: 3000 });
-  await expect(page.locator('#overlay-layer .bowstring')).toHaveCount(0);
+  await expect(page.locator('#selection_local .groupAction .actionSquare')).toHaveCount(1, { timeout: 3000 });
+  await expect(page.locator('#selection_local .bowstring')).toHaveCount(0);
 
 
-  const sq = await page.locator('#overlay-layer .groupAction .actionSquare').boundingBox();
+  const sq = await page.locator('#selection_local .groupAction .actionSquare').boundingBox();
   const sqc = { x: sq.x + sq.width / 2, y: sq.y + sq.height / 2 };
 
   // South-east-most: no die's box reaches further along the SE diagonal.
@@ -77,7 +77,7 @@ test('rolling the group undoes in one press', async () => {
 
   // Math.random() === 0 rolls a 1, never the 6 a fresh die shows.
   await page.evaluate(() => { Math.random = () => 0; });
-  const sq = await page.locator('#overlay-layer .groupAction .actionSquare').boundingBox();
+  const sq = await page.locator('#selection_local .groupAction .actionSquare').boundingBox();
   await page.mouse.click(sq.x + sq.width / 2, sq.y + sq.height / 2);
   await expect.poll(() => faces(page, ids)).toEqual(['1', '1', '1']);
 
@@ -102,8 +102,8 @@ test('no square when the selected toys have different default actions', async ()
     [...document.querySelectorAll('#toys-layer > [data-toy-type]')].map(el => el.dataset.id));
 
   await selectAll(page, ids);
-  await expect(page.locator('#overlay-layer .selRing')).toHaveCount(2, { timeout: 3000 });
-  await expect(page.locator('#overlay-layer .groupAction')).toHaveCount(0);
+  await expect(page.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
+  await expect(page.locator('#selection_local .groupAction')).toHaveCount(0);
   expect(die).toBeTruthy();
   await browser.close();
 });

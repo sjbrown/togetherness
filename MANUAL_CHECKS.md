@@ -18,8 +18,8 @@ Run these checks before merging large changesets. Automated tests catch logic er
 ## Import / Export Roundtrip
 
 1. Create mixed doc: 2–3 drawing shapes, 3 toys, 2 boundaries
-2. Export → edit in Inkscape (change boundary name) → re-import
-3. Verify: toys same position, boundary name updated, no structural corruption
+2. Export → edit in Inkscape (change boundary Matches) → re-import
+3. Verify: toys same position, boundary Matches updated, no structural corruption
 4. Export again, diff against edited SVG (allow whitespace, not structural)
 
 ---
@@ -115,12 +115,12 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ## Boundary Constraints
 
-1. **Single boundary:** Create boundary named `"toy"`, toy with class `"toy"` inside
+1. **Single boundary:** Create boundary with Matches `.toy`, toy with class `"toy"` inside
    - Drag to edges; should stop (no jitter)
-   - Rename boundary to `"other"`; toy now free-moving
+   - Set boundary Matches to `.other`; toy now free-moving
    - Move toy outside via edit panel, drag; should be unconstrained
 
-2. **Multiple boundaries:** Two overlapping boundaries named `"toy"`, toy in overlap
+2. **Multiple boundaries:** Two overlapping boundaries with Matches `.toy`, toy in overlap
    - Drag; should respect union of both
 
 ---
@@ -147,7 +147,7 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ## Snap + Boundary Interaction
 
-1. Boundary named `"toy"`, position set named `"toy"`, toy with class `"toy"` inside
+1. Boundary with Matches `.toy`, position set with Matches `.toy`, toy with class `"toy"` inside
 2. Drag toy; should snap only to grid points inside boundary
 3. Snap point outside boundary rejected
 
@@ -163,8 +163,8 @@ Run these checks before merging large changesets. Automated tests catch logic er
 
 ## Edit Panel
 
-1. **Boundary:** Edit `name` → label updates; edit `x`/`y` → boundary moves
-2. **Position set:** Edit `name` and `snap-radius` → both update in one transaction
+1. **Boundary:** Edit Matches → label updates; edit `x`/`y` → boundary moves
+2. **Position set:** Edit Matches and `snap-radius` → both update in one transaction
 
 ---
 

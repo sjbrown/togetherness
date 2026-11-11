@@ -16,8 +16,9 @@
 
 /**
  * Desaturates and dims a shape to indicate "committed position" while it is
- * being dragged. Applied via <use href="#{id}" filter="url(#...)"> in the
- * overlay layer — the native layer element is never touched.
+ * being dragged. Applied via <use href="#{id}" filter="url(#...)"> in
+ * #selection_local or #awareness — the native layer element is never
+ * touched.
  */
 export const DRAG_PLACEHOLDER_FILTER_ID = 'drag-placeholder-filter';
 
@@ -49,12 +50,12 @@ export const SNAP_POINT_GRADIENT_ID = 'snap-point-gradient';
 /**
  * local-action-filter: recolors the action-mode affordance icons (kebab +
  * asterisk square backgrounds) to the local player's own color, using the
- * same feColorMatrix trick toys.js's colorMatrixValues() builds for toy
+ * same feColorMatrix trick layer_toys.js's colorMatrixValues() builds for toy
  * artwork recoloring — a white source pixel becomes the target color, a
  * black source pixel stays black, so icon glyphs drawn in black on top of
  * a white square background stay visible once tinted.
  * The `values` attribute is overwritten once at boot by Overlay.init, via
- * toys.js's colorMatrixValues(). The identity-ish default below is just a
+ * layer_toys.js's colorMatrixValues(). The identity-ish default below is just a
  * placeholder until that first call.
  */
 export const LOCAL_ACTION_FILTER_ID = 'local-action-filter';
@@ -67,7 +68,8 @@ export const localActionFilterSVG = `\
 
 /**
  * glow: a soft blur merged behind the source graphic. Used by the bowstring
- * handle's rect and its spark particles (see delight.js) for a subtle halo.
+ * handle's rect and its spark particles (see layer_delight.js) for a subtle
+ * halo.
  */
 export const GLOW_FILTER_ID = 'glow';
 

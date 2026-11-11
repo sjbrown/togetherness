@@ -1,5 +1,5 @@
 /**
- * delight.js — the Bowstring Handle
+ * layer_delight.js — the Bowstring Handle
  *
  * A drag-to-fire control attached to the SE action square of the locally
  * selected toy. Click it for an immediate action; pull it back like a
@@ -7,26 +7,28 @@
  *
  * ── Why this is its own module, and its own layer ─────────────────────────
  *
- * Overlay.render() does `_layerEl.innerHTML = ''` and is called from
- * syncFromAwareness() — i.e. on every awareness update, which includes peer
- * cursors, peer drags, and soft-lock ticks. A bowstring pull lasts seconds.
- * Anything live that lived in #overlay-layer would be destroyed mid-gesture:
+ * Overlay.render() makes each of its layers match what it draws: a node it
+ * still draws is patched to match, anything else is removed. #selection_local,
+ * where the resting square lives, is redrawn on every local selection, ghost
+ * or doc change. A bowstring pull lasts seconds and builds nodes overlay.js
+ * knows nothing about, so anything live in an overlay layer would be removed
+ * or overwritten mid-gesture:
  * the rAF spin loop's target node, the CSS transition on the handle group,
  * the pending transitionend listener that fires the sparks, and the delight
  * clones.
  *
- * So the live gesture runs in its own #delight-layer, which nothing ever
- * wipes. This mirrors the existing reasoning for user gradients living in
- * their own page-root <defs> rather than the overlay layer (see user.js's
+ * So the live gesture runs in its own #delight-layer, which overlay.js never
+ * touches. This mirrors the existing reasoning for user gradients living in
+ * their own page-root <defs> rather than an overlay layer (see user.js's
  * upsertUserGradient).
  *
  * Division of labour with overlay.js:
- *   overlay.js  — draws the RESTING affordance (the SE square, wrapped in
- *                 <g class="bowstring">), and nothing else. It may be wiped
- *                 and redrawn freely.
- *   delight.js  — owns the LIVE gesture. On pointerdown it builds its own
- *                 handle chrome in #delight-layer and drives it to
- *                 completion, independent of any overlay re-render.
+ *   overlay.js        — draws the RESTING affordance (the SE square, wrapped
+ *                       in <g class="bowstring">), and nothing else. It may
+ *                       be redrawn freely.
+ *   layer_delight.js  — owns the LIVE gesture. On pointerdown it builds its
+ *                       own handle chrome in #delight-layer and drives it to
+ *                       completion, independent of any overlay re-render.
  *
  * ── CSS/JS split ──────────────────────────────────────────────────────────
  * Anything whose start and end states are both known when it begins is a CSS
@@ -63,7 +65,7 @@ const DELIGHT_TRANSLATE_SCALE = 0.05;
 export const ACTION_SQUARE_SIDE = 22; // px; the handle rect and its resting square
 const HANDLE_HALF = ACTION_SQUARE_SIDE / 2;
 
-// Charge indicators, drawn on #overlay-layer from getBowstringState().
+// Charge indicators, drawn on #selection_local from getBowstringState().
 const CHARGE_FADE_MS = 500;        // toy clone fades in over this, then holds
 const CHARGE_RADIUS_RATIO = 0.10;  // circle radius as a fraction of pull distance
 export const MAX_CHARGE_RADIUS = 50; // screen px, hard cap
@@ -103,11 +105,10 @@ export function wobbleAmpFor(dist, velocity) {
  * Charge-clone opacity: fades 0 -> 1 over CHARGE_FADE_MS, then holds.
  *
  * Deliberately computed in JS from heldMs rather than expressed as a CSS
- * transition/keyframe, because the overlay layer this is drawn on is wiped
- * and rebuilt every frame — a CSS animation would restart from 0 on each
- * rebuild and the clone would never actually appear. Anything drawn on a
- * layer that gets recreated per frame must derive its state from elapsed
- * time, not from animation state stored on the element.
+ * transition/keyframe: a peer's charge is timed from when this client first
+ * saw it, the local one from its own gesture, and both are redrawn every
+ * frame, so each derives its state from elapsed time rather than from
+ * animation state stored on the element.
  */
 export function chargeOpacityFor(heldMs) {
   return Math.min(Math.max(heldMs, 0) / CHARGE_FADE_MS, 1);
@@ -143,7 +144,7 @@ export function stringPathD(origin, x, y, wobble) {
 // ── Module state ──────────────────────────────────────────────────────────
 
 let App = null;
-let _layerEl = null;   // #delight-layer <g> — never wiped by Overlay.render()
+let _layerEl = null;   // #delight-layer <g> — never touched by Overlay.render()
 let _svgEl = null;
 let _active = null;    // the in-flight gesture, or null when idle
 
@@ -156,20 +157,14 @@ export function init(appBus, svgElement) {
   }
 }
 
-/** True while a bowstring gesture is in flight — canvas.js checks this. */
-export function isDragging() {
-  return _active !== null;
-}
-
 /**
  * The live gesture's ephemeral state, or null when idle.
  *
- * This is the whole bridge to overlay.js. #overlay-layer is wiped and
- * rebuilt wholesale on every render(), so it cannot HOLD state across a
- * gesture — but it can READ it. Keeping the flow pull-based (overlay asks
- * delight at render time) rather than push-based (delight reaches into
- * overlay's DOM) means a wipe is harmless: the next render reconstructs
- * itself from a source that outlived it.
+ * This is the whole bridge to overlay.js. #selection_local is redrawn on
+ * every render(), so it cannot HOLD state across a gesture — but it can READ
+ * it. Keeping the flow pull-based (overlay asks delight at render time)
+ * rather than push-based (delight reaches into overlay's DOM) means a redraw
+ * is harmless: the next render draws itself from a source that outlived it.
  *
  * Both fields are ephemeral by the project's own taxonomy — they describe
  * how someone is manipulating a toy right now, not what the toy IS. They
@@ -202,21 +197,6 @@ function el(tag, attrs) {
 }
 
 /**
- * Hit-test a canvas-space point against elId's resting bowstring square.
- * rot (the same { deg, cx, cy } App.getRotation returns, or null) rotates
- * the square along with the toy.
- */
-export function hitTestBowstring(geo, px, py, scale, rot = null) {
-  return hitTestBowstringAt(bowstringOrigin(geo, rot), px, py, scale);
-}
-
-/** Same hit-test for a square already anchored at origin. */
-export function hitTestBowstringAt(origin, px, py, scale) {
-  const half = ACTION_SQUARE_SIDE / scale / 2;
-  return Math.abs(px - origin.x) <= half && Math.abs(py - origin.y) <= half;
-}
-
-/**
  * The handle's resting anchor: whichever ring corner, after the toy's
  * rotation, lies furthest along the screen's south-east diagonal. Near-ties
  * (within SE_EPS) go to the corner lower on screen.
@@ -239,9 +219,10 @@ const PAD = 6; // keep in step with overlay.js's PAD
 // ── Gesture ───────────────────────────────────────────────────────────────
 
 /**
- * Begin a bowstring gesture on elId. Called from canvas.js's pointerdown
- * once hitTestBowstring passes. Takes over the pointer entirely: canvas.js
- * must not also start a move/select gesture for this pointer.
+ * Begin a bowstring gesture on elId. Called (through App.startBowstring)
+ * for a press on the resting square, overlay.js's [data-handle="bowstring"].
+ * Takes over the pointer entirely: canvas.js must not also start a
+ * move/select gesture for this pointer.
  */
 export function startBowstring(elId, e, stageEl) {
   if (_active) return false;
@@ -329,8 +310,8 @@ function buildChrome(origin, scale) {
  * one value CSS can't originate (the pull parallax, via --drag-x/--drag-y).
  *
  * The ring clones go in #delight-layer rather than next to the real ring,
- * because the real ring lives in #overlay-layer and would take them with it
- * on the next wipe.
+ * because the real ring lives in #selection_local, whose next redraw would
+ * remove anything overlay.js didn't draw.
  *
  * rot ({ deg, cx, cy } or null) is applied via a wrapping <g>, never as a
  * transform on the delight nodes themselves: each already carries a CSS

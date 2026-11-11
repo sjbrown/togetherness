@@ -10,9 +10,9 @@
  */
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { TOYS_LAYER, runGesture as runToyGesture } from '../../src/toys.js'
-import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/drawing.js'
-import { BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI } from '../../src/boun_pos.js'
+import { TOYS_LAYER, runGesture as runToyGesture } from '../../src/layer_toys.js'
+import { DRAWING_LAYER, makeLayerAPI as makeDrawingAPI } from '../../src/layer_drawing.js'
+import { BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI } from '../../src/layer_boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 import * as OpLayer from '../../src/op_layer.js'
 

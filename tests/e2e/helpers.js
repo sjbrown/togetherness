@@ -8,7 +8,7 @@ import { expect } from '@playwright/test';
  * one — the hash travels over a human channel (chat, a shared link), never
  * generated independently by more than one browser.
  *
- * The op log's genesis checkpoint is gated on this (see toys.js's
+ * The op log's genesis checkpoint is gated on this (see layer_toys.js's
  * projectLayer / index.html's isCreator) — two sessions that both think
  * they're the creator fork the table's history before either places
  * anything. Two-peer specs have to model the real protocol, not just

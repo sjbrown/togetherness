@@ -48,9 +48,10 @@ async function bootApp(toys) {
   document.body.innerHTML = `
     <div id="stage"><svg id="canvas" xmlns="http://www.w3.org/2000/svg"><defs></defs>
       <g id="background-layer"></g><g id="boun_pos-layer"></g><g id="toys-layer"></g>
-      <g id="drawing-layer"></g><g id="overlay-layer"></g><g id="delight-layer"></g></svg></div>`
+      <g id="drawing-layer"></g><g id="selection_shared"></g><g id="awareness"></g><g id="selection_local"></g><g id="delight-layer"></g></svg></div>`
   const svgEl = document.getElementById('canvas')
-  const { addToy, activateAllToyScriptsDom } = await import('../../src/toys.js')
+  const { activateLayerToyScripts } = await import('../../src/layer_toys.js')
+  const { addToy } = await import('../helpers/toys.js')
   const { boot, App } = await import('../../src/app.js')
   const { tablesAPI } = await import('../../src/tables.js')
   const ydoc = tablesAPI.makeDoc()
@@ -58,7 +59,7 @@ async function bootApp(toys) {
   const awareness = new awarenessProtocol.Awareness(ydoc)
   const user = { id: 'bailey', name: 'Bailey', color: '#0f0', gradient: { c1: '#0f0', c2: '#0a0', angle: 45 } }
   for (const t of toys) await addToy(ydoc, layerEl, { color: '#abc', ...t })
-  activateAllToyScriptsDom(ydoc, layerEl)
+  activateLayerToyScripts(ydoc, layerEl)
   await new Promise(r => setTimeout(r, 0))
   awareness.setLocalState({ user, cursor: null, desired: {} })
   boot({ ydoc, awareness, provider: { on: vi.fn(), signalingConns: [] }, user,
@@ -90,26 +91,26 @@ describe('group action square', () => {
     App.select('a'); App.toggleSelection('b'); App.toggleSelection('c')
     const { render } = await import('../../src/overlay.js')
     render()
-    expect(svgEl.querySelectorAll('#overlay-layer .groupAction .actionSquare').length).toBe(1)
+    expect(svgEl.querySelectorAll('#selection_local .groupAction .actionSquare').length).toBe(1)
+    expect(svgEl.querySelector('#selection_local .groupAction').dataset.handle).toBe('group-action')
   })
 
-  test('clicking the square invokes the action on every die', async () => {
+  test('firing the group action invokes it on every die', async () => {
     const { App } = await bootApp(dice())
     App.select('a'); App.toggleSelection('b'); App.toggleSelection('c')
     const spy = vi.spyOn(App, 'invokeToyMenuActions')
-    const { origin } = App.getGroupAction()
-    expect(App.fireGroupActionAt({ x: origin.x + 3, y: origin.y - 3 })).toBe(true)
+    expect(App.fireGroupAction()).toBe(true)
     expect(spy).toHaveBeenCalledTimes(1)
     const [ids, , key] = spy.mock.calls[0]
     expect([...ids].sort()).toEqual(['a', 'b', 'c'])
     expect(key).toBe('Roll')
   })
 
-  test('a click away from the square does nothing', async () => {
-    const { App } = await bootApp(dice())
-    App.select('a'); App.toggleSelection('b')
+  test('firing with no group action does nothing', async () => {
+    const { App } = await bootApp([dice()[0], { id: 'p', toyType: 'meeple', x: 200, y: 0 }])
+    App.select('a'); App.toggleSelection('p')
     const spy = vi.spyOn(App, 'invokeToyMenuActions')
-    expect(App.fireGroupActionAt({ x: -500, y: -500 })).toBe(false)
+    expect(App.fireGroupAction()).toBe(false)
     expect(spy).not.toHaveBeenCalled()
   })
 

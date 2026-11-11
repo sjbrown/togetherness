@@ -7,7 +7,7 @@
  * operation, either bare (the functions) or inside a gesture (the LayerAPI).
  */
 
-import { describe, test, expect, beforeEach } from 'vitest';
+import { describe, test, expect, beforeEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
   // ID helpers
@@ -17,7 +17,7 @@ import {
   // Grid math
   generateSquareGrid, generateHexGrid, generateFlatHexGrid, gridFillExtent, computeMaxSnapRadius, computeGridPositions,
   // DOM writes
-  BOUNPOS_TYPES, findEl, deleteEl, editBounPos, editEl, applyMove,
+  BOUN_POS_TYPES, findEl, deleteEl, editEl, applyMove,
   // Layer
   BOUN_POS_LAYER, makeLayerAPI, layerData,
   // Geometry queries
@@ -28,7 +28,7 @@ import {
   selectModes, nextSelectMode, computeResize, applyResize, previewResize,
   // Drag context
   computeBoundaryRects, getSnapPoints,
-} from '../../src/boun_pos.js';
+} from '../../src/layer_boun_pos.js';
 import { ensureLayerId } from '../../src/op_layers.js';
 import { getOps } from '../../src/op_dag.js';
 
@@ -49,27 +49,35 @@ function makeLayer() {
 }
 
 function addB(layer, overrides = {}) {
-  const { id, name } = newBoundaryId();
-  BOUNPOS_TYPES.boundary.create(layer.layerEl, {
-    id, name, x: 100, y: 100, w: 200, h: 150,
+  const { id, matches } = newBoundaryId();
+  BOUN_POS_TYPES.boundary.create(layer.layerEl, {
+    id, matches, x: 100, y: 100, w: 200, h: 150,
     ...overrides,
   });
-  return { id, name };
+  return { id, matches };
+}
+
+// A toy wrapper <g> carrying the given classes, as computeBoundaryRects sees it.
+function toyWith(...classes) {
+  const g = document.createElementNS(SVG_NS, 'g');
+  g.setAttribute('data-module', 'toys');
+  g.setAttribute('class', classes.join(' '));
+  return g;
 }
 
 function addPS(layer, overrides = {}) {
-  const { id, name } = newPositionSetId();
+  const { id, matches } = newPositionSetId();
   const x = overrides.x ?? 0, y = overrides.y ?? 0;
   const w = overrides.w ?? 400, h = overrides.h ?? 300;
   const genType  = overrides.genType  ?? 'square';
   const xSpacing = overrides.xSpacing ?? 80;
   const ySpacing = overrides.ySpacing ?? 80;
   const circles = gridFillExtent(x, y, w, h, genType, xSpacing, ySpacing);
-  BOUNPOS_TYPES['pos-grid-sq'].create(layer.layerEl, {
-    id, name, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
-    ...overrides, id, name,
+  BOUN_POS_TYPES['pos-grid-sq'].create(layer.layerEl, {
+    id, matches, snapRadius: 30, genType, xSpacing, ySpacing, x, y, w, h, circles,
+    ...overrides, id, matches,
   });
-  return { id, name, circles };
+  return { id, matches, circles };
 }
 
 const circlesOf = (el) =>
@@ -105,18 +113,18 @@ function makeGhostPosSet({ x = 0, y = 0, w = 200, h = 200, genType = 'square', x
 // ── ID helpers ─────────────────────────────────────────────────────────────────
 
 describe('newBoundaryId', () => {
-  test('id starts with tt-b-v1- and name is toy', () => {
-    const { id, name } = newBoundaryId();
+  test('id starts with tt-b-v1- and matches is .toy', () => {
+    const { id, matches } = newBoundaryId();
     expect(id.slice(0,8)).toBe(`tt-b-v1-`);
-    expect(name).toBe('toy');
+    expect(matches).toBe('.toy');
   });
 });
 
 describe('newPositionSetId', () => {
-  test('id starts with tt-ps-v1- and name is toy', () => {
-    const { id, name } = newPositionSetId();
+  test('id starts with tt-ps-v1- and matches is .toy', () => {
+    const { id, matches } = newPositionSetId();
     expect(id.slice(0,9)).toBe(`tt-ps-v1-`);
-    expect(name).toBe('toy');
+    expect(matches).toBe('.toy');
   });
 });
 
@@ -245,7 +253,7 @@ describe('gridFillExtent', () => {
 
 describe('computeGridPositions', () => {
   // The same math rebuildPositionSetGrid uses to actually commit a
-  // resize (see editBounPos/editEl below) — exposed separately so this
+  // resize (see editEl below) — exposed separately so this
   // file's own previewEdit (tested further down) can compute the
   // identical result without touching Yjs.
   test('circles match gridFillExtent for the same inputs', () => {
@@ -296,19 +304,20 @@ describe('boundary create / findEl', () => {
 
   test('boundary <g> has <path> and <text> children, laid out locally under a translate', () => {
     const layer = makeLayer();
-    const { id, name } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
+    const { id, matches } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);
     expect([...el.children].map(c => c.localName)).toEqual(['path', 'text']);
     expect(el.getAttribute('transform')).toBe('translate(100, 100)');
     expect(pathToRect(el.querySelector('path').getAttribute('d'))).toEqual({ x: 0, y: 0, w: 200, h: 150 });
-    expect(el.querySelector('text').textContent).toBe(name);
+    expect(el.querySelector('text').textContent).toBe(matches);
   });
 
   test('attributes are written to the <g> wrapper', () => {
     const layer = makeLayer();
-    const { id, name } = addB(layer);
+    const { id, matches } = addB(layer);
     const el = findEl(layer.layerEl, id);
-    expect(el.getAttribute('name')).toBe(name);
+    expect(el.getAttribute('data-tt-matches')).toBe(matches);
+    expect(el.hasAttribute('name')).toBe(false);
     expect(el.getAttribute('data-bounpos-type')).toBe('boundary');
   });
 });
@@ -354,39 +363,39 @@ describe('deleteEl', () => {
   });
 });
 
-describe('editBounPos rename', () => {
-  test('updates the name attribute and the label’s text node', () => {
+describe('editEl rename', () => {
+  test('updates the data-tt-matches attribute and the label’s text node', () => {
     const layer = makeLayer();
     const { id } = addB(layer);
     const el = findEl(layer.layerEl, id);
     const textNode = el.querySelector('text').firstChild;
-    editBounPos({ id, name: 'forest' }, layer.layerEl);
-    expect(el.getAttribute('name')).toBe('forest');
-    expect(el.querySelector('text').textContent).toBe('forest');
+    editEl(findEl(layer.layerEl, id), { 'data-tt-matches': '.forest' });
+    expect(el.getAttribute('data-tt-matches')).toBe('.forest');
+    expect(el.querySelector('text').textContent).toBe('.forest');
     expect(el.querySelector('text').firstChild).toBe(textNode);   // changed in place
   });
 
   test('a rename through the LayerAPI is one gesture that records a text mutation', () => {
     const layer = makeLayer();
-    const { id, name } = newBoundaryId();
-    layer.L.add('boundary', { id, name, x: 0, y: 0, w: 100, h: 100 });
-    layer.L.edit(layer.L.find(id), { name: 'forest' });
+    const { id, matches } = newBoundaryId();
+    layer.L.add('boundary', { id, matches, x: 0, y: 0, w: 100, h: 100 });
+    layer.L.edit(layer.L.find(id), { 'data-tt-matches': '.forest' });
     const op = [...getOps(layer.ydoc, BOUN_POS_LAYER).values()].pop();
     expect(op.gesture).toBe('edit');
     expect(op.mutations.map(m => m.t)).toEqual(expect.arrayContaining(['attr', 'text']));
   });
 });
 
-describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
+describe('editEl grid resize (xSpacing/ySpacing/snapRadius)', () => {
   // Locks in that the real commit path (rebuildPositionSetGrid, called
-  // via editBounPos/editEl) produces exactly what computeGridPositions
+  // via editEl) produces exactly what computeGridPositions
   // predicts — the same parity a live ghost preview relies on to show a
   // grid that matches what actually lands on release.
   test('changing xSpacing rebuilds the circle set to match computeGridPositions', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
 
-    editBounPos({ id, xSpacing: 50, ySpacing: 80 }, layer.layerEl);
+    editEl(findEl(layer.layerEl, id), { xSpacing: 50, ySpacing: 80 });
 
     const el = findEl(layer.layerEl, id);
     const { circles: expectedCircles } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 50, 80, 2);
@@ -398,7 +407,7 @@ describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 200, h: 200, genType: 'square', xSpacing: 80, ySpacing: 80 });
 
-    editBounPos({ id, snapRadius: 4 }, layer.layerEl);
+    editEl(findEl(layer.layerEl, id), { snapRadius: 4 });
 
     const el = findEl(layer.layerEl, id);
     const { r: expectedR } = computeGridPositions({ x: 0, y: 0, w: 200, h: 200 }, 'square', 80, 80, 4);
@@ -419,7 +428,7 @@ describe('editBounPos grid resize (xSpacing/ySpacing/snapRadius)', () => {
 
 describe('previewEdit', () => {
   // This is the function that used to live as overlay.js's
-  // updatePosSetGhost — moved here so boun_pos.js is the only file that
+  // updatePosSetGhost — moved here so layer_boun_pos.js is the only file that
   // knows a pos-set's circles are derived from spacing/snapRadius, not a
   // plain attribute. ghostEl mirrors the detached clone overlay.js's
   // startGhost hands it — same shape as attr-ghost.test.js's harness, but
@@ -482,14 +491,14 @@ describe('previewEdit', () => {
     path.setAttribute('d', rectToPath(0, 0, 100, 100));
     ghostEl.appendChild(path);
 
-    expect(() => previewEdit(ghostEl, { name: 'dungeon' })).not.toThrow();
+    expect(() => previewEdit(ghostEl, { 'data-tt-matches': '.dungeon' })).not.toThrow();
     expect(ghostEl.querySelectorAll('circle')).toHaveLength(0);
   });
 
   test('is a no-op when editData has none of xSpacing/ySpacing/snapRadius', () => {
     const ghostEl = makeGhostPosSet({ circleCount: 3 });
 
-    previewEdit(ghostEl, { name: 'grid' });
+    previewEdit(ghostEl, { 'data-tt-matches': '.grid' });
 
     expect(ghostEl.querySelectorAll(':scope > circle')).toHaveLength(3);
   });
@@ -523,10 +532,10 @@ describe('applyMove', () => {
 
   test('a move of a 121-circle position set already on top is one op with exactly one attr mutation, on transform', () => {
     const layer = makeLayer();
-    const { id, name } = newPositionSetId();
+    const { id, matches } = newPositionSetId();
     const circles = gridFillExtent(0, 0, 1000, 1000, 'square', 100, 100);
     layer.L.add('pos-grid-sq', {
-      id, name, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
+      id, matches, snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
       x: 0, y: 0, w: 1000, h: 1000, circles,
     });
     expect(circlesOf(findEl(layer.layerEl, id))).toHaveLength(121);
@@ -565,7 +574,7 @@ describe('world geometry across create -> move -> resize -> move', () => {
   // Reference: the previous absolute-coordinate behavior.
   test('boundary readers report the reference world rect at each step', () => {
     const layer = makeLayer();
-    const { id, name } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
+    const { id } = addB(layer, { x: 100, y: 100, w: 200, h: 150 });
     const el = findEl(layer.layerEl, id);
     const steps = [
       [() => {}, { x: 100, y: 100, w: 200, h: 150 }],
@@ -577,7 +586,7 @@ describe('world geometry across create -> move -> resize -> move', () => {
       act();
       expect(getGeom(el)).toEqual({ x: want.x, y: want.y, width: want.w, height: want.h });
       expect(getAnchor(el)).toEqual({ x: want.x, y: want.y });
-      const rects = computeBoundaryRects(layer.layerEl, new Set([name]), { x: want.x + 1, y: want.y + 1 });
+      const rects = computeBoundaryRects(layer.layerEl, toyWith('toy'), { x: want.x + 1, y: want.y + 1 });
       expect(rects).toEqual([want]);
     }
   });
@@ -608,7 +617,7 @@ describe('old absolute-layout elements', () => {
     const g = document.createElementNS(SVG_NS, 'g');
     const set = (el, attrs) => Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
     set(g, {
-      id: 'tt-ps-v1-old', 'data-id': 'tt-ps-v1-old', 'data-module': 'boun_pos', name: 'toy',
+      id: 'tt-ps-v1-old', 'data-id': 'tt-ps-v1-old', 'data-module': 'boun_pos', 'data-tt-matches': '.toy',
       'data-bounpos-type': 'pos-set', 'data-snap-radius': '20', 'data-gen-type': 'square',
       'data-gen-x-spacing': '100', 'data-gen-y-spacing': '100',
     });
@@ -683,10 +692,10 @@ describe('selectModes / nextSelectMode', () => {
 });
 
 describe('computeResize', () => {
-  // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW — same order as drawing.js/toys.js.
+  // Corner indices: 0=NW, 1=NE, 2=SE, 3=SW — same order as layer_drawing.js/layer_toys.js.
   // Full corner-by-corner coverage of the shared corner-opposite-fixed
   // algorithm (same fixture numbers) lives in tests/unit/geometry.test.js
-  // now — this just checks boun_pos.js wires MIN_BOUNPOS_RESIZE_SIZE
+  // now — this just checks layer_boun_pos.js wires MIN_BOUNPOS_RESIZE_SIZE
   // through as the clamp floor.
   const startRect = { x: 100, y: 100, width: 200, height: 150 }; // right=300, bottom=250
 
@@ -777,43 +786,69 @@ describe('previewResize', () => {
 // ── Drag context helpers ──────────────────────────────────────────────────────
 
 describe('computeBoundaryRects', () => {
-  test('returns null when toy has no classes', () => {
+  test('returns null when the toy matches no selector', () => {
     const layer = makeLayer();
-    addB(layer, { x: 0, y: 0, w: 300, h: 300 });
-    expect(computeBoundaryRects(layer.layerEl, new Set(), { x: 50, y: 50 })).toBeNull();
+    addB(layer, { matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    expect(computeBoundaryRects(layer.layerEl, toyWith(), { x: 50, y: 50 })).toBeNull();
   });
 
-  test('returns null when no boundary name matches', () => {
+  test('returns null when no boundary data-tt-matches selects the toy', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
-    expect(computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 })).toBeNull();
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    expect(computeBoundaryRects(layer.layerEl, toyWith('dungeon'), { x: 50, y: 50 })).toBeNull();
   });
 
-  test('returns rects when class matches and toy starts inside', () => {
+  test('returns rects when the selector matches and toy starts inside', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 300, h: 300 });
-    const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 50, y: 50 });
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    const rects = computeBoundaryRects(layer.layerEl, toyWith('forest'), { x: 50, y: 50 });
     expect(rects).not.toBeNull();
     expect(rects).toHaveLength(1);
     expect(rects[0]).toMatchObject({ x: 0, y: 0, w: 300, h: 300 });
   });
 
+  test('a selector matches the toy\'s inner <svg> as well as its wrapper', () => {
+    const layer = makeLayer();
+    const { id } = newBoundaryId();
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 300, h: 300 });
+    const toy = toyWith();
+    const inner = document.createElementNS(SVG_NS, 'svg');
+    inner.setAttribute('class', 'forest');
+    toy.appendChild(inner);
+    expect(computeBoundaryRects(layer.layerEl, toy, { x: 50, y: 50 })).toHaveLength(1);
+  });
+
+  test('a boundary with no data-tt-matches constrains nothing', () => {
+    const layer = makeLayer();
+    addB(layer, { matches: '', x: 0, y: 0, w: 300, h: 300 });
+    expect(computeBoundaryRects(layer.layerEl, toyWith('toy'), { x: 50, y: 50 })).toBeNull();
+  });
+
+  test('an invalid selector constrains nothing and warns', () => {
+    const layer = makeLayer();
+    addB(layer, { matches: '>>>', x: 0, y: 0, w: 300, h: 300 });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(computeBoundaryRects(layer.layerEl, toyWith('toy'), { x: 50, y: 50 })).toBeNull();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('not a valid selector'));
+    warn.mockRestore();
+  });
+
   test('returns null when toy starts outside matched boundary', () => {
     const layer = makeLayer();
     const { id } = newBoundaryId();
-    BOUNPOS_TYPES.boundary.create(layer.layerEl, { id, name: 'forest', x: 0, y: 0, w: 100, h: 100 });
+    BOUN_POS_TYPES.boundary.create(layer.layerEl, { id, matches: '.forest', x: 0, y: 0, w: 100, h: 100 });
     // anchor is outside the boundary
-    const rects = computeBoundaryRects(layer.layerEl, new Set(['forest']), { x: 200, y: 200 });
+    const rects = computeBoundaryRects(layer.layerEl, toyWith('forest'), { x: 200, y: 200 });
     expect(rects).toBeNull();
   });
 
   test('pos-set elements are ignored', () => {
     const layer = makeLayer();
     const { id } = addPS(layer, { x: 0, y: 0, w: 400, h: 300, genType: 'square', xSpacing: 80, ySpacing: 80 });
-    findEl(layer.layerEl, id).setAttribute('name', 'dungeon');
-    const rects = computeBoundaryRects(layer.layerEl, new Set(['dungeon']), { x: 50, y: 50 });
+    findEl(layer.layerEl, id).setAttribute('data-tt-matches', '.dungeon');
+    const rects = computeBoundaryRects(layer.layerEl, toyWith('dungeon'), { x: 50, y: 50 });
     expect(rects).toBeNull();
   });
 });
@@ -822,14 +857,14 @@ describe('getSnapPoints', () => {
   test('returns snap points', () => {
     const layer = makeLayer();
     const { id, circles } = addPS(layer, { x: 0, y: 0, w: 400, h: 400, genType: 'square', xSpacing: 100, ySpacing: 100 });
-    editBounPos({ id, name: 'forest' }, layer.layerEl);
+    editEl(findEl(layer.layerEl, id), { 'data-tt-matches': '.forest' });
     const pts = getSnapPoints(layer.layerEl);
     expect(pts.length).toBe(circles.length);
     pts.forEach(p => {
       expect(typeof p.cx).toBe('number');
       expect(typeof p.cy).toBe('number');
       expect(typeof p.snapRadius).toBe('number');
-      expect(p.name).toBe('forest');
+      expect(p.matches).toBe('.forest');
     });
   });
 });
@@ -847,13 +882,13 @@ describe('layerData / getTtState', () => {
 // ── Edit schema ───────────────────────────────────────────────────────────────
 
 describe('getTtStateSchema via rendered DOM', () => {
-  test('boundary schema has name field with string kind', () => {
+  test('boundary schema has a data-tt-matches field with string kind', () => {
     const div = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     div.setAttribute('data-bounpos-type', 'boundary');
-    div.setAttribute('name', 'dungeon');
+    div.setAttribute('data-tt-matches', '.dungeon');
     const schema = getTtStateSchema(div);
-    expect(schema.name).toBe('dungeon');
-    expect(schema.types.name.kind).toBe('string');
+    expect(schema['data-tt-matches']).toBe('.dungeon');
+    expect(schema.types['data-tt-matches'].kind).toBe('string');
     expect(schema.types['snap-radius']).toBeUndefined();
   });
 });

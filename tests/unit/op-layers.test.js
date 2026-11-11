@@ -10,9 +10,9 @@
  */
 import * as Y from 'yjs'
 import { describe, test, expect, beforeEach, afterEach } from 'vitest'
-import { TOYS_LAYER } from '../../src/toys.js'
-import { DRAWING_LAYER } from '../../src/drawing.js'
-import { BOUN_POS_LAYER } from '../../src/boun_pos.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
+import { DRAWING_LAYER } from '../../src/layer_drawing.js'
+import { BOUN_POS_LAYER } from '../../src/layer_boun_pos.js'
 import { defineOpLayer, getOpLayer, opLayers, ensureLayerId } from '../../src/op_layers.js'
 import {
   runGesture, ensureEnvelope, receiveLayerOp, settleBranchConflict, pruneAfterCheckpoint, projectedAt,

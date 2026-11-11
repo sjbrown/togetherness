@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>togetherness · component stories</title>
-<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="/ui.css">
 
 <!-- ── Module imports ─────────────────────────────────────────────────────── -->
 <script type="importmap">
@@ -41,7 +41,7 @@
     gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto;
   }
   .story {
-    background: var(--bg) url('img/bg_slatehex.png') center/cover;
+    background: var(--bg) url('/img/bg_slatehex.png') center/cover;
     border-radius: var(--radius); overflow: hidden;
     box-shadow: var(--emboss); position: relative; min-height: 160px;
     display: flex; flex-direction: column;
@@ -112,8 +112,8 @@
 import { initIcons, icon } from '/icons.js';
 import * as UI from '/ui.js';
 import { SELECT_TOOL } from '/tools-schema.js';
-import { SHAPE_TYPES } from '/drawing.js';
-import { TOOLS as TOY_TOOLS } from '/toys.js';
+import { SHAPE_TYPES } from '/layer_drawing.js';
+import { TOOLS as APP_TOY_TOOLS } from '/layer_toys.js';
 import { entityGradient } from '/entity_gradient.js';
 import { upsertUserGradient } from '/user.js';
 
@@ -123,10 +123,10 @@ initIcons();
 const PALETTE = ['#c8941e','#5a7ea8','#8a5ea8','#5ea88a','#a85e5e','#a8905e','#5e8aa8'];
 
 const DEFAULT_BACKGROUNDS = [
-  { label: 'Slate Hex',  url: 'img/bg_slatehex.png',  width: 1384, height: 998 },
-  { label: 'Beige Hex',  url: 'img/bg_beigehex.png',  width: 815,  height: 718 },
-  { label: 'Green Felt', url: 'img/bg_greenfelt.png', width: 800,  height: 600 },
-  { label: 'Iron Grid',  url: 'img/bg_irongrid.png',  width: 438,  height: 285 },
+  { label: 'Slate Hex',  url: '/img/bg_slatehex.png',  width: 1384, height: 998 },
+  { label: 'Beige Hex',  url: '/img/bg_beigehex.png',  width: 815,  height: 718 },
+  { label: 'Green Felt', url: '/img/bg_greenfelt.png', width: 800,  height: 600 },
+  { label: 'Iron Grid',  url: '/img/bg_irongrid.png',  width: 438,  height: 285 },
 ];
 
 const mockShapes = [
@@ -178,9 +178,12 @@ const mockLayers = [
 ];
 
 // A fake App sufficient for the pure render functions + tool-opts schema.
+// Icon paths are relative to the app root; this page is served from /dev/.
+const rooted = (url) => url && `/${url}`;
 const SHAPE_TOOLS  = Object.entries(SHAPE_TYPES).map(([name, def]) => ({
-  name, label: def.schema.label, layer: 'drawing', iconUrl: def.iconUrl,
+  name, label: def.schema.label, layer: 'drawing', iconUrl: rooted(def.iconUrl),
 }));
+const TOY_TOOLS    = APP_TOY_TOOLS.map(t => ({ ...t, iconUrl: rooted(t.iconUrl) }));
 const drawingTools = [SELECT_TOOL, ...SHAPE_TOOLS];
 const toysTools    = [SELECT_TOOL, ...TOY_TOOLS];
 const toolById = Object.fromEntries([SELECT_TOOL, ...SHAPE_TOOLS, ...TOY_TOOLS].map(t => [t.name, t]));
@@ -190,7 +193,7 @@ const toolParams = Object.fromEntries(
 
 window.App = {
   getPalette: () => PALETTE,
-  getBackground: () => ({ url: 'img/bg_slatehex.png', width: 1384, height: 998 }),
+  getBackground: () => ({ url: '/img/bg_slatehex.png', width: 1384, height: 998 }),
   getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
   getTool: (n) => toolById[n] ?? null,
   getToolSchema: (n) => {
@@ -368,7 +371,7 @@ story('Panel · Save', '', () =>
 // getViewScale, and user from local data.
 
 import * as Overlay from '/overlay.js';
-import { getGeom, syncRotation } from '/drawing.js';
+import { getGeom, syncRotation } from '/layer_drawing.js';
 import { dragPlaceholderFilterSVG } from '/defs.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -405,8 +408,12 @@ function buildStageSVG(shapes) {
 
   const drawing = document.createElementNS(SVG_NS, 'g');
   drawing.id = 'drawing-layer';
-  const overlayG = document.createElementNS(SVG_NS, 'g');
-  overlayG.id = 'overlay-layer';
+  const selectionSharedG = document.createElementNS(SVG_NS, 'g');
+  selectionSharedG.id = 'selection_shared';
+  const awarenessG = document.createElementNS(SVG_NS, 'g');
+  awarenessG.id = 'awareness';
+  const selectionLocalG = document.createElementNS(SVG_NS, 'g');
+  selectionLocalG.id = 'selection_local';
 
   for (const { id, type, geom, fill } of shapes) {
     const el = shapeEl(type, geom, fill);
@@ -414,7 +421,7 @@ function buildStageSVG(shapes) {
     el.setAttribute('data-module', 'drawing');
     drawing.appendChild(el);
   }
-  svg.append(drawing, overlayG);
+  svg.append(drawing, selectionSharedG, awarenessG, selectionLocalG);
   return svg;
 }
 
@@ -435,11 +442,12 @@ function canvasStory(label, variant, shapes, selectionKind, selectedId, remoteCo
   story(label, variant, () => {
     const svg = buildStageSVG(shapes);
 
-    Overlay.SelectionMode.clear();
+    Overlay.SelectionModeLocal.clear();
+    Overlay.SelectionModeShared.clear();
     if (selectedId && selectionKind === 'local') {
-      Overlay.SelectionMode.set(selectedId, { kind: 'local', color: myGrad.c1, grad: myGrad });
+      Overlay.SelectionModeLocal.set(selectedId, { mode: 'local', color: myGrad.c1, grad: myGrad });
     } else if (selectedId && selectionKind === 'remote') {
-      Overlay.SelectionMode.set(selectedId, { kind: 'remote', peerName: 'Mara', color: remoteColor ?? '#5a7ea8' });
+      Overlay.SelectionModeShared.set(selectedId, { mode: 'remote', peerName: 'Mara', color: remoteColor ?? '#5a7ea8' });
     }
 
     Overlay.init(fakeOverlayApp(svg), svg, storiesUser);
@@ -473,8 +481,9 @@ function modeStory(variant, mode, rotation = 0, pivot = { fx: 0.5, fy: 0.5 }) {
       el.setAttribute('data-rotate', String(rotation));
       syncRotation(el);
     }
-    Overlay.SelectionMode.clear();
-    Overlay.SelectionMode.set('sm1', { mode, color: myGrad.c1, grad: myGrad });
+    Overlay.SelectionModeLocal.clear();
+    Overlay.SelectionModeShared.clear();
+    Overlay.SelectionModeLocal.set('sm1', { mode, color: myGrad.c1, grad: myGrad });
     const centre = {
       cx: rectGeom.x + pivot.fx * rectGeom.width,
       cy: rectGeom.y + pivot.fy * rectGeom.height,
@@ -509,9 +518,10 @@ story('Mixed', 'rect local · circle remote', () => {
     { id:'mx2', type:'circle', geom:{ cx:175, cy:90, r:50 },             fill:'#5ea88a' },
   ];
   const svg = buildStageSVG(shapes);
-  Overlay.SelectionMode.clear();
-  Overlay.SelectionMode.set('mx1', { kind:'local',  color: myGrad.c1,   grad: myGrad });
-  Overlay.SelectionMode.set('mx2', { kind:'remote', peerName:'Mara', color:'#5a7ea8' });
+  Overlay.SelectionModeLocal.clear();
+  Overlay.SelectionModeShared.clear();
+  Overlay.SelectionModeLocal.set('mx1', { mode:'local',  color: myGrad.c1,   grad: myGrad });
+  Overlay.SelectionModeShared.set('mx2', { mode:'remote', peerName:'Mara', color:'#5a7ea8' });
   Overlay.init(fakeOverlayApp(svg), svg, storiesUser);
   Overlay.render();
   return svg;
@@ -556,9 +566,9 @@ function buildDragStageSVG(shapes) {
   });
   svg.appendChild(layer);
 
-  // Overlay layer
+  // Hand-drawn ghosts for the stories below; overlay.js isn't involved
   const overlay = document.createElementNS(SVGNS, 'g');
-  overlay.id = 'overlay-layer';
+  overlay.id = 'drag_ghosts';
   overlay.setAttribute('pointer-events', 'none');
   svg.appendChild(overlay);
 
@@ -570,7 +580,7 @@ story('Drag ghost', 'placeholder at committed · ghost at drag pos', () => {
   const shapes = [{ id:'dg1', type:'rect', geom:{ x:20, y:60, width:90, height:60 }, fill:'#c8941e' }];
   const svg = buildDragStageSVG(shapes);
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const overlay = svg.querySelector('#overlay-layer');
+  const overlay = svg.querySelector('#drag_ghosts');
 
   // Dim placeholder at committed position
   const ph = document.createElementNS(SVGNS, 'use');
@@ -601,7 +611,7 @@ story('Drag ghost', 'remote peer dragging · dashed ring + label', () => {
   const shapes = [{ id:'dg2', type:'rect', geom:{ x:20, y:60, width:90, height:60 }, fill:'#5a7ea8' }];
   const svg = buildDragStageSVG(shapes);
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const overlay = svg.querySelector('#overlay-layer');
+  const overlay = svg.querySelector('#drag_ghosts');
   const peerColor = '#8a5ea8';
 
   // Dim placeholder
@@ -646,7 +656,7 @@ story('Drag ghost', 'local + remote simultaneous', () => {
   ];
   const svg = buildDragStageSVG(shapes);
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const overlay = svg.querySelector('#overlay-layer');
+  const overlay = svg.querySelector('#drag_ghosts');
   const peerColor = '#8a5ea8';
 
   // Local drag: rect (dg3) shifted right

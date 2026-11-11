@@ -4,7 +4,7 @@
  * The bowstring's radial menu, driven through real pointer events on the
  * real app: a supply with a chip on it, whose 'Take' action declares a
  * 'How many' integer spoke (1..5). Covers what the unit suites can't see —
- * canvas.js's pointer routing into delight.js, the menu's visibility
+ * canvas.js's pointer routing into layer_delight.js, the menu's visibility
  * timing, and a pick reaching the toy's handler as params.
  */
 
@@ -57,8 +57,8 @@ async function supplyWithChip(page) {
   const s = await page.locator(`[data-id="${supplyId}"]`).boundingBox();
   await page.waitForTimeout(400);
   await page.mouse.click(s.x + s.width / 2, s.y + s.height * 0.7);
-  await expect(page.locator('#overlay-layer .bowstring')).toHaveCount(1, { timeout: 3000 });
-  const sq = await page.locator('#overlay-layer .bowstring .actionSquare').boundingBox();
+  await expect(page.locator('#selection_local .bowstring')).toHaveCount(1, { timeout: 3000 });
+  const sq = await page.locator('#selection_local .bowstring .actionSquare').boundingBox();
   return { supplyId, chipId, square: { x: sq.x + sq.width / 2, y: sq.y + sq.height / 2 } };
 }
 

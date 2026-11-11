@@ -5,8 +5,8 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, agoLabel, onToolChanged, editBody } from '../../src/ui.js'
-import { SHAPE_TYPES } from '../../src/drawing.js'
+import { layerObjectListHTML, refreshLayerList, UIData, init, toast, showBranchDialog, branchDialogJoin, branchDialogKeepWorking, peersBody, openSheet, closePanel, restorePanelState, restoreLayerState, saveLayerState, histBody, agoLabel, onToolChanged, editBody, showDragBox, hideDragBox } from '../../src/ui.js'
+import { SHAPE_TYPES } from '../../src/layer_drawing.js'
 
 const mockObjects = [
   { id: 'a', label: 'rect',   fill: '#c8941e', kind: 'rect'   },
@@ -298,6 +298,19 @@ describe('pillHTML — multi-selection (N > 1)', () => {
     div.innerHTML = html
     const btns = [...div.querySelectorAll('button.ico')]
     expect(btns.length).toBe(3)
+  })
+
+  test('a schema field with an explicit label shows it, and commits under that attribute key', () => {
+    const element = {
+      ltype: 'boun_pos', id: 'b1', label: 'Boundary', type: 'boundary',
+      'data-tt-matches': '.card',
+      types: { type: { show: [] }, 'data-tt-matches': { kind: 'string', label: 'Matches', show: ['add', 'edit'] } },
+    }
+    const html = editBody({ element })
+    expect(html).toContain('<label>Matches</label>')
+    expect(html).not.toContain('data-tt-matches</label>')
+    expect(html).toContain('value=".card"')
+    expect(html).toContain(`App.commitEdit('b1',{'data-tt-matches':this.value})`)
   })
 
   test('a non-drawing selection (e.g. boun_pos) omits Duplicate, showing only Delete/Edit', () => {
@@ -1108,5 +1121,19 @@ describe('layer state persistence (tt_layer_state)', () => {
 
     expect(reloaded.setLayer).toHaveBeenCalledWith('drawing')
     expect(reloaded.setLayerVisible).toHaveBeenCalledWith('drawing', false)
+  })
+})
+
+describe('drag boxes', () => {
+  test('showDragBox places the kind\'s box in stage px; hideDragBox hides only that one', () => {
+    document.body.innerHTML = '<div id="draw-preview"></div><div id="select-preview"></div>'
+    showDragBox('select', 10, 20, 30, 40)
+    showDragBox('draw', 1, 2, 3, 4)
+    const box = document.getElementById('select-preview')
+    expect([box.style.display, box.style.left, box.style.top, box.style.width, box.style.height])
+      .toEqual(['block', '10px', '20px', '30px', '40px'])
+    hideDragBox('select')
+    expect(box.style.display).toBe('none')
+    expect(document.getElementById('draw-preview').style.display).toBe('block')
   })
 })

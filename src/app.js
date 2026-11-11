@@ -19,9 +19,10 @@
 
 import { initIcons }                              from './icons.js';
 import { rotatePoint }                            from './geometry.js';
-import * as BounPos                               from './boun_pos.js';
-import * as Drawing                               from './drawing.js';
-import * as Toys                                  from './toys.js';
+import * as Background                            from './layer_background.js';
+import * as BounPos                               from './layer_boun_pos.js';
+import * as Drawing                               from './layer_drawing.js';
+import * as Toys                                  from './layer_toys.js';
 import { tablesAPI }                              from './tables.js';
 import * as OpDag                                 from './op_dag.js';
 import * as OpHead                                from './op_head.js';
@@ -37,13 +38,14 @@ import { SELECT_TOOL }                            from './tools-schema.js';
 import * as UI                                    from './ui.js';
 import * as Canvas                                from './canvas.js';
 import * as Overlay                               from './overlay.js';
-import * as Delight                               from './delight.js';
+import * as Delight                               from './layer_delight.js';
 import * as Radial                                from './ui_radial.js';
-import * as Attention                             from './attention_mode.js';
+import * as Attention                             from './layer_attention.js';
 import * as Events                                from './events.js';
 import { entityGradient }            from './entity_gradient.js';
 import { isElementHeldByOther, computeTickActions } from './soft_lock.js';
 import * as Selection                              from './selection.js';
+import * as SelectionLocal                         from './selection_local.js';
 import * as ExternalServices                      from './external_services.js';
 
 
@@ -51,16 +53,6 @@ import * as ExternalServices                      from './external_services.js';
 const DEBUG = typeof location !== 'undefined'
   && new URLSearchParams(location.search).get('debug') === '1';
 
-const svgNS = 'http://www.w3.org/2000/svg'
-const XLINK_NS = 'http://www.w3.org/1999/xlink';
-
-const DEFAULT_BACKGROUNDS = [
-  { label: 'Default',   url: 'img/bg_default.png',  width: 120, height: 120 },
-  { label: 'Slate Hex',   url: 'img/bg_slatehex.png',  width: 1384, height: 998 },
-  { label: 'Beige Hex',   url: 'img/bg_beigehex.png',  width: 815,  height: 718 },
-  { label: 'Green Felt',  url: 'img/bg_greenfelt.png', width: 800,  height: 600 },
-  { label: 'Iron Grid',   url: 'img/bg_irongrid.png',  width: 438,  height: 285 },
-];
 
 
 // ── Internal app state ────────────────────────────────────────────────────────
@@ -90,109 +82,19 @@ let _activeLayer  = 'toys';
 // connection is doing right now, not only what it did.
 const _netStatus = { connected: false, synced: false, webrtcPeers: 0, bcPeers: 0, signaling: [], signalingConns: [] };
 
-// _desired is this client's own selection intent:
-//   { [elId]: { ts: number, holding: boolean } }
-//
-// holding:true means its in my committed selection (ts = last claimed)
-// holding:false means a bid to acquire (el held by someone else)
-//               (ts = when the bid started)
-//
-// _applySelState (below) mutates _desired
-// Exception: a gesture that only refreshes an already-held claim's
-// timestamp writes _desired directly and broadcasts itself
-let _desired = {};
-
-// The selection-gated mode for the sole held id: { id, mode } | null.
-// Null iff the held set isn't a single element
-// Broadcast via the awareness `mode` field verbatim
-let _activeMode = null;
-
-// Tracks whether the last _afterClaimsChanged call left a non-empty selection
-let _lastClaimedSetNonEmpty = false;
-
-// ── Selection mutation helpers —
-
-// The elIds I currently hold (a snapshot array, not a live view).
-function _heldIds() {
-  return Object.keys(_desired).filter((id) => _desired[id].holding);
-}
-
-function _sameIdSet(a, b) {
-  if (a.length !== b.length) return false;
-  const setA = new Set(a);
-  return b.every((id) => setA.has(id));
-}
-
-function _selState() {
-  return { desired: _desired, activeMode: _activeMode };
-}
-
-// Applies a new pure Selection state to _desired/_activeMode.
-function _applySelState(rawNext) {
-  const soleId = Selection.soleHeldId(rawNext);
-  // Reconcile runs first, unconditionally, so no caller has to remember
-  // that a mode can be invalidated by a changed held set.
-  const next = Selection.reconcileMode(rawNext, soleId ? _defaultModeFor(soleId) : null);
-  const desiredChanged = next.desired !== _desired;
-  const modeChanged = next.activeMode !== _activeMode;
-  if (!desiredChanged && !modeChanged) return;
-
-  const prevHeld = _heldIds();
-  _desired = next.desired;
-  _activeMode = next.activeMode;
-
-  // a mode-only change re-renders and re-broadcasts
-  // a bid-only change just broadcasts.
-  if (desiredChanged && !_sameIdSet(prevHeld, _heldIds())) {
-    _afterClaimsChanged();
-  } else if (modeChanged) {
-    _renderSelectionMode();
-    _broadcastMode();
-  } else {
-    _broadcastDesired();
-  }
-}
-
-// Remove specific elIds from the committed selection.
-function _unclaim(ids) {
-  let state = _selState();
-  for (const id of ids) state = Selection.unclaim(state, id);
-  _applySelState(state);
-}
-
-// Clear the committed selection entirely.
-function _clearClaims() {
-  _applySelState(Selection.clearClaims(_selState()));
-}
-
-// Called whenever the held-id SET has changed (not just a bid or a mode).
-// Order matters: local SelectionMode must be updated BEFORE broadcasting,
-// because setLocalStateField fires 'change' synchronously, which can trigger
-// syncFromAwareness before this function returns. If a stale 'local' entry
-// for a just-released elId is still present at that moment, overlay's
-// local-takes-precedence guard will skip assigning 'remote' to it — and
-// nothing afterward re-triggers that decision, leaving the elId with no
-// SelectionMode entry at all. See overlay.js for the guard.
-function _afterClaimsChanged() {
-  const claimedSet = new Set(_heldIds());
-  const wasSelecting = _lastClaimedSetNonEmpty;
-  _lastClaimedSetNonEmpty = claimedSet.size > 0;
+// Called whenever the held-id SET has changed (not just a bid or a mode),
+// before SelectionLocal broadcasts it.
+function _onHeldChanged(held, prevHeld) {
   // Deselecting to nothing is an intent signal - good time to try checkpointing
-  if (wasSelecting && claimedSet.size === 0) {
+  if (prevHeld.length > 0 && held.size === 0) {
     for (const layer of opLayers()) maybeIdleCheckpoint(layer, 'deselect');
   }
-  Overlay.localSelectionChanged(claimedSet);
-  // _activeMode is already reconciled by this point, so this is pure
+  Overlay.localSelectionChanged(held);
+  // The active mode is already reconciled by this point, so this is pure
   // rendering. Still needed even when the mode is unchanged, since
   // localSelectionChanged just reset every claimed id to 'local'.
   _renderSelectionMode();
-  _broadcastDesired();
-  _broadcastMode();
-  UI.onSelectionChanged(claimedSet);
-}
-
-function _broadcastDesired() {
-  _awareness.setLocalStateField('desired', { ..._desired });
+  UI.onSelectionChanged(held);
 }
 
 // ── Selection-gated mode ─────────────────────────────────────────────────
@@ -256,12 +158,8 @@ function _toLocalPoint(id, px, py, rot = _rotationOf(id)) {
 }
 
 function _renderSelectionMode() {
-  const soleId = Selection.soleHeldId(_selState());
-  Overlay.setSelectionMode(soleId, soleId ? _activeMode.mode : null);
-}
-
-function _broadcastMode() {
-  _awareness.setLocalStateField('mode', _activeMode ? _activeMode.mode : null);
+  const soleId = SelectionLocal.soleHeldId();
+  Overlay.setSelectionMode(soleId, soleId ? SelectionLocal.activeMode().mode : null);
 }
 
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
@@ -293,31 +191,28 @@ function _softLockTick() {
   const { elIdsToAcquire, elIdsToDropRequest, elIdsToRelease } = tickActions;
   if (!elIdsToAcquire.length && !elIdsToDropRequest.length && !elIdsToRelease.length) return;
 
-  _applySelState(Selection.applyTickActions(_selState(), tickActions));
+  SelectionLocal.apply(Selection.applyTickActions(SelectionLocal.state(), tickActions));
 }
 
 // Returns the single selected id, or null if zero or more than one are selected.
 // Callers that need to work on a single element must check
 // this returns non-null before proceeding
 function _singleSelectedId() {
-  const ids = _heldIds();
-  return ids.length === 1 ? ids[0] : null;
+  return SelectionLocal.soleHeldId();
 }
 let _activeTool   = 'select';
 let _previewCache = { key: null, states: null }; // getOpPreview's last result
 let _offline      = false;
 
 // Active drag — set by App.startDrag, cleared by commitMove / cancelMove.
-// Awareness state: drag: { elId, dx, dy }
-// local awareness schema: { id, color, grad, cursor, desired, drag? }
-// desired: { [elId]: { ts: number, holding: boolean } }
+// Broadcast as the awareness `drag` field (see AWARENESS.md).
 let _dragState    = null;    // { id, startX, startY, startBboxX, startBboxY,
                               //   boundsRects: [{x,y,w,h}]|null, lastValidX, lastValidY,
                               //   snapPoints: [{cx,cy,snapRadius}] } | null
 
 // Active multi-element drag — set by App.startMultiDrag,
 // cleared by commitMultiMove / cancelMultiMove.
-// Awareness: multidrag: { elIds: [...], offsets: [{bboxX, bboxY}] }
+// Broadcast as the awareness `multidrag` field (see AWARENESS.md).
 // No boundary/snap constraints — those are per-toy and don't compose cleanly for a group.
 let _multiDragState = null;  // { elements: [{ id, mtype, anchorX, anchorY, bboxX, bboxY }],
                              //   leaderEl, boundsRects, snapPoints,
@@ -362,7 +257,7 @@ function buildToolRegistry() {
   };
   register(SELECT_TOOL);
   _toolsByLayer['background'] = [SELECT_TOOL];
-  const bounPosTools = Object.entries(BounPos.BOUNPOS_TYPES).map(([name, def]) => ({
+  const bounPosTools = Object.entries(BounPos.BOUN_POS_TYPES).map(([name, def]) => ({
     name,
     label:   def.label,
     layer:   'boun_pos',
@@ -370,7 +265,7 @@ function buildToolRegistry() {
   }));
   bounPosTools.forEach(def => {
     _toolById[def.name] = def;
-    _toolParams[def.name] = { ...BounPos.BOUNPOS_TYPES[def.name].schema.values };
+    _toolParams[def.name] = { ...BounPos.BOUN_POS_TYPES[def.name].schema.values };
   });
   _toolsByLayer['boun_pos'] = [SELECT_TOOL, ...bounPosTools];
   Toys.TOOLS.forEach(register);
@@ -471,6 +366,12 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   _tableId   = tableId;
   _isCreator = isCreator;
   _svgEl     = svgElement ?? document.querySelector('#stage svg');
+  SelectionLocal.init({
+    awareness,
+    defaultModeFor: _defaultModeFor,
+    onHeldChanged:  _onHeldChanged,
+    onModeChanged:  _renderSelectionMode,
+  });
 
   _netStatus.signaling = signalingUrls;
 
@@ -565,18 +466,6 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 }
 
 // ── Render pipelines ──────────────────────────────────────────────────────────
-/**
- * Extract toy class names from the toy's wrapper <g> and inner <svg>.
- * Returns a Set (empty if the toy has no classes).
- */
-function getToyClasses(domEl) {
-  if (moduleForElement(domEl) !== 'toys') return new Set();
-  return new Set([
-    ...domEl.classList,
-    ...(domEl.querySelector('svg')?.classList ?? []),
-  ]);
-}
-
 function findNearestSnap(x, y, snapPoints) {
   let best = null, bestD2 = Infinity;
   for (const { cx, cy, snapRadius } of snapPoints) {
@@ -588,12 +477,12 @@ function findNearestSnap(x, y, snapPoints) {
 }
 
 function filterSnapPoints(domEl, snapPoints) {
-  const toyClasses  = getToyClasses(domEl);
+  const isToy       = moduleForElement(domEl) === 'toys';
   const matchesSelf = function(snapPoint) {
     return domEl.getAttribute('data-id') === (snapPoint.ownerId)
   }
-  const matchesName = function(snapPoint) {
-    return toyClasses.has(snapPoint.name)
+  const matchesToy = function(snapPoint) {
+    return isToy && Toys.selectorMatchesToy(snapPoint.matches, domEl)
   }
   const anchorPoints = []
   for (const topToyEl of _svgEl.querySelectorAll('#toys-layer > [data-id]')) {
@@ -606,7 +495,7 @@ function filterSnapPoints(domEl, snapPoints) {
   return snapPoints
     .filter(p => !occupantExists(p))
     .filter(p => !matchesSelf(p))
-    .filter(p => matchesName(p))
+    .filter(p => matchesToy(p))
 }
 
 function renderDoc() {
@@ -808,7 +697,7 @@ function onOpsChanged(layer, evt, transaction) {
     }
   }
   // A remote op may have removed an element this peer still holds.
-  _applySelState(Selection.dropMissingClaims(_selState(),
+  SelectionLocal.apply(Selection.dropMissingClaims(SelectionLocal.state(),
     (id) => !!_svgEl.querySelector(`[data-id="${id}"]`)));
   Overlay.render();
   // The layer list reads the live DOM, which these ops just changed.
@@ -891,7 +780,7 @@ const App = {
   getToolSchema:   (name)  => {
     const drawSchema = Drawing.getTtStateSchema(name);
     if (drawSchema?.types) return drawSchema;
-    if (BounPos.BOUNPOS_TYPES[name]) return BounPos.BOUNPOS_TYPES[name].schema;
+    if (BounPos.BOUN_POS_TYPES[name]) return BounPos.BOUN_POS_TYPES[name].schema;
     const def = _toolById[name];
     if (!def) return { types: {}, values: {} };
     const types  = Object.fromEntries((def.options ?? []).map(f => [f.key, f]));
@@ -914,7 +803,7 @@ const App = {
     Object.fromEntries(opLayers().map(layer => [layer.name, maybeCheckpoint(layer, reason)])),
   getCheckpointFrequency: () => User.getCheckpointFrequency(),
   setCheckpointFrequency: (minutes) => User.setCheckpointFrequency(minutes),
-  getSelectedIds:  () => _heldIds(),
+  getSelectedIds:  () => SelectionLocal.heldIds(),
   getBBox:  (id) => {
     const svgEl = _svgEl.querySelector(`[data-id="${id}"]`);
     if (!svgEl) return null;
@@ -963,7 +852,7 @@ const App = {
     return ids;
   },
   // Broadcast the current rubber-band candidate set via awareness.
-  // Uses its own `candidates` awareness field, separate from `selection`,
+  // Uses its own `candidates` awareness field, separate from `desired`,
   // so that committed holdings are never clobbered during a sweep
   broadcastCandidates: (ids) => {
     _awareness.setLocalStateField('candidates', ids.length ? ids : null);
@@ -973,6 +862,10 @@ const App = {
     Overlay.clearHoverCandidates();
     _awareness.setLocalStateField('candidates', null);
   },
+
+  // The rubber-band boxes canvas.js shows while drawing or box-selecting.
+  showDragBox: (kind, x, y, w, h) => UI.showDragBox(kind, x, y, w, h),
+  hideDragBox: (kind) => UI.hideDragBox(kind),
 
   // ── Add-cursor (awareness crosshair + placement preview) ──────────────────
   // Called by canvas.js on every pointermove while a non-'select' tool is
@@ -1009,19 +902,19 @@ const App = {
   // Advisory soft-lock request: write/refresh this client's own acquisition
   // entry for `id`. A no-op if one is already outstanding for this id.
   requestElement: (id) => {
-    _applySelState(Selection.request(_selState(), id));
+    SelectionLocal.apply(Selection.request(SelectionLocal.state(), id));
   },
 
   // Refresh this client's claim timestamp for a single already-held
   // elId, without touching the rest of the current multi-selection.
   reassertClaim: (id) => {
-    _applySelState(Selection.reassertClaim(_selState(), id));
+    SelectionLocal.apply(Selection.reassertClaim(SelectionLocal.state(), id));
   },
 
   // Drop every claim this client currently holds
   //  * no tool switch, unlike select(null).
   clearSelection: () => {
-    _clearClaims();
+    SelectionLocal.clearClaims();
   },
 
   // Exclusive single-select: a held-by-other id becomes a request
@@ -1029,32 +922,32 @@ const App = {
   // id; a re-click of a held-by-self id is a rebuttal.
   select: (id) => {
     App.setTool('select');
-    _applySelState(Selection.select(_selState(), id, { isHeldByOther: App.isHeldByOther }));
+    SelectionLocal.apply(Selection.select(SelectionLocal.state(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
   // Toggle a single id in/out of the selection: deselect if held,
   // request if held-by-other, else add.
   toggleSelection: (id) => {
-    _applySelState(Selection.toggle(_selState(), id, { isHeldByOther: App.isHeldByOther }));
+    SelectionLocal.apply(Selection.toggle(SelectionLocal.state(), id, { isHeldByOther: App.isHeldByOther }));
   },
 
   commitMultiSelect: ({ x, y, width, height, additive = false } = {}) => {
     const newIds = App.getBoxCandidates({ x, y, width, height });
     // additive: union with existing selection; otherwise replace
     const ids = additive
-      ? [...new Set([..._heldIds(), ...newIds])]
+      ? [...new Set([...SelectionLocal.heldIds(), ...newIds])]
       : newIds;
     if (ids.length === 0) {
       App.select(null);
     } else if (ids.length === 1) {
       App.select(ids[0]);
     } else {
-      _applySelState(Selection.commitMultiSelect(_selState(), ids));
+      SelectionLocal.apply(Selection.commitMultiSelect(SelectionLocal.state(), ids));
     }
   },
 
   deleteMultiSelected: () => {
-    const ids = _heldIds();
+    const ids = SelectionLocal.heldIds();
     if (ids.length === 0) return;
 
     // A selection can never span layers (App.setLayer clears claims on
@@ -1070,37 +963,37 @@ const App = {
     if (deleted > 0) {
       App.addLog(`deleted ${deleted} objects`, 'local');
     }
-    _clearClaims();
+    SelectionLocal.clearClaims();
     Overlay.clearHoverCandidates();
   },
 
   // ── Document mutations ────────────────────────────────────────────────────
   commitDrawing: (attrs) => {
-    const id = newDrawingId();
+    const id = Drawing.newShapeId(App.user.id);
     _Layers.drawing.add({ ...attrs, id });
     App.addLog(`added ${attrs.type} ${id}`, 'local');
   },
 
   commitBounPos: ({ toolName, x, y, w, h }) => {
-    const def = BounPos.BOUNPOS_TYPES[toolName];
+    const def = BounPos.BOUN_POS_TYPES[toolName];
     if (!def) return;
-    const { id, name } = def.newId();
+    const { id, matches } = def.newId();
     let params;
     if (def.genType === null) {
-      params = { id, name, x, y, w, h };
+      params = { id, matches, x, y, w, h };
     } else {
       const toolParams   = App.getToolParams(toolName);
       const createParams = BounPos.toolParamsToCreateParams(def.genType, toolParams, {x, y, w, h});
       if (createParams.circles.length === 0) return;
       params = {
-        id, name, snapRadius: createParams.snapRadius, genType: def.genType,
+        id, matches, snapRadius: createParams.snapRadius, genType: def.genType,
         xSpacing: createParams.xSpacing, ySpacing: createParams.ySpacing,
         x, y, w, h,
         circles: createParams.circles,
       };
     }
     _Layers.boun_pos.add(toolName, params);
-    App.addLog(`added ${def.label} ${name}`, 'local');
+    App.addLog(`added ${def.label} ${matches}`, 'local');
     App.select(id);
   },
 
@@ -1159,7 +1052,7 @@ const App = {
 
   /**
    * The selected toy's currently-applicable menu actions, as plain data for
-   * the Edit panel to render as buttons — see toys.js's getMenuActions.
+   * the Edit panel to render as buttons — see layer_toys.js's getMenuActions.
    * [] for non-toy selections, multi-selections, or nothing selected.
    */
   getToyMenuActions: () => {
@@ -1275,8 +1168,8 @@ const App = {
     if (!yEl) return false;
     L.delete(id);
     App.addLog(`deleted ${id}`, 'local');
-    if (_desired[id]?.holding) {
-      _unclaim([id]);
+    if (SelectionLocal.isHeld(id)) {
+      SelectionLocal.unclaim([id]);
     }
     return true;
   },
@@ -1284,7 +1177,7 @@ const App = {
   deleteSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (_heldIds().length > 1) {
+      if (SelectionLocal.heldIds().length > 1) {
         UI.toast('Use Delete Button for multi-selection', 'warn');
         console.error('deleteSelected called with multi-selection; use deleteMultiSelected');
       }
@@ -1296,11 +1189,11 @@ const App = {
   duplicateSelected: () => {
     const id = _singleSelectedId();
     if (!id) {
-      if (_heldIds().length > 1) UI.toast('Duplicate works on a single shape', 'warn');
+      if (SelectionLocal.heldIds().length > 1) UI.toast('Duplicate works on a single shape', 'warn');
       return;
     }
     const src = _Layers.drawing.find(id);
-    if (!src || !_Layers.drawing.duplicate(src, newDrawingId())) return;
+    if (!src || !_Layers.drawing.duplicate(src, Drawing.newShapeId(App.user.id))) return;
     App.addLog(`duplicated ${id}`, 'local');
   },
 
@@ -1322,9 +1215,8 @@ const App = {
     const anchor = App.getAnchor(domEl);
     const bbox = App.getBBox(id);
     const isToy = moduleForElement(domEl) === 'toys';
-    const toyClasses  = getToyClasses(domEl);
     const bounPosEl   = layerElOf('boun_pos');
-    const boundsRects = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, anchor) : null;
+    const boundsRects = isToy ? BounPos.computeBoundaryRects(bounPosEl, domEl, anchor) : null;
     const boundsSnap  = BounPos.getSnapPoints(bounPosEl);
     const toySnap     = Toys.getSnapPoints(toysLayerEl);
     const snapPoints  = filterSnapPoints(domEl, [...boundsSnap, ...toySnap]);
@@ -1431,7 +1323,7 @@ const App = {
           // A container that tracks its own landing position
           // always lands the moved item exactly there
           const hasLandingPosition = containerEl && !!Toys.getLandingPosition(containerEl);
-          Toys.reparentToyDom(layerEl, id, dropContainerId);
+          Toys.reparentEl(layerEl, id, dropContainerId);
           if (!hasLandingPosition) {
             const movedEl = layerEl.querySelector(`[data-id="${id}"]`);
             const containerGeom = containerEl && Toys.getGeom(containerEl);
@@ -1456,7 +1348,7 @@ const App = {
       Overlay.endDragPlaceholder(id);
 
       // A toy landing inside a container leaves selection
-      _clearClaims();
+      SelectionLocal.clearClaims();
 
       return;
     }
@@ -1481,30 +1373,29 @@ const App = {
   // The generic "further click" gesture: asks id's own owning LayerAPI
   // what mode comes next and hands the answer to Selection.enterMode.
   nextSelectionMode: (id) => {
-    if (Selection.shape(_selState()) !== 'single' || !_desired[id]?.holding) return;
+    if (Selection.shape(SelectionLocal.state()) !== 'single' || !SelectionLocal.isHeld(id)) return;
     const { domEl, layer } = _layerFor(id);
-    const mode = layer?.nextSelectMode?.(domEl, _activeMode?.mode ?? null) ?? null;
-    _applySelState(Selection.enterMode(_selState(), id, mode));
+    const mode = layer?.nextSelectMode?.(domEl, SelectionLocal.activeMode()?.mode ?? null) ?? null;
+    SelectionLocal.apply(Selection.enterMode(SelectionLocal.state(), id, mode));
   },
 
   // True only once id has been cycled into a mode with actual drag
   // handles -- sel-move/sel-action have none, so this isn't just "is
-  // _activeMode set".
-  getResizeModeId: () => (_activeMode && RESIZE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
+  // there an active mode".
+  getResizeModeId: () => (SelectionLocal.activeMode() && RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) ? SelectionLocal.activeMode().id : null,
 
-  // ── Bowstring handle (delight.js) ─────────────────────────────────────────
+  // ── Bowstring handle (layer_delight.js) ───────────────────────────────────
   // The SE action square is a drag-to-fire control: click for the toy's
   // first menu action now, or pull it back and release for the same action
-  // as a "charged" gesture. canvas.js calls startBowstringAt on pointerdown
-  // ahead of ordinary hit-testing; if it takes, the pointer belongs to the
-  // bowstring for the rest of the gesture.
+  // as a "charged" gesture. canvas.js calls startBowstring for a press on
+  // the square ahead of ordinary hit-testing; if it takes, the pointer
+  // belongs to the bowstring for the rest of the gesture.
 
   /**
-   * Try to begin a bowstring gesture at a canvas-space point. Returns true
-   * if the point landed on the affordance (and the gesture started), false
-   * to let canvas.js fall through to normal hit-testing.
+   * Try to begin a bowstring gesture on the sole selection. Returns true if
+   * it started, false to let canvas.js fall through to normal hit-testing.
    */
-  startBowstringAt: (e, canvasPoint) => {
+  startBowstring: (e) => {
     const id = _singleSelectedId();
     if (!id) return false;
     const { domEl, layer } = _layerFor(id);
@@ -1513,11 +1404,8 @@ const App = {
     // Only shows for a type whose own default mode is 'sel-action', and
     // only while the current mode still is that default -- declining
     // otherwise avoids intercepting a corner that no longer shows it.
-    if (defaultMode !== 'sel-action' || _activeMode?.mode !== defaultMode) return false;
+    if (defaultMode !== 'sel-action' || SelectionLocal.activeMode()?.mode !== defaultMode) return false;
     if (!App.hasToyActions(id)) return false;
-    const geo = App.getBBox(id);
-    if (!geo) return false;
-    if (!Delight.hitTestBowstring(geo, canvasPoint.x, canvasPoint.y, App.getViewScale(), _rotationOf(id))) return false;
     return Delight.startBowstring(id, e, _svgEl);
   },
 
@@ -1528,7 +1416,7 @@ const App = {
    * are held and every one's first menu action is the same (namespace, key).
    */
   getGroupAction: () => {
-    const ids = _heldIds();
+    const ids = SelectionLocal.heldIds();
     if (ids.length < 2) return null;
     let shared = null, origin = null;
     for (const id of ids) {
@@ -1547,22 +1435,21 @@ const App = {
   },
 
   /**
-   * Fire the group action if canvasPoint lands on its square. Returns true
-   * when it did, so canvas.js can swallow the click.
+   * Fire the group action, if the selection has one. canvas.js calls this
+   * for a press on its square; true means it fired and the press is spent.
    */
-  fireGroupActionAt: (canvasPoint) => {
+  fireGroupAction: () => {
     const group = App.getGroupAction();
     if (!group) return false;
-    if (!Delight.hitTestBowstringAt(group.origin, canvasPoint.x, canvasPoint.y, App.getViewScale())) return false;
     App.invokeToyMenuActions(group.ids, group.namespace, group.key);
     App.addLog(`group ${group.key} × ${group.ids.length}`, 'local');
     return true;
   },
 
   /**
-   * Repaint the overlay. Called from delight.js's rAF loop so the bowstring
-   * charge indicators keep advancing while the pointer holds still (heldMs
-   * changes with no pointer event to hang a repaint off).
+   * Repaint the overlay. Called from layer_delight.js's rAF loop so the
+   * bowstring charge indicators keep advancing while the pointer holds still
+   * (heldMs changes with no pointer event to hang a repaint off).
    */
   requestOverlayRender: () => Overlay.render(),
 
@@ -1626,7 +1513,7 @@ const App = {
   },
 
   /**
-   * Called by delight.js when a bowstring resolves — on click, or on the
+   * Called by layer_delight.js when a bowstring resolves — on click, or on the
    * far end of a charged pull's snap-back. A release on a radial spoke
    * names its action and params; otherwise the default action (the first
    * applicable one) runs with its radial defaults.
@@ -1644,19 +1531,9 @@ const App = {
     App.addLog(`bowstring ${how} → ${key}${params ? ` ${JSON.stringify(params)}` : ''}`, 'local');
   },
 
-  // getResizeCorner   — hit-test a canvas-space point against id's corner
-  //                     handles; used by canvas.js on pointerdown to decide
-  //                     whether a click on an already-resize-mode container
-  //                     starts a resize gesture or falls through.
-  getResizeCorner: (id, cx, cy) => {
-    if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode)) return null;
-    const geo = App.getBBox(id);
-    const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(_activeMode.mode, geo, p.x, p.y, App.getViewScale());
-  },
 
   startResize: (id, corner) => {
-    if (_activeMode?.id !== id || !RESIZE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
+    if (SelectionLocal.activeMode()?.id !== id || !RESIZE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
@@ -1665,7 +1542,7 @@ const App = {
     // pointer sample has to be un-rotated about the SAME point the handles
     // were drawn at.
     _resizeState = {
-      id, corner, mtype, mode: _activeMode.mode, rotation: _rotationOf(id),
+      id, corner, mtype, mode: SelectionLocal.activeMode().mode, rotation: _rotationOf(id),
       startRect: { ...bbox }, lastRect: { ...bbox },
     };
     Overlay.startResizeGhost(id);
@@ -1712,23 +1589,16 @@ const App = {
   // shape) with different arithmetic. The point stays on CANVAS space and
   // the commit writes one degree count rather than a bbox.
 
-  getRotateModeId: () => (_activeMode && ROTATE_HANDLE_MODES.has(_activeMode.mode)) ? _activeMode.id : null,
+  getRotateModeId: () => (SelectionLocal.activeMode() && ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode)) ? SelectionLocal.activeMode().id : null,
 
   getRotateSnapDeg: (mtype) => _rotateSnapDegByLayer[mtype],
   setRotateSnapDeg: (mtype, deg) => { _rotateSnapDegByLayer[mtype] = Number(deg) || 0; },
   getPivotSnapFraction: () => _pivotSnapFraction,
   setPivotSnapFraction: (f) => { _pivotSnapFraction = Number(f) || 0; },
 
-  getRotateHandle: (id, cx, cy) => {
-    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode)) return null;
-    const geo = App.getBBox(id);
-    const p   = _toLocalPoint(id, cx, cy);
-    return Overlay.hitTestSelectionHandle(
-      _activeMode.mode, geo, p.x, p.y, App.getViewScale(), App.getPivot(id));
-  },
 
   startRotate: (id, corner) => {
-    if (_activeMode?.id !== id || !ROTATE_HANDLE_MODES.has(_activeMode.mode) || App.isHeldByOther(id)) return;
+    if (SelectionLocal.activeMode()?.id !== id || !ROTATE_HANDLE_MODES.has(SelectionLocal.activeMode().mode) || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     // The pivot is captured once, like the resize gesture captures rotation:
@@ -1774,7 +1644,7 @@ const App = {
   // Similar to resize and rotate. No ghost needed though.
 
   startPivotDrag: (id) => {
-    if (_activeMode?.id !== id || _activeMode.mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
+    if (SelectionLocal.activeMode()?.id !== id || SelectionLocal.activeMode().mode !== 'sel-rotate-pivot' || App.isHeldByOther(id)) return;
     const bbox = App.getBBox(id);
     if (!bbox) return;
     const { domEl, layer } = _layerFor(id);
@@ -1805,8 +1675,10 @@ const App = {
     const p     = _toLocalPoint(id, px, py, _rotationOf(id));
     const pivot = _Layers[mtype].computePivot(startRect, p.x, p.y, _pivotSnapFraction);
     _pivotState = null;
-    Overlay.setPivotPreview(id, null);
     _writePivot(id, mtype, startRect, fromPivot, pivot, deg);
+    // After the write, same reasoning as commitResize: clearing the preview
+    // redraws the handle where the DOM now has the pivot.
+    Overlay.setPivotPreview(id, null);
   },
 
   cancelPivot: () => {
@@ -1822,7 +1694,7 @@ const App = {
   // cancelMultiMove — called on pointercancel; reverts all ghosts, no gesture
 
   startMultiDrag: (originCanvas) => {
-    const elements = _heldIds().map(id => {
+    const elements = SelectionLocal.heldIds().map(id => {
       const domEl = _svgEl.querySelector(`[data-id="${id}"]`);
       if (!domEl) return null;
       const anchor = App.getAnchor(domEl);
@@ -1839,9 +1711,8 @@ const App = {
     const leaderEl  = elements.find(e => e.id === leaderId) ?? elements[0];
     const anchorDom = _svgEl.querySelector(`[data-id="${leaderEl.id}"]`);
     const isToy     = leaderEl.mtype === 'toys';
-    const toyClasses   = getToyClasses(anchorDom);
     const bounPosEl    = layerElOf('boun_pos');
-    const boundsRects  = isToy ? BounPos.computeBoundaryRects(bounPosEl, toyClasses, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
+    const boundsRects  = isToy ? BounPos.computeBoundaryRects(bounPosEl, anchorDom, { x: leaderEl.anchorX, y: leaderEl.anchorY }) : null;
     const snapPoints   = BounPos.getSnapPoints(bounPosEl);
 
     _multiDragState = {
@@ -1857,9 +1728,7 @@ const App = {
 
     // Defend every element in the group, not just the one under the
     // pointer.  All of them are being "used".
-    const claimNow = Date.now();
-    for (const el of elements) _desired[el.id] = { ts: claimNow, holding: true };
-    _broadcastDesired();
+    SelectionLocal.reassertClaims(elements.map(el => el.id));
 
     _awareness.setLocalStateField('multidrag', {
       elIds:   elements.map(e => e.id),
@@ -1877,8 +1746,7 @@ const App = {
     const now = Date.now();
     if (now - (_multiDragState.lastClaimRefresh ?? 0) >= CLAIM_REFRESH_THROTTLE_MS) {
       _multiDragState.lastClaimRefresh = now;
-      for (const el of elements) _desired[el.id] = { ts: now, holding: true };
-      _broadcastDesired();
+      SelectionLocal.reassertClaims(elements.map(el => el.id), { now });
     }
 
     // Compute the candidate anchor position and apply constraints
@@ -1958,7 +1826,7 @@ const App = {
     // claims here -- select()/toggleSelection() already own that decision
     // (e.g. a redundant setTool('select') while a multi-selection is being
     // built via shift-click must not wipe it out).
-    if (name !== 'select') _clearClaims();
+    if (name !== 'select') SelectionLocal.clearClaims();
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
@@ -1979,7 +1847,7 @@ const App = {
     // Abandon any claims on the layer being left.
     // this makes it impossible to hold a mixed toys+drawing selection
     // That in turn is what lets undo stay one mechanism per action
-    if (id !== _activeLayer) _clearClaims();
+    if (id !== _activeLayer) SelectionLocal.clearClaims();
     _activeLayer = id;
     UI.saveLayerState();
     // Default to Select when changing layers (tools differ per layer)
@@ -1997,7 +1865,7 @@ const App = {
     // actual delete from awareness.states, so awareness.getLocalState()
     // returns null afterward. Awareness.setLocalStateField's own
     // implementation is `if (getLocalState() !== null) { ... }` — a
-    // silent no-op otherwise. Every _broadcastDesired / _broadcastMode call
+    // silent no-op otherwise. Every SelectionLocal broadcast
     // after this point would do nothing, this client's own soft-lock
     // requests never reach anyone, making a peer's hold look unbreakable
     // from here.
@@ -2007,8 +1875,7 @@ const App = {
     _awareness?.setLocalState({
       user:    App.user,
       cursor:  null,
-      desired: { ..._desired },
-      mode:    _activeMode ? _activeMode.mode : null,
+      ...SelectionLocal.awarenessFields(),
       ...Attention.awarenessFields(),
     });
   },
@@ -2019,7 +1886,7 @@ const App = {
   undoFor: (ownerId) => {
     // A moved/resized/deleted shape's selRing is meaningless once the
     // gesture that put it there is undone
-    _clearClaims();
+    SelectionLocal.clearClaims();
     const row = newestAcrossLayers(layer => OpLayer.newestLiveRow(_ydoc, layer, _tableId, App.user.id,
       { owner: ownerId, joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.ts);
     if (!row) return UI.toast('Nothing to undo', 'warn');
@@ -2027,7 +1894,7 @@ const App = {
   },
   // Redo the newest thing this peer undid, by when it was undone.
   redo: () => {
-    _clearClaims();
+    SelectionLocal.clearClaims();
     const row = newestAcrossLayers(layer => OpLayer.newestUndoneRow(_ydoc, layer, _tableId, App.user.id,
       { joinSequence: tablesAPI.getJoinSequenceArray(_ydoc) }), row => row.undoneAt);
     if (!row) return UI.toast('Nothing to redo', 'warn');
@@ -2266,19 +2133,9 @@ const App = {
     peersIce: ExternalServices.getIcePeers(),
   }),
 
-  getDefaultBackgrounds: () => DEFAULT_BACKGROUNDS,
-  getBackground:   () => ({
-    url:    _yMeta.get('bg_url')    ?? '',
-    width:  _yMeta.get('bg_width')  ?? 120,
-    height: _yMeta.get('bg_height') ?? 120,
-  }),
-  setBackground:   (attrs) => {
-    _ydoc.transact(() => {
-      if (attrs.url    !== undefined) _yMeta.set('bg_url',    attrs.url);
-      if (attrs.width  !== undefined) _yMeta.set('bg_width',  Number(attrs.width));
-      if (attrs.height !== undefined) _yMeta.set('bg_height', Number(attrs.height));
-    });
-  },
+  getDefaultBackgrounds: () => Background.DEFAULT_BACKGROUNDS,
+  getBackground:   () => Background.read(_yMeta),
+  setBackground:   (attrs) => Background.write(_ydoc, _yMeta, attrs),
 };
 
 // ── History log ───────────────────────────────────────────────────────────────
@@ -2314,7 +2171,7 @@ function authorProfile(id) {
 
 // Undo or redo the chosen op from a history row, or say why not.
 function stepOp(kind, layerName, opId) {
-  _clearClaims();
+  SelectionLocal.clearClaims();
   const layer   = getOpLayer(layerName);
   const layerEl = layerElOf(layer);
   const run     = kind === 'undo' ? OpLayer.undoOp : OpLayer.redoOp;
@@ -2342,11 +2199,6 @@ function newestAcrossLayers(rowOf, keyOf) {
   return rows.sort((a, b) => (keyOf(b) - keyOf(a)) || (a.id < b.id ? 1 : -1))[0] ?? null;
 }
 
-// A fresh id for a drawing shape.
-function newDrawingId() {
-  return App.user.id + '_' + Math.random().toString(36).slice(2, 7);
-}
-
 // A human-readable label for an operation's gesture, for undo/redo
 // history + toast text, shared by every op layer.
 function describeGesture(gesture) {
@@ -2364,45 +2216,11 @@ function onMetaChanged() {
 }
 
 function renderBackgroundLayer() {
-  const layer = _svgEl.querySelector('#background-layer');
-  if (!layer) throw new Error("renderBackgroundLayer: '#background-layer' not found in SVG document — malformed template?");
-  layer.innerHTML = '';
-  const url    = _yMeta.get('bg_url')    || 'img/bg_default.png';
-  const width  = _yMeta.get('bg_width')  || 120;
-  const height = _yMeta.get('bg_height') || 120;
-  const SVGNS = 'http://www.w3.org/2000/svg';
-  // Tiling pattern so the image repeats across infinite canvas
-  const defs    = _svgEl.querySelector('defs');
-  // Remove stale bg pattern if present
-  defs.querySelector('#bg-pattern')?.remove();
-  const pattern = document.createElementNS(SVGNS, 'pattern');
-  pattern.setAttribute('id',           'bg-pattern');
-  pattern.setAttribute('x',            '0');
-  pattern.setAttribute('y',            '0');
-  pattern.setAttribute('width',        width);
-  pattern.setAttribute('height',       height);
-  pattern.setAttribute('patternUnits', 'userSpaceOnUse');
-  const img = document.createElementNS(SVGNS, 'image');
-  img.setAttribute('href',   url);
-  img.setAttribute('x',      '0');
-  img.setAttribute('y',      '0');
-  img.setAttribute('width',  width);
-  img.setAttribute('height', height);
-  pattern.appendChild(img);
-  defs.appendChild(pattern);
-  const rect = document.createElementNS(SVGNS, 'rect');
-  rect.setAttribute('x',              '0');
-  rect.setAttribute('y',              '0');
-  rect.setAttribute('width',          '100%');
-  rect.setAttribute('height',         '100%');
-  rect.setAttribute('fill',           'url(#bg-pattern)');
-  rect.setAttribute('pointer-events', 'none');
-  layer.appendChild(rect);
+  Background.render(_svgEl, _yMeta);
   // The pattern was just rebuilt from scratch, so it has no patternTransform
   // yet — re-sync it to the current view so the tile doesn't jump to the
   // origin if the table is panned/zoomed when the background changes.
   Canvas.syncBackgroundTransform();
 }
-
 
 export { App };

@@ -12,12 +12,12 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import * as Toys from '../../src/toys.js'
+import * as Toys from '../../src/layer_toys.js'
 import {
   parseForeignNode,
-  addToy,
   _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+} from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 import { nodeRef, resolveRef } from '../../src/op_wire_mutation.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'

@@ -26,7 +26,9 @@ function makeDOM() {
         <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
-        <g id="overlay-layer"></g>
+        <g id="selection_shared"></g>
+        <g id="awareness"></g>
+        <g id="selection_local"></g>
       </svg>
       <div id="draw-preview"></div>
       <div id="select-preview"></div>
@@ -61,6 +63,8 @@ function makeApp(overrides = {}) {
     getBoxCandidates:   () => [],
     broadcastCandidates: () => {},
     clearBoxCandidates: () => {},
+    showDragBox:        () => {},
+    hideDragBox:        () => {},
     commitMultiSelect:  () => {},
     toggleSelection:    () => {},
     startMultiDrag:     () => {},
@@ -69,12 +73,11 @@ function makeApp(overrides = {}) {
     commitMultiMove:    () => {},
     cancelMultiMove:    () => {},
     getResizeModeId:    () => null,
-    getResizeCorner:    () => null,
-    // Bowstring handle (delight.js) — canvas.js offers every select-tool
+    // Bowstring handle (layer_delight.js) — canvas.js offers every select-tool
     // pointerdown to it before ordinary hit-testing. Declining by default
     // keeps these tests exercising the normal select/move/resize paths.
-    fireGroupActionAt:  () => false,
-    startBowstringAt:   () => false,
+    fireGroupAction:    () => false,
+    startBowstring:     () => false,
     moveBowstring:      () => {},
     endBowstring:       () => {},
     nextSelectionMode:  () => {},
@@ -83,7 +86,6 @@ function makeApp(overrides = {}) {
     commitResize:       () => {},
     cancelResize:       () => {},
     getRotateModeId:    () => null,
-    getRotateHandle:    () => null,
     startRotate:        () => {},
     rotate:             () => {},
     commitRotate:       () => {},
@@ -308,19 +310,21 @@ describe('box-select drag calls commitMultiSelect', () => {
     expect(ToolMode._gesture).toBe('box-select')
   })
 
-  test('select-preview div is shown during drag and hidden on pointerup', () => {
-    init(makeApp(), document.getElementById('canvas'))
+  test('the select drag box is shown during the drag and hidden on pointerup', () => {
+    const shown = [], hidden = []
+    init(makeApp({
+      showDragBox: (kind, ...rect) => shown.push([kind, ...rect]),
+      hideDragBox: (kind) => hidden.push(kind),
+    }), document.getElementById('canvas'))
     setTool('select', { multi: true })
 
-    const stage   = document.getElementById('stage')
-    const preview = document.getElementById('select-preview')
-
+    const stage = document.getElementById('stage')
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 50, clientY: 50 }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 150, clientY: 150 }))
-    expect(preview.style.display).toBe('block')
+    expect(shown.at(-1)).toEqual(['select', 50, 50, 100, 100])
 
     stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 150, clientY: 150 }))
-    expect(preview.style.display).toBe('none')
+    expect(hidden).toContain('select')
   })
 })
 
@@ -668,22 +672,22 @@ describe('resize mode — reclick-to-toggle', () => {
 })
 
 describe('pivot drag gesture', () => {
-  // getRotateHandle answers 'pivot' instead of a corner index when the
-  // pointer is on the pivot handle; canvas.js routes that to its own gesture.
+  // A press on the [data-handle="pivot"] element starts its own gesture,
+  // even where a rotate corner would also answer.
   const pivotApp = (overrides = {}) => makeApp({
     getRotateModeId: () => 'rect-1',
-    getRotateHandle: () => 'pivot',
     ...overrides,
   })
+  const onPivot = () => addHandle({ 'data-handle': 'pivot' })
 
-  test("a handle answer of 'pivot' starts a pivot drag, not a rotate", () => {
+  test('a press on the pivot handle starts a pivot drag, not a rotate', () => {
     const started = [], rotated = []
     const app = pivotApp({ startPivotDrag: (id) => started.push(id), startRotate: () => rotated.push(true) })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
 
     document.getElementById('stage')
-      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
 
     expect(ToolMode._gesture).toBe('pivot')
     expect(started).toEqual(['rect-1'])
@@ -697,7 +701,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
 
     expect(moved).toEqual([['rect-1', 240, 260]])
@@ -710,7 +714,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 240, clientY: 260 }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 240, clientY: 260 }))
 
@@ -724,7 +728,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 200, clientY: 200 }))
 
     expect(cancelled).toHaveLength(1)
@@ -738,7 +742,7 @@ describe('pivot drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 200, clientY: 200, target: onPivot() }))
     stage.dispatchEvent(makePointerEvent('pointermove',   { clientX: 240, clientY: 260 }))
     stage.dispatchEvent(makePointerEvent('pointercancel', { clientX: 240, clientY: 260 }))
 
@@ -753,9 +757,9 @@ describe('rotate mode — corner-drag gesture', () => {
   // ordering. What differs is which App calls it routes to.
   const rotateApp = (overrides = {}) => makeApp({
     getRotateModeId: () => 'rect-1',
-    getRotateHandle: () => 1, // NE
     ...overrides,
   })
+  const onNE = () => addHandle({ 'data-handle': 'rotate', 'data-corner': 'ne' })
 
   test('pointerdown on a rotate handle starts a rotate gesture, not a resize', () => {
     const started = []
@@ -764,7 +768,7 @@ describe('rotate mode — corner-drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onNE() }))
 
     expect(ToolMode._gesture).toBe('rotate')
     expect(started).toEqual([['rect-1', 1]])
@@ -775,9 +779,7 @@ describe('rotate mode — corner-drag gesture', () => {
     const rotated = []
     const app = makeApp({
       getResizeModeId: () => 'rect-1',
-      getResizeCorner: () => 2,
       getRotateModeId: () => 'rect-1',
-      getRotateHandle: () => 1,
       startResize: () => resized.push(true),
       startRotate: () => rotated.push(true),
     })
@@ -785,7 +787,7 @@ describe('rotate mode — corner-drag gesture', () => {
     setTool('select', {})
 
     document.getElementById('stage')
-      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+      .dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: addHandle({ 'data-handle': 'resize', 'data-corner': 'se' }) }))
 
     expect(resized).toHaveLength(1)
     expect(rotated).toHaveLength(0)
@@ -798,7 +800,7 @@ describe('rotate mode — corner-drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onNE() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
 
     expect(rotated).toEqual([['rect-1', 1, 340, 260]])
@@ -811,7 +813,7 @@ describe('rotate mode — corner-drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onNE() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 340, clientY: 260 }))
 
@@ -829,7 +831,7 @@ describe('rotate mode — corner-drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onNE() }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 300, clientY: 250 }))
 
     expect(cancelled).toHaveLength(1)
@@ -847,7 +849,7 @@ describe('rotate mode — corner-drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown',   { clientX: 300, clientY: 250, target: onNE() }))
     stage.dispatchEvent(makePointerEvent('pointermove',   { clientX: 340, clientY: 260 }))
     stage.dispatchEvent(makePointerEvent('pointercancel', { clientX: 340, clientY: 260 }))
 
@@ -858,7 +860,6 @@ describe('rotate mode — corner-drag gesture', () => {
   test('a pointerdown off every handle falls through to ordinary hit-testing', () => {
     const started = []
     const app = rotateApp({
-      getRotateHandle: () => null,
       getSelectedIds:  () => ['rect-1'],
       startRotate:     () => started.push(true),
     })
@@ -875,20 +876,21 @@ describe('rotate mode — corner-drag gesture', () => {
 })
 
 describe('resize mode — corner-drag gesture', () => {
+  const onSW = () => addHandle({ 'data-handle': 'resize', 'data-corner': 'sw' })
+
   test('pointerdown on a corner handle of the resize-mode element starts a resize gesture', () => {
     const started = []
     const app = makeApp({
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => 3, // SE
       startResize: (id, corner) => started.push([id, corner]),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    // No fabricated hit element needed — the corner check runs before
-    // ordinary hit-testing and doesn't require hitId to be set.
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    // A corner handle mostly sits outside the element, so no hit element
+    // is needed: the handle check runs before ordinary hit-testing.
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onSW() }))
 
     expect(ToolMode._gesture).toBe('resize')
     expect(started).toEqual([['tray-1', 3]])
@@ -898,14 +900,13 @@ describe('resize mode — corner-drag gesture', () => {
     const resized = []
     const app = makeApp({
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => 3,
       resize: (id, corner, x, y) => resized.push([id, corner, x, y]),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onSW() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
 
     expect(resized).toEqual([['tray-1', 3, 340, 260]])
@@ -915,14 +916,13 @@ describe('resize mode — corner-drag gesture', () => {
     const committed = []
     const app = makeApp({
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => 3,
       commitResize: (id, corner, x, y) => committed.push([id, corner, x, y]),
     })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onSW() }))
     stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 340, clientY: 260 }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 340, clientY: 260 }))
 
@@ -934,7 +934,6 @@ describe('resize mode — corner-drag gesture', () => {
     const cancelled = []
     const app = makeApp({
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => 3,
       commitResize: () => committed.push(true),
       cancelResize:  () => cancelled.push(true),
     })
@@ -942,7 +941,7 @@ describe('resize mode — corner-drag gesture', () => {
     setTool('select', {})
 
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 250, target: onSW() }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 300, clientY: 250 }))
 
     expect(cancelled).toHaveLength(1)
@@ -955,7 +954,6 @@ describe('resize mode — corner-drag gesture', () => {
     const app = makeApp({
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => null, // not near any corner
       nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
@@ -978,7 +976,6 @@ describe('resize mode — corner-drag gesture', () => {
     const app = makeApp({
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => null,
       nextSelectionMode: (id) => entered.push(id),
     })
     init(app, document.getElementById('canvas'))
@@ -998,7 +995,6 @@ describe('resize mode — corner-drag gesture', () => {
     const app = makeApp({
       getSelectedIds: () => ['tray-1'],
       getResizeModeId: () => 'tray-1',
-      getResizeCorner: () => null,
       nextSelectionMode: (id) => entered.push(id),
       commitMove: (...args) => committed.push(args),
     })
@@ -1085,24 +1081,73 @@ describe('Pinch gesture', () => {
 
 describe('the pivot drag keeps its cursor while the pointer is captured', () => {
   test('#stage carries pivot-dragging for the duration of the drag, and not after', () => {
-    const app = makeApp({ getRotateModeId: () => 'rect-1', getRotateHandle: () => 'pivot' })
+    const app = makeApp({ getRotateModeId: () => 'rect-1' })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
     const stage = document.getElementById('stage')
 
     expect(stage.classList.contains('pivot-dragging')).toBe(false)
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: addHandle({ 'data-handle': 'pivot' }) }))
     expect(stage.classList.contains('pivot-dragging')).toBe(true)
     stage.dispatchEvent(makePointerEvent('pointerup', { clientX: 240, clientY: 240 }))
     expect(stage.classList.contains('pivot-dragging')).toBe(false)
   })
 
   test('a rotate drag does not claim it', () => {
-    const app = makeApp({ getRotateModeId: () => 'rect-1', getRotateHandle: () => 1 })
+    const app = makeApp({ getRotateModeId: () => 'rect-1' })
     init(app, document.getElementById('canvas'))
     setTool('select', {})
     const stage = document.getElementById('stage')
-    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 200, clientY: 200, target: addHandle({ 'data-handle': 'rotate', 'data-corner': 'ne' }) }))
     expect(stage.classList.contains('pivot-dragging')).toBe(false)
   })
+})
+
+// ── #selection_local handles ──────────────────────────────────────────────────
+// A press is routed by the [data-handle] element under it, never by where it
+// lands geometrically.
+
+// A handle in #selection_local, with an inner child as the press target, so
+// the routing has to look up through closest().
+function addHandle(attrs) {
+  const handle = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+  for (const [k, v] of Object.entries(attrs)) handle.setAttribute(k, v)
+  const inner = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
+  handle.appendChild(inner)
+  document.getElementById('selection_local').appendChild(handle)
+  return inner
+}
+
+describe('handle dispatch', () => {
+  // [data-handle, data-corner, the App answers that put the selection in the
+  //  handle's mode, the App call and arguments a press makes, the gesture]
+  const CASES = [
+    ['group-action', null, {},                                'fireGroupAction', [],                null],
+    ['bowstring',    null, {},                                'startBowstring',  ['pointerdown'],   'bowstring'],
+    ['pivot',        null, { getRotateModeId: () => 'el-1' }, 'startPivotDrag',  ['el-1'],          'pivot'],
+    ['rotate',       'ne', { getRotateModeId: () => 'el-1' }, 'startRotate',     ['el-1', 1],       'rotate'],
+    ['resize',       'sw', { getResizeModeId: () => 'el-1' }, 'startResize',     ['el-1', 3],       'resize'],
+    ['resize',       'r',  { getResizeModeId: () => 'el-1' }, 'startResize',     ['el-1', 'r'],     'resize'],
+  ]
+  const press = (handle, corner, app) => {
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const target = addHandle({ 'data-handle': handle, ...(corner && { 'data-corner': corner }) })
+    document.getElementById('stage').dispatchEvent(makePointerEvent('pointerdown', { target }))
+  }
+  const recording = (call, calls) => ({ [call]: (...args) => { calls.push(args.map(a => a?.type ?? a)); return true } })
+
+  test.each(CASES)('a press on %s (corner %s) → App.%s', (handle, corner, mode, call, args, gesture) => {
+    const calls = []
+    press(handle, corner, makeApp({ ...mode, ...recording(call, calls) }))
+    expect(calls).toEqual([args])
+    expect(ToolMode._gesture).toBe(gesture)
+  })
+
+  test.each(CASES.filter(([, , mode]) => Object.keys(mode).length))(
+    'a press on %s (corner %s) outside its mode does nothing', (handle, corner, mode, call) => {
+      const calls = []
+      press(handle, corner, makeApp(recording(call, calls)))
+      expect(calls).toEqual([])
+    })
 })

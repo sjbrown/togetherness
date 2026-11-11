@@ -3,7 +3,7 @@
  *
  * jsdom has no layout engine, so it doesn't implement
  * SVGGraphicsElement.getScreenCTM()/getCTM() at all (calling either throws
- * "Not implemented"). Production code (src/toys.js: getPositionsMeta,
+ * "Not implemented"). Production code (src/layer_toys.js: getPositionsMeta,
  * getSnapPoints, ownersAtPoint, directOccupantIds) calls getScreenCTM() to
  * convert a toy's local tt_positions coordinates into toys-layer space,
  * correctly handling toys whose SVG viewBox differs from their
@@ -18,7 +18,7 @@
  *     — the forms this codebase uses)
  *   - each ancestor <svg>'s own x/y + viewBox-to-width/height scaling
  *     ('xMidYMid meet', the SVG default and the only mode this codebase
- *     uses — same math as getInnerAnchor in src/toys.js)
+ *     uses — same math as getInnerAnchor in src/layer_toys.js)
  *
  * This is real (if partial) CTM math, not a stand-in — it's exercised by
  * both the historical geom-offset cases (1:1 viewBox, e.g. chip.svg) and
@@ -104,7 +104,7 @@ function parseTransformAttr(str) {
 // Maps points expressed in svgNode's viewBox coordinate system into
 // svgNode's own local box (the frame its `transform` attribute, if any,
 // operates within) — 'xMidYMid meet' scaling, centred, matching
-// getInnerAnchor's math in src/toys.js.
+// getInnerAnchor's math in src/layer_toys.js.
 function viewBoxMatrix(svgNode) {
   const outX = parseFloat(svgNode.getAttribute('x')) || 0
   const outY = parseFloat(svgNode.getAttribute('y')) || 0

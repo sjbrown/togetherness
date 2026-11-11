@@ -3,7 +3,7 @@
  *
  * Unit tests for the drop-target hover indicator (phase 5.3): overlay.js's
  * independent decoration, driven directly by App.move() during a toy drag
- * (not by SelectionMode or awareness — see setDropTargetHover).
+ * (not by the selection modes or awareness — see setDropTargetHover).
  *
  * Same harness pattern as soft-lock-visual.test.js (real overlay.js +
  * jsdom, no App boot).
@@ -20,7 +20,9 @@ function makeOverlayDOM() {
   document.body.innerHTML = `
     <svg id="canvas">
       <defs></defs>
-      <g id="overlay-layer"></g>
+      <g id="selection_shared"></g>
+      <g id="awareness"></g>
+      <g id="selection_local"></g>
     </svg>
   `
 }
@@ -45,7 +47,7 @@ describe('drop-target hover — basic presence', () => {
   test('setDropTargetHover(id) renders a dropTargetRing at that tray\u2019s bbox', () => {
     setDropTargetHover('tray1')
 
-    const rings = document.querySelectorAll('#overlay-layer .dropTargetRing')
+    const rings = document.querySelectorAll('#selection_local .dropTargetRing')
     expect(rings).toHaveLength(1)
   })
 
@@ -53,11 +55,11 @@ describe('drop-target hover — basic presence', () => {
     setDropTargetHover('tray1')
     setDropTargetHover(null)
 
-    expect(document.querySelectorAll('#overlay-layer .dropTargetRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .dropTargetRing')).toHaveLength(0)
   })
 
   test('never rendered by default (before any drag)', () => {
-    expect(document.querySelectorAll('#overlay-layer .dropTargetRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .dropTargetRing')).toHaveLength(0)
   })
 
   test('switching hover to a different tray id replaces the ring, not adds a second one', () => {
@@ -65,19 +67,19 @@ describe('drop-target hover — basic presence', () => {
     setDropTargetHover('tray1')
     setDropTargetHover('tray2')
 
-    expect(document.querySelectorAll('#overlay-layer .dropTargetRing')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_local .dropTargetRing')).toHaveLength(1)
   })
 
   test('an id with no bbox (not currently rendered) is skipped without throwing', () => {
     expect(() => setDropTargetHover('nope')).not.toThrow()
-    expect(document.querySelectorAll('#overlay-layer .dropTargetRing')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .dropTargetRing')).toHaveLength(0)
   })
 
   test('is a no-op re-render when the id hasn\u2019t changed (idempotent while hovering the same tray across pointermoves)', () => {
     setDropTargetHover('tray1')
-    const ringBefore = document.querySelector('#overlay-layer .dropTargetRing')
+    const ringBefore = document.querySelector('#selection_local .dropTargetRing')
     setDropTargetHover('tray1')
-    const ringAfter = document.querySelector('#overlay-layer .dropTargetRing')
+    const ringAfter = document.querySelector('#selection_local .dropTargetRing')
 
     // render() rebuilds the whole overlay layer via innerHTML = '', so a
     // *real* re-render would produce a new element instance; same instance
@@ -89,7 +91,7 @@ describe('drop-target hover — basic presence', () => {
 describe('drop-target hover — static warn-colored ring', () => {
   test('uses the amber --warn palette and does not animate (no <animate>)', () => {
     setDropTargetHover('tray1')
-    const ring = document.querySelector('#overlay-layer .dropTargetRing')
+    const ring = document.querySelector('#selection_local .dropTargetRing')
 
     expect(ring.getAttribute('stroke')).toBe('var(--warn)')
     expect(ring.getAttribute('fill')).toBe('var(--warn-soft)')

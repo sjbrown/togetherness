@@ -2,7 +2,7 @@
  * ui.js — togetherness UI chrome
  *
  * Renders the chrome: pill, panel, toasts, idbar, popover, menu.
- * Reads ToolMode / SelectionMode only through the App bus.
+ * Reads ToolMode / the selection modes only through the App bus.
  *
  * Design rules that keep this file testable in stories.html:
  *   1. Render functions are PURE: renderX(data) -> htmlString. They take their
@@ -10,8 +10,9 @@
  *      wrappers (openSheet etc.) gather data from App and call the pure fn.
  *   2. ui.js knows exactly ONE tool by name: 'select'. Every other tool comes
  *      from a registry via App.getTools(layer) / App.getToolSchema(tool).
- *   3. Tool-options are rendered generically from ttStateSchema (see drawing.js
- *      SHAPE_TYPES). ui.js does not know what 'corner-r' means.
+ *   3. Tool-options are rendered generically from ttStateSchema (see
+ *      layer_drawing.js SHAPE_TYPES). ui.js does not know what 'corner-r'
+ *      means.
  *
  * Depends on: icons.js (icon()), ui.css, App (bus). No Yjs, no pointer events.
  */
@@ -20,7 +21,7 @@ import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
 import * as Trace from './trace.js';
 import { networkStatusBarHTML } from './external_services_status.js';
-import { buildToyPreviewSvg, toolInitArgs } from './toys.js';
+import { buildToyPreviewSvg, toolInitArgs } from './layer_toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 
@@ -104,6 +105,21 @@ export function init(appBus) {
   updateInfoBar();
 }
 
+// -- Drag boxes ----------------------------------------------------------------
+// The HTML rubber bands over the canvas while a shape is drawn
+// (#draw-preview) or a box-select is swept (#select-preview), in px from
+// #stage's top-left. kind is 'draw' or 'select'; canvas.js drives them
+// through App.showDragBox / hideDragBox.
+export function showDragBox(kind, x, y, w, h) {
+  const el = document.getElementById(`${kind}-preview`);
+  if (el) el.style.cssText = `display:block;left:${x}px;top:${y}px;width:${w}px;height:${h}px;`;
+}
+
+export function hideDragBox(kind) {
+  const el = document.getElementById(`${kind}-preview`);
+  if (el) el.style.display = 'none';
+}
+
 // -- Toasts --------------------------------------------------------------------
 export function toast(msg, kind = '') {
   // Mirrored to the console for anything warning/error-level, so the exact
@@ -146,10 +162,41 @@ export function updateInfoBar() {
 }
 
 // -- Menu --------------------------------------------------------------------
+// On mobile the pill's width is content-driven, so the shrink to a circle (and
+// back) is animated between measured pixel sizes. The final size is measured
+// with transitions off, then the pill is put back at its starting size.
+let pillCollapseGen = 0;
+function setPillCollapsed(on) {
+  const pill = $('#pill');
+  if (!pill || pill.classList.contains('collapsed') === on) return;
+  if (!window.matchMedia?.('(max-width: 759px)').matches) {
+    pill.classList.toggle('collapsed', on);
+    return;
+  }
+  const gen = ++pillCollapseGen;
+  const from = { w: pill.offsetWidth, h: pill.offsetHeight };
+  pill.style.transition = 'none';
+  pill.style.width = pill.style.height = '';
+  pill.classList.toggle('collapsed', on);
+  const to = { w: pill.offsetWidth, h: pill.offsetHeight };
+  pill.classList.toggle('collapsed', !on);
+  pill.style.width = from.w + 'px';
+  pill.style.height = from.h + 'px';
+  pill.getBoundingClientRect();
+  pill.style.transition = '';
+  pill.classList.toggle('collapsed', on);
+  pill.style.width = to.w + 'px';
+  pill.style.height = to.h + 'px';
+  if (!on) setTimeout(() => {
+    if (gen === pillCollapseGen) pill.style.width = pill.style.height = '';
+  }, 250);
+}
+
 export function toggleMenu() {
   UIData.menuOpen = !UIData.menuOpen;
   $('#menuBtn')?.classList.toggle('open', UIData.menuOpen);
   $('#menuItems')?.classList.toggle('open', UIData.menuOpen);
+  setPillCollapsed(UIData.menuOpen);
   if (UIData.menuOpen) { hideToolOpts(); }
   updateInfoBar();
 }
@@ -157,6 +204,7 @@ export function closeMenu() {
   UIData.menuOpen = false;
   $('#menuBtn')?.classList.remove('open');
   $('#menuItems')?.classList.remove('open');
+  setPillCollapsed(false);
   updateInfoBar();
 }
 
@@ -405,7 +453,7 @@ function gatherTtStateData() {
  *   label    — (add/addQuick mode) human label for the field
  *
  * typeSpec is a types entry from a ttStateSchema:
- *   { kind, show, min?, max?, step? }
+ *   { kind, show, label?, min?, max?, step? }
  *
  * show filtering:
  *   'addQuick' surface — only rendered if show explicitly includes 'addQuick'
@@ -415,6 +463,7 @@ function gatherTtStateData() {
 function renderSchemaField(key, value, typeSpec, ctx) {
   const { mode } = ctx;
   const spec = typeof typeSpec === 'string' ? { kind: typeSpec } : (typeSpec ?? {});
+  const label = spec.label ?? key;
   const show = spec.show;
   const kind = spec.kind;
 
@@ -440,13 +489,13 @@ function renderSchemaField(key, value, typeSpec, ctx) {
     if (mode === 'edit') {
       const id = ctx.id;
       return `<div class="field" data-cp-wire data-cp-mode="edit" data-cp-target="${id}" data-cp-key="${key}" data-cp-opacity="${allowNone}">
-        <label>${key}</label>
+        <label>${label}</label>
         <div class="cp-row">${picker}${noneBtn}</div>
       </div>`;
     } else {
       const toolName = ctx.toolName;
       return `<div class="opt-row cp-opt-row" data-cp-wire data-cp-mode="${mode}" data-cp-target="${toolName}" data-cp-key="${key}" data-cp-opacity="${allowNone}">
-        <span class="opt-label">${ctx.label ?? key}</span>
+        <span class="opt-label">${ctx.label ?? label}</span>
         <div class="cp-row">${picker}${noneBtn}</div>
       </div>`;
     }
@@ -456,11 +505,11 @@ function renderSchemaField(key, value, typeSpec, ctx) {
   if (kind === 'string') {
     const safe = String(value ?? '').replace(/"/g, '&quot;');
     if (mode === 'edit') {
-      return `<div class="field"><label>${key}</label><input type="text" value="${safe}"
+      return `<div class="field"><label>${label}</label><input type="text" value="${safe}"
         style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;box-sizing:border-box;font-family:ui-monospace,monospace"
         onchange="App.commitEdit('${ctx.id}',{'${key}':this.value})"/></div>`;
     } else {
-      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="text" value="${safe}"
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? label}</span><input type="text" value="${safe}"
         style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;width:120px"
         onchange="App.setToolParam('${ctx.toolName}','${key}',this.value)"/></div>`;
     }
@@ -470,11 +519,11 @@ function renderSchemaField(key, value, typeSpec, ctx) {
   if (kind === 'bool') {
     const checked = !!value;
     if (mode === 'edit') {
-      return `<div class="field"><label>${key}</label><input type="checkbox" ${checked ? 'checked' : ''}
+      return `<div class="field"><label>${label}</label><input type="checkbox" ${checked ? 'checked' : ''}
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
         onchange="App.commitEdit('${ctx.id}',{'${key}':this.checked})"/></div>`;
     } else {
-      return `<div class="opt-row"><label style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;cursor:pointer"><span class="opt-label">${ctx.label ?? key}</span><input type="checkbox" ${checked ? 'checked' : ''}
+      return `<div class="opt-row"><label style="display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px;cursor:pointer"><span class="opt-label">${ctx.label ?? label}</span><input type="checkbox" ${checked ? 'checked' : ''}
         style="width:18px;height:18px;cursor:pointer;accent-color:var(--accent)"
         onchange="App.setToolParam('${ctx.toolName}','${key}',this.checked)"/></label></div>`;
     }
@@ -486,23 +535,23 @@ function renderSchemaField(key, value, typeSpec, ctx) {
     const hasRange = min !== undefined && max !== undefined;
     if (mode === 'edit') {
       if (hasRange) {
-        return `<div class="field"><label>${key}</label>
+        return `<div class="field"><label>${label}</label>
           <range-ticked data-rt-wire data-rt-mode="edit" data-rt-target="${ctx.id}" data-rt-key="${key}"
             min="${min}" max="${max}" step="${step}" value="${value ?? min}"></range-ticked>
           </div>`;
       }
-      return `<div class="field"><label>${key}</label><input type="number" value="${value ?? 0}"
+      return `<div class="field"><label>${label}</label><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"
         style="width:100%;font-size:13px;padding:5px 8px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;box-sizing:border-box"
         onchange="App.commitEdit('${ctx.id}',{'${key}':Number(this.value)})"/></div>`;
     } else {
       if (hasRange) {
-        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span>
+        return `<div class="opt-row"><span class="opt-label">${ctx.label ?? label}</span>
           <range-ticked data-rt-wire data-rt-mode="${mode}" data-rt-target="${ctx.toolName}" data-rt-key="${key}"
             style="flex:1;min-width:0" min="${min}" max="${max}" step="${step}" value="${value ?? min}"></range-ticked>
           </div>`;
       }
-      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? key}</span><input type="number" value="${value ?? 0}"
+      return `<div class="opt-row"><span class="opt-label">${ctx.label ?? label}</span><input type="number" value="${value ?? 0}"
         ${min !== undefined ? `min="${min}"` : ''} step="${step}"
         style="font-size:13px;padding:4px 6px;background:var(--surface-2);border:none;color:var(--text);border-radius:4px;text-align:right;width:80px"
         onchange="App.setToolParam('${ctx.toolName}','${key}',Number(this.value));UI.refreshToolOpts()"></div>`;
@@ -627,7 +676,7 @@ export function toolOptsHTML(data) {
   const values = data.values ?? schema.values ?? {};
   const rows = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec,
-        { mode: 'addQuick', toolName: data.toolName ?? data.label, label: key }))
+        { mode: 'addQuick', toolName: data.toolName ?? data.label }))
     .join('');
   return rows
     ? `<h3>${data.label} options</h3>${rows}`
@@ -1089,7 +1138,7 @@ function defaultToolsBody(data) {
   // 'add'-surface fields from the active tool schema (e.g. fill colour)
   const addFields = Object.entries(types)
     .map(([key, typeSpec]) => renderSchemaField(key, values[key], typeSpec,
-        { mode: 'add', toolName: data.activeTool, label: key }))
+        { mode: 'add', toolName: data.activeTool }))
     .join('');
 
   // Help block — appended when the active tool schema identifies a bounPos type
@@ -1099,11 +1148,11 @@ function defaultToolsBody(data) {
     : '';
 
   return `
-    ${data.layer === 'toys' ? toyPreviewHTML(data) : ''}
     <div class="field"><label>Tool · ${data.layer} layer</label>
       <div class="tool-grid">${data.tools.map(toolBtn).join('')}</div>
     </div>
-    ${addFields}${helpHTML}`;
+    ${addFields}${helpHTML}
+    ${data.layer === 'toys' ? toyPreviewHTML(data) : ''}`;
 }
 
 /**
@@ -1118,7 +1167,7 @@ function bounPosHelpHTML(toyClasses) {
         <ul style="margin:0;padding-left:18px;font-size:12px;font-family:ui-monospace,monospace;color:var(--text-2);line-height:1.9">
           ${toyClasses.map(c => `<li>${c}</li>`).join('')}
         </ul>
-        <div style="font-size:11px;color:var(--text-3);margin-top:6px">Name a boundary after one of these classes to activate the constraint for toys that carry it.</div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:6px">Set a boundary's Matches to one of these classes as a selector (e.g. .card) to constrain the toys that carry it.</div>
       </div>`
     : `<div style="margin-top:8px;font-size:12px;color:var(--text-3);font-style:italic">No class names found on toys yet. Add CSS classes to a toy's &lt;g&gt; or inner &lt;svg&gt; to enable boundary constraints.</div>`;
 

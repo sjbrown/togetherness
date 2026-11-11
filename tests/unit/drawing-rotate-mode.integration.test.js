@@ -4,7 +4,7 @@
  * Rects are rotatable: a third click on a sole-selected rect cycles past
  * 'sel-resize' into 'sel-rotate' and shows round corner handles; dragging
  * one and releasing commits a snapped angle. This exercises the whole path
- * through the real App bus — getRotateModeId/getRotateHandle/startRotate/
+ * through the real App bus — getRotateModeId/startRotate/
  * rotate/commitRotate — the rotate twin of the resize plumbing covered by
  * boun_pos_resize.test.js.
  *
@@ -15,7 +15,7 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { _clearSvgTextCache } from '../../src/toys.js'
+import { _clearSvgTextCache } from '../../src/layer_toys.js'
 
 const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="80" height="100" id="placeholder">
@@ -56,7 +56,9 @@ function makeCanvasDOM() {
         <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
-        <g id="overlay-layer" pointer-events="none"></g>
+        <g id="selection_shared" pointer-events="none"></g>
+        <g id="awareness" pointer-events="none"></g>
+        <g id="selection_local" pointer-events="none"></g>
         <g id="delight-layer" pointer-events="none"></g>
       </svg>
     </div>
@@ -164,25 +166,6 @@ describe('dragging a rotate handle', () => {
     expect(booted.App.getRotateModeId()).toBe(booted.id)
     return booted
   }
-
-  test('getRotateHandle finds the corner handles just outside the shape', async () => {
-    const { App, id } = await inRotateMode()
-    const geo = App.getBBox(id)
-    // [NW, NE, SE, SW], each PAD outside its corner.
-    expect(App.getRotateHandle(id, geo.x - 6, geo.y - 6)).toBe(0)
-    expect(App.getRotateHandle(id, geo.x + geo.width + 6, geo.y + geo.height + 6)).toBe(2)
-    // The middle is the pivot handle's home, so it answers there now.
-    expect(App.getRotateHandle(id, geo.x + geo.width / 2, geo.y + geo.height / 2)).toBe('pivot')
-    // Somewhere on the shape that is neither a corner nor the pivot.
-    expect(App.getRotateHandle(id, geo.x + geo.width / 4, geo.y + geo.height / 2)).toBeNull()
-  })
-
-  test('getRotateHandle returns nothing while the element is in resize mode', async () => {
-    const { App, id } = await bootWithSquare()
-    App.nextSelectionMode(id) // sel-resize only
-    const geo = App.getBBox(id)
-    expect(App.getRotateHandle(id, geo.x + geo.width + 6, geo.y + geo.height + 6)).toBeNull()
-  })
 
   test('commits a snapped angle to the doc — a quarter turn of the SE corner is 90°', async () => {
     const { App, ydoc, id } = await inRotateMode()
@@ -311,10 +294,6 @@ describe('resizing an already-rotated rect', () => {
 
   test('the pointer is measured in the shape\u2019s own turned frame, not the screen\u2019s', async () => {
     const { App, ydoc, id } = await rotatedThenResizing({ x: 100, y: 300 })  // 90°
-    // At 90° the SE handle is drawn where the NE corner's unrotated position
-    // would be — down and left of centre on screen.
-    expect(App.getResizeCorner(id, 94, 306)).toBe(2)
-
     App.startResize(id, 2)
     // Screen (50, 350) is local (350, 350) once un-rotated by the 90°.
     App.commitResize(id, 2, 50, 350)
@@ -340,15 +319,7 @@ describe('resizing an already-rotated rect', () => {
     const { App, ydoc, id } = await rotatedThenResizing({ x: 200, y: 400 })
     expect(rectEl(id).getAttribute('data-rotate')).toBe('45')
     const anchorBefore = onCanvas(rectEl(id), nw(rectEl(id)))
-
-    const corner = App.getResizeCorner(id, ...Object.values(
-      // the SE handle's screen position at 45°, padded out like the overlay draws it
-      (() => { const g = App.getBBox(id); const c = { x: g.x + g.width / 2, y: g.y + g.height / 2 }
-               const d = { x: g.width / 2 + 6, y: g.height / 2 + 6 }
-               const r = Math.PI / 4
-               return { x: c.x + d.x * Math.cos(r) - d.y * Math.sin(r),
-                        y: c.y + d.x * Math.sin(r) + d.y * Math.cos(r) } })()))
-    expect(corner).toBe(2)
+    const corner = 2 // SE
 
     App.startResize(id, corner)
     App.commitResize(id, corner, 260, 420)
@@ -396,10 +367,11 @@ describe('placing the pivot', () => {
     return b
   }
 
-  test('the pivot handle is reported where the pivot is, and answers the hit test', async () => {
-    const { App, id } = await inPivotMode()
+  test('the pivot handle is drawn where the pivot is', async () => {
+    const { App, id, svgEl } = await inPivotMode()
     expect(App.getPivot(id)).toEqual({ fx: 0.5, fy: 0.5, cx: 200, cy: 200 })
-    expect(App.getRotateHandle(id, 200, 200)).toBe('pivot')
+    const hit = svgEl.querySelector('#selection_local [data-handle="pivot"] circle:not(.pivotGlyph)')
+    expect([hit.getAttribute('cx'), hit.getAttribute('cy')].map(Number)).toEqual([200, 200])
   })
 
   test('a drag writes fractions of the shape, snapped to a notable point', async () => {
@@ -410,6 +382,16 @@ describe('placing the pivot', () => {
 
     expect(rectEl(id).getAttribute('data-pivot-x')).toBe('0')
     expect(rectEl(id).getAttribute('data-pivot-y')).toBe('1')
+  })
+
+  test('after a commit the handle is drawn at the committed pivot, so the next press finds it there', async () => {
+    const { App, id, svgEl } = await inPivotMode()
+    App.startPivotDrag(id)
+    App.movePivot(id, 104, 297)
+    App.commitPivot(id, 104, 297)
+
+    const hit = svgEl.querySelector('#selection_local [data-handle="pivot"] circle:not(.pivotGlyph)')
+    expect([hit.getAttribute('cx'), hit.getAttribute('cy')].map(Number)).toEqual([100, 300])
   })
 
   test('placing a pivot on an UNROTATED shape moves nothing', async () => {

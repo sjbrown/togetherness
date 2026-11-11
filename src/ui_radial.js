@@ -1,11 +1,11 @@
 /**
  * ui_radial.js — the bowstring's radial menu
  *
- * Dragging the action square (delight.js) opens a radial menu centred on the
- * square's resting position. Every toy menu action that declares a `radial`
- * property gets a spoke; releasing on a spoke fires that action, with the
- * value under the pointer as its parameter. A tap, or a release anywhere
- * that isn't an applicable spoke, still fires the default action.
+ * Dragging the action square (layer_delight.js) opens a radial menu centred on
+ * the square's resting position. Every toy menu action that declares a `radial`
+ * property gets a spoke; releasing on a spoke fires that action, with the value
+ * under the pointer as its parameter. A tap, or a release anywhere that isn't
+ * an applicable spoke, still fires the default action.
  *
  * Spokes are 45° wedges in the six spots from North clockwise to West (the
  * NW quadrant is where the toy sits). They fill spots in SPOT_ORDER, in menu
@@ -13,8 +13,8 @@
  * greyed, so the others never shift under the player's muscle memory.
  *
  * The menu lives in #delight-layer, under the bowstring's own chrome, for
- * the same reason the bowstring does: #overlay-layer is wiped on every
- * awareness update. It's local only; peers see just the action's result.
+ * the same reason the bowstring does: a redraw of the overlay layers removes
+ * anything overlay.js didn't draw. It's local only; peers see just the action's result.
  *
  * Geometry is in screen px and divided by the view scale at draw time, so
  * the menu is the same size at any zoom, and it stays upright however the
@@ -360,7 +360,7 @@ function render(state) {
  * On a release that picked a spoke: copy the picked segment onto hostEl,
  * under the bowstring chrome, and fly it. The shape goes home with the
  * handle like an arrow on the string — the same translation, duration and
- * overshoot curve as delight.js's snap-back, so the point under the
+ * overshoot curve as layer_delight.js's snap-back, so the point under the
  * pointer lands on the centre — shrinking about that point and fading over
  * the last stretch. The text drifts the other way, a quarter as far,
  * easing to a stop as it grows and fades.

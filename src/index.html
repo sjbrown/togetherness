@@ -26,14 +26,20 @@
     <g id="boun_pos-layer"></g>
     <g id="toys-layer"></g>
     <g id="drawing-layer"></g>
-    <g id="overlay-layer" pointer-events="none"></g>
-    <!-- #delight-layer is NEVER wiped (unlike #overlay-layer, which
-         Overlay.render() clears wholesale on every awareness update).
+    <!-- #selection_shared redraws only when peers' claims or requests change;
+         #awareness on every awareness update. -->
+    <g id="selection_shared" pointer-events="none"></g>
+    <g id="awareness" pointer-events="none"></g>
+    <!-- #selection_local is drawn only from this client's own state, so
+         awareness updates never redraw it. -->
+    <g id="selection_local" pointer-events="none"></g>
+    <!-- #delight-layer is never touched by Overlay.render(), which removes
+         anything from the overlay groups above that it didn't draw.
          The live bowstring gesture and its clones/sparks live here so a
          peer's cursor moving can't destroy an in-flight pull. -->
     <g id="delight-layer" pointer-events="none"></g>
     <!-- #attention-layer is last so attention draws above everything.
-         Only attention_mode.js writes to it; dismissing an origin is a
+         Only layer_attention.js writes to it; dismissing an origin is a
          geometric test in canvas.js, so it never takes pointer events. -->
     <g id="attention-layer" pointer-events="none"></g>
   </svg>
@@ -65,10 +71,11 @@
 
 <!-- ── Menu button (bottom-right) ─────────────────────────────────────────── -->
 <button id="menuBtn" aria-label="Menu" onclick="UI.toggleMenu()">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-    <circle cx="12" cy="5"  r="1.2" fill="currentColor" stroke="none"/>
-    <circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>
-    <circle cx="12" cy="19" r="1.2" fill="currentColor" stroke="none"/>
+  <svg class="menu-ico-closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+    <path d="M4 6h16M4 12h16M4 18h16"/>
+  </svg>
+  <svg class="menu-ico-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 9l6 6 6-6"/>
   </svg>
 </button>
 

@@ -6,17 +6,18 @@
  * draws the resting square at the shape's UNROTATED SE corner and wraps
  * the whole selection decor group in a `rotate(deg cx cy)` transform (see
  * overlay.js's decorGroup/render()) — so on screen, the square ends up at
- * the ROTATED position. But App.startBowstringAt (which canvas.js's
- * pointerdown consults before ordinary hit-testing) and delight.js's own
+ * the ROTATED position. But the bowstring's hit test (which canvas.js's
+ * pointerdown consulted before ordinary hit-testing) and layer_delight.js's own
  * live-gesture chrome both measured against the raw UNROTATED corner, with
  * no rotation compensation at all. A click on the visible (rotated) square
  * landed on empty canvas; a click on the old (rotated-away) corner would
  * have hit it, but nothing draws there any more.
  *
- * Fix: delight.js's bowstringOrigin/hitTestBowstring/startBowstring all
- * take the same { deg, cx, cy } App.getRotation returns and rotate the SE
- * corner the same way overlay.js's decorGroup does; App.startBowstringAt
- * passes it through.
+ * Fix: layer_delight.js's bowstringOrigin and startBowstring take the same
+ * { deg, cx, cy } App.getRotation returns and place the square at the
+ * rotated SE-most corner. A press is now dispatched by the drawn square
+ * itself ([data-handle="bowstring"]), so where it is drawn is where it is
+ * pressed.
  *
  * Same boot fixture as bowstring-resize-mode.integration.test.js: a single
  * real App instance, real Yjs doc, real Awareness, real DOM. ui.js and
@@ -26,8 +27,9 @@
 // @vitest-environment jsdom
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, applyRotate, _clearSvgTextCache } from '../../src/toys.js'
-import { bowstringOrigin } from '../../src/delight.js'
+import { applyRotate, _clearSvgTextCache } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
+import { bowstringOrigin } from '../../src/layer_delight.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -54,7 +56,7 @@ vi.mock('../../src/canvas.js', () => ({
 
 // A stand-in for chip.svg — real toyType (so TOY_TYPES[toyType] exists and
 // addToy's fetch resolves), pared down to the one thing this test cares
-// about: the tt_able_rotate class that makes toys.js's selectModes()
+// about: the tt_able_rotate class that makes layer_toys.js's selectModes()
 // report 'sel-rotate' alongside 'sel-action'.
 const ROTATABLE_TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" class="chip tt_able_rotate" id="chip">
@@ -70,7 +72,9 @@ function makeCanvasDOM() {
         <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
-        <g id="overlay-layer" pointer-events="none"></g>
+        <g id="selection_shared" pointer-events="none"></g>
+        <g id="awareness" pointer-events="none"></g>
+        <g id="selection_local" pointer-events="none"></g>
         <g id="delight-layer" pointer-events="none"></g>
       </svg>
     </div>
@@ -117,69 +121,13 @@ async function bootApp() {
 }
 
 describe('bowstring handle on a rotated toy (chip-like)', () => {
-  test('unrotated: the bowstring still fires at the plain SE corner (sanity)', async () => {
-    const { App } = await bootApp()
-    App.select('chip-1')
-
-    const geo = App.getBBox('chip-1')
-    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
-    App.endBowstring({ pointerId: 1 })
-  })
-
-  test('rotated 180°: a click at the toy’s own rotated SE corner misses, at the SE-most corner fires', async () => {
-    const { App, svgEl } = await bootApp()
-    App.select('chip-1')
-
-    const chipEl = svgEl.querySelector('[data-id="chip-1"]')
-    applyRotate(chipEl, 180)
-
-    const geo = App.getBBox('chip-1')
-    const rot = App.getRotation('chip-1')
-    expect(rot?.deg).toBe(180)
-
-    // 180° about the centre sends the own SE corner to the opposite corner.
-    const ownSE = {
-      x: 2 * rot.cx - (geo.x + geo.width + 6),
-      y: 2 * rot.cy - (geo.y + geo.height + 6),
-    }
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, ownSE)).toBe(false)
-
-    const seMost = bowstringOrigin(geo, rot)
-    expect(seMost.x).toBeGreaterThan(ownSE.x)
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, seMost)).toBe(true)
-    App.endBowstring({ pointerId: 1 })
-  })
-
-  test('rotated 90°: a click where the handle is actually drawn fires the bowstring', async () => {
-    const { App, svgEl } = await bootApp()
-    App.select('chip-1')
-
-    const chipEl = svgEl.querySelector('[data-id="chip-1"]')
-    applyRotate(chipEl, 90)
-
-    const geo = App.getBBox('chip-1')
-    const rot = App.getRotation('chip-1')
-    expect(rot?.deg).toBe(90) // sanity: the rotation really took
-
-    // Same math overlay.js's decorGroup uses to place the resting square on
-    // screen — this is what the user actually clicks on.
-    const onScreenPoint = bowstringOrigin(geo, rot)
-
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
-    App.endBowstring({ pointerId: 1 })
-  })
-
   test('with no applicable menu action, no square is drawn and its corner is not claimed', async () => {
     const { App, svgEl } = await bootApp()
     App.hasToyActions.mockReturnValue(false)
     App.select('chip-1')
 
-    expect(svgEl.querySelector('#overlay-layer .bowstring')).toBeNull()
-    const geo = App.getBBox('chip-1')
-    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(false)
+    expect(svgEl.querySelector('#selection_local .bowstring')).toBeNull()
+    expect(App.startBowstring({ pointerId: 1, clientX: 0, clientY: 0 })).toBe(false)
   })
 
   test('rotated 180°: the resting square is upright, outside any rotated group, at bowstringOrigin', async () => {
@@ -194,7 +142,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     const rot = App.getRotation('chip-1')
     const origin = bowstringOrigin(geo, rot)
 
-    const layer = svgEl.querySelector('#overlay-layer')
+    const layer = svgEl.querySelector('#selection_local')
     const group = layer.querySelector('.bowstring')
     expect(group).toBeTruthy()
     expect(group.parentElement).toBe(layer)
@@ -218,9 +166,9 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     const rot = App.getRotation('chip-1')
     const onScreenPoint = bowstringOrigin(geo, rot)
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
+    expect(App.startBowstring({ pointerId: 1, clientX: 0, clientY: 0 })).toBe(true)
 
-    // delight.js draws its live handle chrome at the gesture's own origin —
+    // layer_delight.js draws its live handle chrome at the gesture's own origin —
     // find the handle group it just built and check it landed on the same
     // rotated point, not the stale unrotated one.
     const delightLayer = svgEl.querySelector('#delight-layer')
@@ -241,7 +189,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     const rot = App.getRotation('chip-1')
     const onScreenPoint = bowstringOrigin(geo, rot)
 
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, onScreenPoint)).toBe(true)
+    expect(App.startBowstring({ pointerId: 1, clientX: 0, clientY: 0 })).toBe(true)
 
     // The clone (cloneNode of the toy's own <svg>) carries no rotation of
     // its own — spawnDelights has to wrap it in a <g rotate(...)>, the
@@ -259,9 +207,7 @@ describe('bowstring handle on a rotated toy (chip-like)', () => {
     const { App, svgEl } = await bootApp()
     App.select('chip-1')
 
-    const geo = App.getBBox('chip-1')
-    const point = { x: geo.x + geo.width + 6, y: geo.y + geo.height + 6 }
-    expect(App.startBowstringAt({ pointerId: 1, clientX: 0, clientY: 0 }, point)).toBe(true)
+    expect(App.startBowstring({ pointerId: 1, clientX: 0, clientY: 0 })).toBe(true)
 
     const delightLayer = svgEl.querySelector('#delight-layer')
     const toyDelight = delightLayer.querySelector('.toy-delight')

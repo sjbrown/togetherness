@@ -1,5 +1,5 @@
 /**
- * drawing.js — the drawing layer, an op layer (DRAWING_LAYER).
+ * layer_drawing.js — the drawing layer, an op layer (DRAWING_LAYER).
  *
  * Every write is a DOM operation on the live #drawing-layer, run inside a
  * gesture (OpLayer.runGesture) so the envelope captures it as one operation.
@@ -93,6 +93,11 @@ export const SHAPE_TYPES = {
     },
   },
 };
+
+// A fresh id for a drawing shape: its author's user id and a random slug.
+export function newShapeId(userId) {
+  return userId + '_' + Math.random().toString(36).slice(2, 7);
+}
 
 // ── Shape operations ──────────────────────────────────────────────────────────
 // Each takes the layer element or a shape element and mutates the live DOM.
@@ -622,7 +627,7 @@ export function layerData(layerEl) {
 export function getTtStateSchema(svgElOrType) {
   const type = typeof svgElOrType === 'string'
     ? svgElOrType
-    : (svgElOrType?.getAttribute?.('data-type') ?? svgElOrType?.tagName ?? 'rect');
+    : (svgElOrType?.tagName ?? 'rect');
   const def = SHAPE_TYPES[type];
   if (!def) {
     // Unknown type (e.g. 'select', a toy/bounPos tool name) — not a drawing

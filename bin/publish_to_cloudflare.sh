@@ -5,8 +5,9 @@ rclone lsd r2:apps-1kfa-com
 
 echo "Troubleshoot: Show Config with   rclone config show r2"
 
-echo "rclone sync ./src r2:apps-1kfa-com/table"
-rclone sync ./src r2:apps-1kfa-com/table
+# src/dev/ is the mount point for developer pages under bin/dev.sh; never published.
+echo "rclone sync ./src r2:apps-1kfa-com/table --exclude /dev/**"
+rclone sync ./src r2:apps-1kfa-com/table --exclude "/dev/**"
 
 #echo "copy ./src/ r2:apps-1kfa-com/table/"
 #rclone copy ./src/ r2:apps-1kfa-com/table/

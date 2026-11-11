@@ -26,18 +26,19 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import * as Y from 'yjs'
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { TOYS_LAYER } from '../../src/toys.js'
+import { TOYS_LAYER } from '../../src/layer_toys.js'
 import {
-  addToy, getGeom, applyMove, runGesture, activateAllToyScriptsDom,
+  getGeom, applyMove, runGesture, activateLayerToyScripts,
   getSnapPoints, departingPositionEvents, arrivingPositionEvents,
   promoteZOrder, moveToyAndStack,
-  makeLayerAPI, listToysDom, _clearSvgTextCache, _resetToyScriptState,
-} from '../../src/toys.js'
+  makeLayerAPI, listEls, _clearSvgTextCache, _resetToyScriptState,
+} from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 import { getOps } from '../../src/op_dag.js'
 import {
   BOUN_POS_LAYER, makeLayerAPI as makeBoundariesAPI, getSnapPoints as getBoundarySnapPoints,
   computeBoundaryRects, gridFillExtent,
-} from '../../src/boun_pos.js'
+} from '../../src/layer_boun_pos.js'
 import { ensureLayerId } from '../../src/op_layers.js'
 
 const SVG_NS  = 'http://www.w3.org/2000/svg'
@@ -90,7 +91,7 @@ function baseFixtureSvg({ id, className, size = 80 }) {
       ${record('on_depart_position')}
     }
   ]]></script>
-  <g class="tt_positions" data-bounpos-type="pos-set" name="${className}">
+  <g class="tt_positions" data-bounpos-type="pos-set" data-tt-matches=".${className}">
     <circle id="pos" cx="${c}" cy="${c}" r="10"></circle>
   </g>
 </svg>`
@@ -140,7 +141,7 @@ describe('Toys.getSnapPoints', () => {
     expect(pts).toHaveLength(1)
     // chip's own point sits 8px above its own centre (see CHIP_POINT_OFFSET_Y).
     const expected = chipPointFor(300, 200)
-    expect(pts[0]).toMatchObject({ cx: expected.x, cy: expected.y, ownerId: 'chipA' })
+    expect(pts[0]).toMatchObject({ cx: expected.x, cy: expected.y, ownerId: 'chipA', matches: '.chip' })
   })
 
 })
@@ -157,7 +158,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'base1', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'stacker1', toyType: 'dice_d6', x: 500, y: 500, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     const before = getOps(ydoc, TOYS_LAYER).size
@@ -193,7 +194,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'mover', toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     runGesture(ydoc, layerEl, () => {}, {
@@ -226,7 +227,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     await addToy(ydoc, layerEl, { id: 'ownerA', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'ownerB', toyType: 'dice_d6',       x: 500, y: 500, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'mover',  toyType: 'bag',           x: 100, y: 100, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     runGesture(ydoc, layerEl, () => {}, {
@@ -252,7 +253,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     runGesture(ydoc, layerEl, () => {}, {
@@ -272,7 +273,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     expect(() => {
@@ -294,7 +295,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'chipA', toyType: 'chip', x: 300, y: 200, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'chipB', toyType: 'chip', x: 900, y: 900, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
@@ -332,7 +333,7 @@ describe('on_position_* / on_*_position cascade (via runGesture)', () => {
     const ydoc = new Y.Doc()
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'owner', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     expect(() => {
@@ -470,7 +471,7 @@ describe('departingPositionEvents / arrivingPositionEvents', () => {
 
 describe('promoteZOrder — recursive', () => {
   function idsInOrder(layerEl) {
-    return listToysDom(layerEl).map(el => el.getAttribute('data-id'))
+    return listEls(layerEl).map(el => el.getAttribute('data-id'))
   }
 
   test('el is promoted to the topmost (last) position among top-level toys', async () => {
@@ -656,7 +657,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const layerEl = freshLayer()
     await addToy(ydoc, layerEl, { id: 'base1', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'stacker1', toyType: 'dice_d6', x: 500, y: 500, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
@@ -703,7 +704,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
     api.applyMoveCommit(api.find('chipA'), 100, 100) // same centre — a no-op move
 
-    const idsInOrder = listToysDom(layerEl).map(el => el.getAttribute('data-id'))
+    const idsInOrder = listEls(layerEl).map(el => el.getAttribute('data-id'))
     expect(idsInOrder).toEqual(['chipB', 'chipA'])
   })
 
@@ -720,7 +721,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     await addToy(ydoc, layerEl, { id: 'movingBase', toyType: 'meeple', x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'occupant',   toyType: 'dice_d6',       x: 100, y: 100, color: '#fff' })
     await addToy(ydoc, layerEl, { id: 'destBase',   toyType: 'bag',           x: 900, y: 900, color: '#fff' })
-    activateAllToyScriptsDom(ydoc, layerEl)
+    activateLayerToyScripts(ydoc, layerEl)
     await new Promise(r => setTimeout(r, 0))
 
     const api = makeLayerAPI(ydoc, () => layerEl, { id: AUTHOR }, TABLE)
@@ -739,7 +740,7 @@ describe('makeLayerAPI().applyMoveCommit — the full 5-step sequence', () => {
     expect(occGeom.y + occGeom.height / 2).toBe(900)
 
     // movingBase (and its occupant) promoted above destBase.
-    const idsInOrder = listToysDom(layerEl).map(el => el.getAttribute('data-id'))
+    const idsInOrder = listEls(layerEl).map(el => el.getAttribute('data-id'))
     expect(idsInOrder).toEqual(['destBase', 'movingBase', 'occupant'])
 
     // destBase reacted to the arrival, movingBase reacted to its own arrival.
@@ -774,7 +775,7 @@ describe('boun_pos snap points after a move', () => {
     L.render(layerEl)
     const circles = gridFillExtent(0, 0, 200, 200, 'square', 100, 100)
     L.add('pos-grid-sq', {
-      id: 'ps1', name: 'chip', snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
+      id: 'ps1', matches: '.chip', snapRadius: 30, genType: 'square', xSpacing: 100, ySpacing: 100,
       x: 0, y: 0, w: 200, h: 200, circles,
     })
     return { L, layerEl }
@@ -794,10 +795,12 @@ describe('boun_pos snap points after a move', () => {
 
   test('boundary rects follow a move too', () => {
     const { L, layerEl } = setup()
-    L.add('boundary', { id: 'b1', name: 'chip', x: 0, y: 0, w: 100, h: 100 })
+    L.add('boundary', { id: 'b1', matches: '.chip', x: 0, y: 0, w: 100, h: 100 })
     L.applyMoveCommit(L.find('b1'), 700, 700)
-    expect(computeBoundaryRects(layerEl, new Set(['chip']), { x: 750, y: 750 }))
+    const chip = document.createElementNS(SVG_NS, 'g')
+    chip.setAttribute('class', 'chip')
+    expect(computeBoundaryRects(layerEl, chip, { x: 750, y: 750 }))
       .toEqual([{ x: 700, y: 700, w: 100, h: 100 }])
-    expect(computeBoundaryRects(layerEl, new Set(['chip']), { x: 50, y: 50 })).toBeNull()
+    expect(computeBoundaryRects(layerEl, chip, { x: 50, y: 50 })).toBeNull()
   })
 })

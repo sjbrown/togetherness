@@ -14,14 +14,15 @@
  *
  * ui.js and canvas.js are mocked (this is not a gesture test — canvas-select.test.js
  * covers gesture-to-App-call wiring separately); only app.js, overlay.js,
- * soft_lock.js, toys.js, and real y-protocols Awareness are live.
+ * soft_lock.js, layer_toys.js, and real y-protocols Awareness are live.
  */
 
 // @vitest-environment jsdom
 import * as Y from 'yjs'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { addToy, _clearSvgTextCache } from '../../src/toys.js'
+import { _clearSvgTextCache } from '../../src/layer_toys.js'
+import { addToy } from '../helpers/toys.js'
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
@@ -65,7 +66,9 @@ function makeCanvasDOM() {
         <g id="boun_pos-layer"></g>
         <g id="toys-layer"></g>
         <g id="drawing-layer"></g>
-        <g id="overlay-layer" pointer-events="none"></g>
+        <g id="selection_shared" pointer-events="none"></g>
+        <g id="awareness" pointer-events="none"></g>
+        <g id="selection_local" pointer-events="none"></g>
         <g id="delight-layer" pointer-events="none"></g>
       </svg>
     </div>
@@ -140,7 +143,7 @@ describe('soft-lock e2e — clicking a held element (real App.select, real DOM)'
     App.select('die-1') // the REAL function — this is Bailey clicking Alice's die
 
     expect(App.getSelectedIds()).toEqual([]) // request, not a select
-    const rings = document.querySelectorAll('#overlay-layer .requestedRing')
+    const rings = document.querySelectorAll('#selection_shared .requestedRing')
     expect(rings).toHaveLength(1)
   })
 
@@ -153,27 +156,20 @@ describe('soft-lock e2e — clicking a held element (real App.select, real DOM)'
 
     // No local drag ring (drag-ring class) should appear — startDrag's own
     // isHeldByOther guard should have no-op'd.
-    expect(document.querySelectorAll('#overlay-layer .drag-ring')).toHaveLength(0)
+    expect(document.querySelectorAll('#selection_local .drag-ring')).toHaveLength(0)
     expect(awareness.getLocalState()?.drag).toBeUndefined()
   })
 })
 
-describe('soft-lock e2e — local cleanup must precede broadcast (ordering regression)', () => {
+describe('soft-lock e2e — deselecting an element a peer also holds', () => {
   test('deselecting an elId a remote peer also holds correctly shows their remote ring, not nothing', async () => {
-    // Reproduces a real live bug: setLocalStateField fires the awareness
-    // 'change' event SYNCHRONOUSLY, which can trigger syncFromAwareness
-    // before the caller has a chance to clean up its own stale local
-    // SelectionMode entry. syncFromAwareness's local-takes-precedence guard
-    // (added for a different bug) would then see the still-present stale
-    // 'local' entry and skip assigning 'remote' — and nothing afterward
-    // re-triggers that decision, leaving the elId with NO ring at all
-    // rather than the correct remote one. Only a real end-to-end test with
-    // the actual synchronous event cascade can catch this — hand-built-Map
-    // tests that call syncFromAwareness directly bypass the ordering
-    // entirely and would pass either way.
+    // setLocalStateField fires the awareness 'change' event SYNCHRONOUSLY,
+    // so syncFromAwareness runs in the middle of the deselect. Only a real
+    // end-to-end test with that event cascade exercises it — hand-built-Map
+    // tests that call syncFromAwareness directly bypass the ordering.
     const { App, awareness } = await bootPeerB()
 
-    App.select('die-1') // Bailey holds it locally — 'local' SelectionMode entry exists
+    App.select('die-1') // Bailey holds it locally — a SelectionModeLocal entry exists
     expect(App.getSelectedIds()).toEqual(['die-1'])
 
     // Now Alice ALSO broadcasts holding the same elId (however that
@@ -182,14 +178,13 @@ describe('soft-lock e2e — local cleanup must precede broadcast (ordering regre
     // for this test; what matters is Bailey's client now sees a conflict).
     simulateRemoteSelection(awareness, 'die-1')
 
-    // Bailey deselects — this is the exact call sequence that broadcasts
-    // (triggering a synchronous syncFromAwareness) before this fix ensured
-    // local cleanup happens first.
+    // Bailey deselects — the broadcast triggers a synchronous
+    // syncFromAwareness mid-call.
     App.select(null)
 
     expect(App.getSelectedIds()).toEqual([])
-    expect(document.querySelectorAll('#overlay-layer .selRing')).toHaveLength(0) // no longer local
-    expect(document.querySelectorAll('#overlay-layer .remote-sel')).toHaveLength(1) // correctly shows Alice's ring
+    expect(document.querySelectorAll('#selection_local .selRing')).toHaveLength(0) // no longer local
+    expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1) // correctly shows Alice's ring
   })
 
   test('toggleSelection deselect-to-empty also correctly reveals the remote ring', async () => {
@@ -201,7 +196,7 @@ describe('soft-lock e2e — local cleanup must precede broadcast (ordering regre
     App.toggleSelection('die-1') // toggling off my only selected id
 
     expect(App.getSelectedIds()).toEqual([])
-    expect(document.querySelectorAll('#overlay-layer .remote-sel')).toHaveLength(1)
+    expect(document.querySelectorAll('#selection_shared .remote-sel')).toHaveLength(1)
   })
 })
 

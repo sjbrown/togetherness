@@ -126,20 +126,48 @@ html, body {
 .selRing   { pointer-events: none; }
 .peer-ring { pointer-events: none; }
 .requestedRing { pointer-events: none; }
+
+/* The request ring draws itself on over REQUEST_WINDOW_MS (3000ms, see
+   soft_lock.js), holds full for 100ms, and repeats until the request
+   resolves: 3000 / 3100 = 96.774%. overlay.js sets a negative
+   animation-delay for a request already under way. Reduced motion: the
+   full ring, still. */
+@media (prefers-reduced-motion: no-preference) {
+  .requestedRing { stroke-dasharray: 1 1; animation: request-ring 3100ms linear infinite both; }
+}
+@keyframes request-ring {
+  0%      { stroke-dashoffset: 1; animation-timing-function: ease-in-out; }
+  96.774% { stroke-dashoffset: 0; }
+  100%    { stroke-dashoffset: 0; }
+}
 .remote-sel     { pointer-events: none; }
 .handle    { pointer-events: auto; }
+.handleHit { pointer-events: auto; }
 /* Corner handles get their cursor inline, per render — a handle is drawn
    turned with its shape, so the direction it drags along turns too and no
    static rule per corner can be right at every angle. See overlay.js's
    handleCursor(). The radius handle is circles-only, and circles don't
    rotate, so it stays here. */
-.handle[data-corner="r"]  { cursor: ew-resize; }
+[data-handle="resize"][data-corner="r"] { cursor: ew-resize; }
 .rotateGlyph { pointer-events: none; }
 .pivotGlyph  { pointer-events: none; }
 .pivotHandle { pointer-events: auto; cursor: crosshair; }
 /* Pointer capture routes the drag to #stage, so without this the crosshair
    would be lost the moment the pointer left the handle it is dragging. */
 #stage.pivot-dragging, #stage.pivot-dragging * { cursor: crosshair; }
+
+/* #selection_local and #selection_shared keep their nodes across renders
+   (overlay.js's reconcile), so these run once, as a ring or handle first
+   appears. Rings fade only: a ring may carry a rotate transform attribute,
+   which a CSS transform would override while it ran. */
+@media (prefers-reduced-motion: no-preference) {
+  #selection_local .selRing,
+  #selection_shared .remote-sel { animation: sel-ring-in 140ms ease-out; }
+  #selection_local .handle  { animation: sel-handle-in 160ms cubic-bezier(.34, 1.56, .64, 1);
+                              transform-box: fill-box; transform-origin: center; }
+}
+@keyframes sel-ring-in   { from { opacity: 0; } }
+@keyframes sel-handle-in { from { opacity: 0; transform: scale(.5); } }
 
 /* A toy nested inside a tray is excluded from native hit-testing, so a
  * click over it lands on whatever's actually painted underneath — the
@@ -333,6 +361,33 @@ html, body {
   background: none; box-shadow: none; padding: 0; border-radius: 0;
 }
 
+/* Mobile: while #menuItems is open the pill shrinks to a circle that
+   matches #menuBtn's resting look (52px, hamburger). setPillCollapsed()
+   pins explicit pixel sizes so width/height have something to animate. */
+@media (max-width: 759px) {
+  #pill {
+    transition: width .2s, height .2s, padding .2s, border-radius .2s,
+                background-color .2s, box-shadow .2s;
+  }
+  #pill > * { transition: opacity .2s; }
+  #pill > .ico { transition: color .15s, box-shadow .15s, transform .1s, opacity .2s; }
+  #pill.collapsed {
+    width: 52px; height: 52px; padding: 0; border-radius: 26px; overflow: hidden;
+    background-color: var(--surface); box-shadow: var(--emboss);
+    pointer-events: none;
+  }
+  #pill.collapsed > * { opacity: 0; }
+  #pill::after {
+    content: ''; position: absolute; left: 50%; top: 50%;
+    width: 14.7px; height: 2px; border-radius: 1px;
+    background: var(--text-2);
+    box-shadow: 0 -5.5px 0 var(--text-2), 0 5.5px 0 var(--text-2);
+    transform: translate(-50%, -50%);
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #pill.collapsed::after { opacity: 1; }
+}
+
 .toy-menu-row {
   background: var(--surface);
   backdrop-filter: blur(18px) saturate(1.3); -webkit-backdrop-filter: blur(18px) saturate(1.3);
@@ -407,6 +462,7 @@ html, body {
 .step-val { font-size: 14px; font-weight: 500; min-width: 28px; text-align: center; color: var(--text); }
 
 /* ── Menu button (bottom-right) ───────────────────────────── */
+:root { --menu-w: 220px; }
 #menuBtn {
   position: fixed; z-index: 50;
   right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 16px);
@@ -414,36 +470,51 @@ html, body {
   background: var(--surface); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
   box-shadow: var(--emboss); color: var(--text-2); border: none;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
-  transition: box-shadow .2s, color .15s;
+  transition: box-shadow .2s, color .15s, width .2s, border-radius .2s;
 }
-#menuBtn.open { color: var(--primary); box-shadow: var(--emboss-active); }
-#menuBtn svg  { width: 22px; height: 22px; transition: transform .25s; }
-#menuBtn.open svg { transform: rotate(90deg); }
+/* Open: the button widens into the menu's bottom row. */
+#menuBtn.open {
+  width: var(--menu-w); border-radius: 0 0 20px 20px; color: var(--primary);
+  box-shadow:
+    inset 0 1px 0 var(--border),
+    inset 0 -1px 0 rgba(0,0,0,0.55),
+    0 0 0 1px rgba(0,0,0,0.70),
+    0 4px 18px rgba(0,0,0,0.55);
+}
+#menuBtn svg  { position: absolute; width: 22px; height: 22px; transition: opacity .25s, transform .25s; }
+#menuBtn .menu-ico-open { opacity: 0; transform: translateY(-6px); }
+#menuBtn.open .menu-ico-closed { opacity: 0; transform: translateY(6px); }
+#menuBtn.open .menu-ico-open   { opacity: 1; transform: translateY(0); }
 
 #menuItems {
   position: fixed; z-index: 49;
-  right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 78px);
-  display: flex; flex-direction: column-reverse; gap: 10px; align-items: stretch;
+  right: calc(var(--safe-r) + 14px); bottom: calc(var(--safe-b) + 68px);
+  width: var(--menu-w);
+  display: flex; flex-direction: column-reverse; align-items: stretch;
+  background: var(--surface); backdrop-filter: blur(18px) saturate(1.3); -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  box-shadow:
+    inset 0 2px 0 rgba(210,185,130,0.40),
+    0 0 0 1px rgba(0,0,0,0.70),
+    0 4px 18px rgba(0,0,0,0.55);
+  border-radius: 20px 20px 0 0; overflow: hidden;
   pointer-events: none; opacity: 0; transform: translateY(16px);
   transition: opacity .2s, transform .2s;
 }
 #menuItems.open { pointer-events: auto; opacity: 1; transform: translateY(0); }
-.menu-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; }
-.menu-label {
-  font-size: 12px; font-weight: 500; letter-spacing: .02em;
-  background: var(--surface); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-  box-shadow: var(--emboss); border-radius: 10px; padding: 4px 11px;
-  color: var(--text-2); white-space: nowrap;
+.menu-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+  padding: 12px 16px; cursor: pointer; color: var(--text-2);
+  border-top: 1px solid var(--border);
 }
+.menu-item:last-child { border-top: none; }
+.menu-label { font-size: 13px; font-weight: 500; letter-spacing: .02em; white-space: nowrap; }
 .menu-circle {
-  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
-  background: var(--surface); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-  box-shadow: var(--emboss); color: var(--text-2); position: relative;
+  width: 24px; height: 24px; flex-shrink: 0; position: relative;
   display: flex; align-items: center; justify-content: center;
 }
 .menu-circle svg { width: 20px; height: 20px; }
-.menu-item:hover .menu-label  { color: var(--text); }
-.menu-item:hover .menu-circle { color: var(--primary); box-shadow: var(--emboss-active); }
+.menu-item:hover { color: var(--text); background: var(--surface-2); }
+.menu-item:hover .menu-circle { color: var(--primary); }
 
 /* ── Scrim (mobile bottom-sheet backdrop only) ────────────── */
 #scrim {
@@ -537,7 +608,7 @@ html, body {
   display: block; font-size: 10px; font-weight: 700; color: var(--text-3);
   text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px;
 }
-.tool-preview { height: 120px; margin-bottom: 14px; padding: 8px; background: var(--surface-2); border-radius: 8px; box-sizing: border-box; }
+.tool-preview { height: 120px; margin-top: 14px; padding: 8px; background: var(--surface-2); border-radius: 8px; box-sizing: border-box; }
 .tool-preview > svg { display: block; width: 100%; height: 100%; }
 .tool-grid { display: flex; gap: 8px; flex-wrap: wrap; }
 .tool {
@@ -732,11 +803,12 @@ svg.tt-icon-letter {
   animation: tt-icon-pulse 1.2s ease-in-out infinite;
 }
 
-/* ── Bowstring handle (delight.js / #delight-layer) ───────────────────────── */
+/* ── Bowstring handle (layer_delight.js / #delight-layer) ─────────────────── */
 
-/* The resting affordance in #overlay-layer. The live handle is built in
+/* The resting affordance in #selection_local. The live handle is built in
  * #delight-layer on pointerdown and is a separate DOM tree entirely. */
 .bowstring { pointer-events: auto; cursor: grab; }
+.groupAction { pointer-events: auto; cursor: pointer; }
 #delight-layer { pointer-events: none; }
 
 /* Press-scale lives on its own transform layer, separate from the

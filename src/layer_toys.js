@@ -1,5 +1,5 @@
 /**
- * toys.js — the toys layer: tool registry, DOM operations, and the toy
+ * layer_toys.js — the toys layer: tool registry, DOM operations, and the toy
  * behaviour contract (script activation, menu actions, lifecycle hooks).
  *
  * Data model — the live #toys-layer is the document. Gestures mutate it in
@@ -31,8 +31,8 @@ import { runInEnvelope, isInsideEnvelope } from './envelope.js';
 export { isInsideEnvelope };
 import { defineOpLayer } from './op_layers.js';
 import * as OpLayer from './op_layer.js';
-// geometry.js is shape-agnostic geometry, shared with drawing.js and
-// boun_pos.js.
+// geometry.js is shape-agnostic geometry, shared with layer_drawing.js and
+// layer_boun_pos.js.
 import * as Geometry from './geometry.js';
 import { ROTATE_ATTR, CENTER_PIVOT, getRotation, rotationCenter } from './geometry.js';
 import { defaultParams } from './ui_radial.js';
@@ -257,7 +257,7 @@ export function isForeignToyG(el) {
 
 /**
  * The whole toy-import contract for one #toys-layer child, in one call —
- * this is the only thing a caller outside toys.js needs to know about a
+ * this is the only thing a caller outside layer_toys.js needs to know about a
  * reimported toy.
  *
  * Returns { parsedNode, scripts }. parsedNode is null when el doesn't
@@ -266,7 +266,7 @@ export function isForeignToyG(el) {
  * parsedNode is el's subtree normalised for the data-id invariant
  * (normalizeForeignToySubtree) with any embedded <script>s already
  * stripped, and those scripts have already been hoisted into ydoc's own
- * scripts fragment — same as at placement time (addToy) — since
+ * scripts fragment — same as at placement time (addToyEl) — since
  * hoisting needs data-toy-type, which is exactly the kind of toy-contract
  * detail a caller storing/exporting documents shouldn't have to read.
  * scripts is returned too, for a caller that wants to know what was found
@@ -412,7 +412,7 @@ export function svgTextToDom(svgText, prefix) {
  * Build a toy's rendered <g> wrapper, ready to insert into the layer.
  * attrs: { id, toyType, x, y, color } — x,y is the centre point.
  */
-export function buildToyDom(attrs, svgText) {
+export function buildToyEl(attrs, svgText) {
   const { id, toyType, x, y, color } = attrs
   const { svgEl, colorMatrices, width: nativeWidth, height: nativeHeight, scripts } =
     svgTextToDom(svgText, `${id}__`)
@@ -459,7 +459,7 @@ export function toolInitArgs(def, params, fallbackColor) {
  * show. Ids are scoped by `id`. Decorative: scripts are dropped.
  */
 export function buildToyPreviewSvg(id, svgText, toyType, initArgs) {
-  const { toyEl } = buildToyDom({ id, toyType, x: 0, y: 0, color: initArgs.color }, svgText)
+  const { toyEl } = buildToyEl({ id, toyType, x: 0, y: 0, color: initArgs.color }, svgText)
   const svg = toyEl.firstElementChild
   try { runInitializers(toyEl, toyType, initArgs) } catch (err) { console.warn('[toys] preview initialize failed', err) }
   svg.setAttribute('x', '0')
@@ -473,8 +473,8 @@ export function buildToyPreviewSvg(id, svgText, toyType, initArgs) {
  * Place a toy into the live layer. Hoists the template's inline scripts
  * into ydoc, then appends the wrapper. Call from inside runInEnvelope.
  */
-export function addToyDom(ydoc, layerEl, attrs, svgText) {
-  const { toyEl, scripts } = buildToyDom(attrs, svgText)
+export function addToyEl(ydoc, layerEl, attrs, svgText) {
+  const { toyEl, scripts } = buildToyEl(attrs, svgText)
   hoistInlineScripts(ydoc, attrs.toyType, scripts)
   layerEl.appendChild(toyEl)
   return toyEl
@@ -484,7 +484,7 @@ export function addToyDom(ydoc, layerEl, attrs, svgText) {
  * Fetch a toyType's SVG template text, using/warming _svgTextCache.
  * Throws if toyType isn't registered in TOY_TYPES or the fetch fails.
  */
-async function fetchToySvgText(toyType) {
+export async function fetchToySvgText(toyType) {
   let svgText = _svgTextCache.get(toyType)
   if (svgText) return svgText
   const def = TOY_TYPES[toyType]
@@ -494,21 +494,6 @@ async function fetchToySvgText(toyType) {
   svgText = await res.text()
   _svgTextCache.set(toyType, svgText)
   return svgText
-}
-
-/**
- * Place a toy directly onto a layer's DOM. Fetches the toy's SVG file on
- * first use and caches it; subsequent placements of the same toy type are
- * cache hits. attrs: { id, toyType, x, y, color } (x,y is the center point).
- *
- * Not a gesture — nothing is committed to the op log. This exists for
- * building up a layerEl's contents before a checkpoint is taken (table
- * genesis, seeding a scratch layer for tests) — see placeToy for the
- * gesture-committing counterpart used once a table is live.
- */
-export async function addToy(ydoc, layerEl, attrs) {
-  const svgText = await fetchToySvgText(attrs.toyType)
-  return addToyDom(ydoc, layerEl, attrs, svgText)
 }
 
 /**
@@ -622,7 +607,7 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
   attachScopedLookup(g, newId)
   // No-ops without a carried-over data-rotate. Matters here for a NESTED
   // clone (its geometry never moves again); the root gets re-synced once
-  // more once cloneToyDom repositions it.
+  // more once cloneToyEl repositions it.
   syncRotation(g)
 
   cloned.push({ id: newId, toyType, el: g })
@@ -630,17 +615,17 @@ function cloneToyBoundary(sourceEl, newId, cloned) {
 }
 
 /**
- * clone cloneeEl under a fresh id, placed via clonerEl's own .tt_target
- * marker if present.
- * Then re-run initialize() on every cloned instance.
+ * Clone cloneeEl under a fresh id, placed at clonerEl: on its own
+ * .tt_target marker if it has one, else its anchor. Then re-run
+ * initialize() on every cloned instance.
  */
-export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
+export function cloneToyAt(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
   const target = clonerEl?.querySelector?.('.tt_target')
   const { x, y } = target ? getInnerAnchor(clonerEl, target) : getAnchor(clonerEl)
   const newId = newToyId()
 
   const { result } = ensureEnvelope(ydoc, layerEl, () => {
-    const built = addClonedToyDom(layerEl, cloneeEl, newId, x, y)
+    const built = addClonedToyEl(layerEl, cloneeEl, newId, x, y)
     for (const { toyType, el } of built.cloned) runInitializers(el, toyType)
     return built
   }, { gesture: 'clone', ...opts })
@@ -651,7 +636,7 @@ export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
 /**
  * Deep-clone an already-placed toy under a fresh id, nested toys and
  * all — the "duplicate this specific instance, live state and all"
- * counterpart to buildToyDom's "instantiate a fresh one from its
+ * counterpart to buildToyEl's "instantiate a fresh one from its
  * template". Used by supply-style toys (see src/toy/supply.svg) that
  * hand back a copy of whatever they're holding rather than conjuring a
  * blank instance.
@@ -662,7 +647,7 @@ export function toyCloneToy(ydoc, layerEl, clonerEl, cloneeEl, opts = {}) {
  * Returns { toyEl, cloned }, where cloned lists every toy instance this
  * produced ({ id, toyType, el })
  */
-export function cloneToyDom(sourceEl, newId, x, y) {
+export function cloneToyEl(sourceEl, newId, x, y) {
   const cloned = []
   const toyEl  = cloneToyBoundary(sourceEl, newId, cloned)
   const svgEl  = toyEl.querySelector(':scope > svg')
@@ -676,9 +661,9 @@ export function cloneToyDom(sourceEl, newId, x, y) {
   return { toyEl, cloned }
 }
 
-/** Clone + append, mirroring addToyDom's relationship to buildToyDom. */
-export function addClonedToyDom(layerEl, sourceEl, newId, x, y) {
-  const result = cloneToyDom(sourceEl, newId, x, y)
+/** Clone + append, mirroring addToyEl's relationship to buildToyEl. */
+export function addClonedToyEl(layerEl, sourceEl, newId, x, y) {
+  const result = cloneToyEl(sourceEl, newId, x, y)
   layerEl.appendChild(result.toyEl)
   return result
 }
@@ -721,7 +706,7 @@ export function deleteEl(layerEl, id) {
  * Note, there's also an end-of-gesture scan (runContentsChangeCascadeInto)
  * called by runGesture as a backstop
  */
-export function reparentToyDom(layerEl, id, containerElId) {
+export function reparentEl(layerEl, id, containerElId) {
   const el = layerEl.querySelector(`[data-id="${id}"]`)
   if (!el) throw new Error(`[toys] reparentToy: toy not found: ${id}`)
   const elSvg = el.tagName === 'svg' ? el : el.querySelector('svg')
@@ -800,7 +785,7 @@ export function getGeom(svgEl) {
 }
 
 /**
- * The drag anchor for a toy is its centre point — matching how addToy places
+ * The drag anchor for a toy is its centre point — matching how addToyEl places
  * it: x = center - width/2, y = center - height/2 (the toy's own native size).
  * Returns { x, y } in canvas-space, or { x: 0, y: 0 } if geom is unavailable.
  */
@@ -890,17 +875,28 @@ export function findDropTarget(layerEl, draggedId, rx, ry) {
  * Whether a container's tt_contents group accepts toyEl. The group may carry
  * a `data-tt-matches` attribute: a CSS selector (`.card`) that toyEl's wrapper or
  * its own inner <svg> must match, the same two elements a tt_positions
- * `name` is compared against when snapping. No `data-tt-matches` accepts anything.
+ * group's own `data-tt-matches` is compared against when snapping. No
+ * `data-tt-matches` on a container accepts anything.
  *
  * A selector that doesn't parse accepts nothing, and says so.
  */
 export function acceptsToy(contentsGroup, toyEl) {
   const selector = contentsGroup.getAttribute('data-tt-matches')
   if (!selector) return true
+  return selectorMatchesToy(selector, toyEl)
+}
+
+/**
+ * Whether a CSS selector matches toyEl's wrapper or its own inner <svg>. An
+ * empty selector matches nothing, so callers decide what "no selector" means.
+ * A selector that doesn't parse matches nothing, and says so.
+ */
+export function selectorMatchesToy(selector, toyEl) {
+  if (!selector) return false
   try {
     return toyEl.matches(selector) || !!toyEl.querySelector(':scope > svg')?.matches(selector)
   } catch (err) {
-    console.warn(`[toys] tt_contents data-tt-matches="${selector}" is not a valid selector`)
+    console.warn(`[toys] data-tt-matches="${selector}" is not a valid selector`)
     return false
   }
 }
@@ -950,7 +946,7 @@ function localToLayerMatrix(localEl, layerEl) {
  * should look it up once per call rather than once per owner.
  */
 function getPositionsMeta(domEl, layerInv) {
-  const NULL = { g: null, name: null, snapRadius: null, circles: null, canvasCircles: null }
+  const NULL = { g: null, matches: null, snapRadius: null, circles: null, canvasCircles: null }
   const g = domEl?.querySelector?.(`.${domEl.id}__tt_positions`) ?? null
   if (!g) return NULL
 
@@ -958,7 +954,7 @@ function getPositionsMeta(domEl, layerInv) {
   if (!circles.length) return NULL
   const c0 = circles[0]
   const snapRadius = Number(g.getAttribute('data-snap-radius') ?? c0.getAttribute('r'))
-  const name = g.getAttribute('name') || '';
+  const matches = g.getAttribute('data-tt-matches') || '';
 
   const groupCtm = g.getScreenCTM?.()
   const m = layerInv && groupCtm ? layerInv.multiply(groupCtm) : null
@@ -976,7 +972,7 @@ function getPositionsMeta(domEl, layerInv) {
       cy: cx * m.b + cy * m.d + m.f,
     })
   })
-  return { g, name, snapRadius, circles, canvasCircles }
+  return { g, matches, snapRadius, circles, canvasCircles }
 }
 
 /**
@@ -988,11 +984,11 @@ export function getSnapPoints(layerEl) {
 
   for (const ownerEl of layerEl.querySelectorAll(':scope > [data-id]')) {
     const ownerId = ownerEl.getAttribute('data-id')
-    const { g, canvasCircles, name } = getPositionsMeta(ownerEl, layerInv)
+    const { g, canvasCircles, matches } = getPositionsMeta(ownerEl, layerInv)
     if (!g) continue
 
     for (const c of canvasCircles) {
-      points.push({ cx: c.cx, cy: c.cy, snapRadius: c.r, circleId: c.id, ownerId, name })
+      points.push({ cx: c.cx, cy: c.cy, snapRadius: c.r, circleId: c.id, ownerId, matches })
     }
   }
 
@@ -1224,9 +1220,9 @@ export function applyMove(domEl, cx, cy) {
 }
 
 // Resize corner indices — shared with overlay.js's corner-handle geometry
-// (Overlay.resizeCorners returns points in this same order) so canvas.js's
-// hit-test result can be passed straight through to computeResizeRect
-// without any translation. The order is NW, NE, SE, SW.
+// (Overlay.resizeCorners returns points in this same order) so the corner
+// canvas.js reads off a pressed handle can be passed straight through to
+// computeResize without any translation. The order is NW, NE, SE, SW.
 export const RESIZE_CORNER_NW = 0
 export const RESIZE_CORNER_SE = 2
 
@@ -1240,9 +1236,11 @@ function clampResizeDim(value) {
 /**
  * A toy's own corner-drag resize, at the toy's own minimum size. The
  * shared corner-opposite-fixed algorithm lives in geometry.js; this is
- * just toys.js's own MIN_RESIZE_SIZE threaded through.
+ * just layer_toys.js's own MIN_RESIZE_SIZE threaded through. Toys have one
+ * resize flavor (corner-drag), so `mode` is unused -- it is there so every
+ * layer's computeResize takes the same arguments.
  */
-export function computeResizeRect(startRect, corner, px, py) {
+export function computeResize(mode, startRect, corner, px, py) {
   return Geometry.computeResizeCornerRect(startRect, corner, px, py, MIN_RESIZE_SIZE)
 }
 
@@ -1308,18 +1306,18 @@ function toyData(svgEl) {
   }
 }
 
-/** A toy's rendered <g> wrapper, by toy id. Top level only, like findToy. */
+/** A toy's rendered <g> wrapper, by toy id. Top level only. */
 export function findEl(layerEl, id) {
   return layerEl?.querySelector(`:scope > [data-id="${id}"]`) ?? null
 }
 
 /** Every top-level toy wrapper in z-order. */
-export function listToysDom(layerEl) {
+export function listEls(layerEl) {
   return layerEl ? [...layerEl.querySelectorAll(':scope > g.toy')] : []
 }
 
 export function layerData(layerEl) {
-  return listToysDom(layerEl).map(toyData)
+  return listEls(layerEl).map(toyData)
 }
 
 /** Snapshot a rendered toy's state: id, type, color and centre. */
@@ -1420,7 +1418,7 @@ export const TOOLS = [
     defaults: { fill: '#fa2020', value: 0 },
     options: [
       { kind: 'color-hsl', key: 'fill', label: 'Token color', show: ['add', 'edit', 'addQuick'] },
-      { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 24, step: 1, show: ['add'] },
+      { kind: 'number', key: 'value', label: 'Token style', min: 0, max: 30, step: 1, show: ['add'] },
     ],
   },
   {
@@ -1568,8 +1566,8 @@ export function editEl(toyEl, editData) {
 /**
  * Preview an edit on a detached ghost clone (see overlay.js's ghost
  * system, used via App.previewEdit) — mutates ghostEl's own attributes
- * directly, never the live layer. Unlike drawing.js's shapes, toy editData
- * keys map straight onto DOM attributes with no aliasing, so this is a
+ * directly, never the live layer. Unlike layer_drawing.js's shapes, toy
+ * editData keys map straight onto DOM attributes with no aliasing, so this is a
  * plain attribute-per-key loop.
  */
 export function previewEdit(ghostEl, editData) {
@@ -1862,7 +1860,7 @@ function affectedContainerIdsFromRecords(records) {
  * Run containerEl's own contents_change_handler(s), if its toy type has
  * any registered — a plain, direct, synchronous call, not tied to any
  * mutation-record scanning. Used both by the generic end-of-gesture
- * cascade below and directly by reparentToyDom, so a reparent's own
+ * cascade below and directly by reparentEl, so a reparent's own
  * container reaction doesn't have to wait for that scan to discover it.
  */
 function runContentsChangeHandlersFor(containerEl) {
@@ -1963,7 +1961,7 @@ export const TOYS_LAYER = defineOpLayer({
       runPositionsChangeCascadeInto(all, layerEl, opts.positionEvents)
       return all.slice(records.length)
     },
-    afterProject: (ydoc, layerEl) => activateAllToyScriptsDom(ydoc, layerEl),
+    afterProject: (ydoc, layerEl) => activateLayerToyScripts(ydoc, layerEl),
   },
 })
 
@@ -2045,7 +2043,7 @@ export function initializeToy(ydoc, layerEl, svgEl, toyType, authorId, tableId, 
  * since getMenuActions reads globalThis[namespace].menu and nothing had
  * ever populated it.
  */
-export function activateAllToyScriptsDom(ydoc, layerEl) {
+export function activateLayerToyScripts(ydoc, layerEl) {
   if (!layerEl) return
   const seen = new Set()
   for (const el of layerEl.querySelectorAll('[data-toy-type]')) {
@@ -2069,7 +2067,7 @@ export async function placeToy(ydoc, layerEl, attrs, opts = {}) {
   const svgText = await fetchToySvgText(attrs.toyType)
   let toyEl = null
   runGesture(ydoc, layerEl, () => {
-    toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
+    toyEl = addToyEl(ydoc, layerEl, attrs, svgText)
   }, { gesture: 'place', ...opts })
   activateToyScripts(ydoc, attrs.toyType)
   return toyEl
@@ -2086,7 +2084,7 @@ export function placeToyInGesture(ydoc, layerEl, attrs, initArgs) {
   if (!isInsideEnvelope()) throw new Error('[toys] placeToyInGesture needs an open gesture')
   const svgText = _svgTextCache.get(attrs.toyType)
   if (!svgText || !isToyTypeActivated(attrs.toyType)) return null
-  const toyEl = addToyDom(ydoc, layerEl, attrs, svgText)
+  const toyEl = addToyEl(ydoc, layerEl, attrs, svgText)
   runInitializers(toyEl, attrs.toyType, initArgs)
   return toyEl
 }
@@ -2134,9 +2132,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
-    // Toys only have one resize flavor (corner-drag), so `mode` is
-    // unused here -- kept so callers can ask uniformly across layers.
-    computeResize: (mode, startRect, corner, px, py) => computeResizeRect(startRect, corner, px, py),
+    computeResize,
     getRotation,
     resolveRotation,
     rotationCenter:  (svgEl, geom = getGeom(svgEl)) => rotationCenter(geom),
@@ -2158,7 +2154,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     },
     importMany: (els) => {
       const op = base.importMany(els)
-      activateAllToyScriptsDom(ydoc, layerEl())
+      activateLayerToyScripts(ydoc, layerEl())
       return op
     },
   }))

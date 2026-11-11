@@ -1,17 +1,23 @@
 /**
  * overlay.js — togetherness overlay renderer
  *
- * Renders into #overlay-layer SVG group.
- * Owns SelectionMode: the per-shape decoration map.
- * Called by App after doc changes (renderDoc pipeline) and
- * after awareness changes (renderPresence pipeline).
+ * Renders into three SVG groups:
+ *   #selection_shared — peers' claims: their rings and request rings
+ *   #awareness        — peers' movement: drags, bowstring charges, add-cursors
+ *   #selection_local  — drawn from this client's own state
+ * Owns SelectionModeLocal and SelectionModeShared: the per-shape decoration
+ * maps for #selection_local and #selection_shared.
+ * Called by App after doc changes (renderDoc pipeline, all three) and
+ * after awareness changes (renderPresence pipeline, the two peer groups;
+ * #selection_shared only when peers' claims or requests changed). Each
+ * group is reconciled, not rebuilt (see reconcile()), so a node that is
+ * still drawn keeps its identity.
  *
- * SelectionMode modes (the `.mode` property on each Map entry):
+ * SelectionModeLocal modes (the `.mode` property on each Map entry):
  *   'none'         — no decoration
  *   'local'        — solid gradient ring
  *   'candidate'    — same visual as 'local'; live rubber-band candidates
  *                    (cleared on commit/cancel)
- *   'remote'       — dashed border + peer name label (awareness)
  *   'sel-move'     — same visual as 'local'; the default a sole selection
  *                    shows before any mode-cycling click (see below)
  *   'sel-resize'   — local selection ring + 4 corner drag handles
@@ -22,36 +28,26 @@
  *   'sel-rotate-pivot'
  *                  — the same decoration for shapes whose pivot the user can
  *                    place (rects). Only the pivot differs, so the two share
- *                    every rendering and hit-testing path below.
+ *                    every rendering path below.
  *   'sel-action'   — local selection ring + the action affordance square
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
- *   'locked'       — remote peer is actively editing
+ *
+ * SelectionModeShared entries are all mode 'remote': a dashed border and
+ * the peer's name label.
+ *
+ * The two maps are independent: an element both I and a peer claim (e.g.
+ * mid soft-lock handoff) shows both rings until the claims converge.
  *
  * Requested/contested indicator (soft_lock.js): a separate, independent
  * decoration drawn on any element with an outstanding acquisition request.
- * It is a ring in the requester's own gradient that grows from the
- * bottom-left corner while the holder's ring, in their gradient, fades
- * toward the top-right (see soft_lock.js). Both repeat until the
- * request resolves.
+ * It is a ring in the requester's own gradient that draws itself on around
+ * the element (see renderRequestedIndicator), repeating until the request
+ * resolves. The holder's ring is left as it is.
  *
  * Drop-target hover indicator: another independent decoration,
  * driven by App.move() during a toy drag
  *
- * Awareness desired schema: { [elId]: { ts: number, holding: boolean } }
- *   One record per elId a peer wants; `holding: true` entries are the
- *   held selection, rendered here as remote rings.
- *
- * Awareness candidates field: string[] | null
- *   The ids currently under a rubber-band sweep, broadcast separately from
- *   `desired` so that committed holdings are never clobbered mid-sweep.
- *   Remote peers' candidate sweeps are not currently rendered (there is no
- *   visual for "someone else is sweeping over these"), but the field is
- *   wire-present so it can be added without a schema change.
- *
- * Awareness mode field: string | null, e.g. 'sel-resize'
- *   Already carries its own `sel-` prefix. Explicit modes only — an
- *   automatic default is never broadcast unless a click entered it.
- *   Purely advisory; local rendering doesn't read this field.
+ * The awareness fields read here are listed in AWARENESS.md.
  *
  * Drag ghost system:
  *   The native layer element is never touched during drag; but overlay renders:
@@ -71,17 +67,16 @@
  *   field.
  */
 
-import * as SoftLock from './soft_lock.js';
-import { gradientVector } from './entity_gradient.js';
-import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './toys.js';
-import { previewResize as previewBounPosResize } from './boun_pos.js';
+import * as SelectionShared from './selection_shared.js';
+import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './layer_toys.js';
+import { previewResize as previewBounPosResize } from './layer_boun_pos.js';
 import {
   previewResize     as previewDrawingResize,
   pivotRayOpacities,
-} from './drawing.js';
+} from './layer_drawing.js';
 import { normalizeAngle, resolveRotation as elementRotation, rotationTransform } from './geometry.js';
 import { LOCAL_ACTION_FILTER_ID } from './defs.js';
-import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin, ACTION_SQUARE_SIDE } from './delight.js';
+import { getBowstringState, chargeOpacityFor, chargeRadiusFor, bowstringOrigin, ACTION_SQUARE_SIDE } from './layer_delight.js';
 import { drawAsteriskGlyph, drawCrosshairGlyph, drawRotateGlyph, drawPivotGlyph } from './icons.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -101,8 +96,8 @@ const SELECTION_MODES = new Set([
  */
 export function resizeCorners(geo) {
   const { x, y, width, height } = geo;
-  // order is [NW, NE, SE, SW] -- matching toys.js's RESIZE_CORNER_* constants
-  // and drawing.js's corner-drag geometry
+  // order is [NW, NE, SE, SW] -- matching layer_toys.js's RESIZE_CORNER_*
+  // constants and layer_drawing.js's corner-drag geometry
   return [
     { x: x - PAD,          y: y - PAD },          //NW
     { x: x + width + PAD,  y: y - PAD },          //NE
@@ -123,73 +118,26 @@ export function resizeRHandle(geo) {
 }
 
 /**
- * Which resize corner (if any) canvas-space point (px, py) is within
- * grabbing distance of, for a toy with bounding box geo. Returns a
- * RESIZE_CORNER_* index (0-3) or null. scale is the current view scale —
- * the hit box is defined in screen-space (HANDLE_SIZE/2 + HANDLE_HIT_PAD
- * px) and converted to canvas-space so grabbing feels consistent at any
- * zoom level.
+ * An invisible square giving a corner handle its grab area: HANDLE_SIZE/2 +
+ * HANDLE_HIT_PAD screen px either side of (hx, hy), converted to canvas
+ * space so grabbing feels the same at any zoom. Drawn before the visible
+ * handle and carrying the same data-handle/data-corner, so a press on
+ * either is the same press to canvas.js.
  */
-export function hitTestResizeCorner(geo, px, py, scale) {
-  // TODO: this function is dumb.  The browser should be doing the hit-testing
-  if (!geo) return null;
-  const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
-  const corners = resizeCorners(geo);
-  for (let i = 0; i < corners.length; i++) {
-    const { x: hx, y: hy } = corners[i];
-    if (Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius) return i;
-  }
-  return null;
+function handleHit(hx, hy, scale, attrs) {
+  const half = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
+  return el('rect', {
+    x: hx - half, y: hy - half, width: half * 2, height: half * 2,
+    fill: 'transparent', class: 'handleHit', ...attrs,
+  });
 }
 
-/**
- * Whether canvas-space point (px, py) is within grabbing distance of geo's
- * single radius-drag handle. Same screen-space hit box sizing as
- * hitTestResizeCorner. Returns a boolean rather than an index — there's
- * only ever one handle.
- */
-export function hitTestResizeRHandle(geo, px, py, scale) {
-  if (!geo) return false;
-  const radius = (HANDLE_SIZE / 2 + HANDLE_HIT_PAD) / scale;
-  const { x: hx, y: hy } = resizeRHandle(geo);
-  return Math.abs(px - hx) <= radius && Math.abs(py - hy) <= radius;
-}
-
-/**
- * Which handle of `mode`'s own decoration canvas-space point (px, py) is
- * within grabbing distance of, for bounding box geo
- */
-export function hitTestSelectionHandle(mode, geo, px, py, scale, pivotPoint = null) {
-  switch (mode) {
-    // The pivot is tested before the corners: once it has been dragged onto
-    // one, the two hit boxes overlap, and the pivot is the smaller and more
-    // deliberate target of the two.
-    case 'sel-rotate-pivot':
-      if (pivotPoint && hitTestPivot(pivotPoint, px, py, scale)) return 'pivot';
-      return hitTestResizeCorner(geo, px, py, scale);
-    case 'sel-resize':
-    case 'sel-rotate':   return hitTestResizeCorner(geo, px, py, scale);
-    case 'sel-resize-r': return hitTestResizeRHandle(geo, px, py, scale) ? 'r' : null;
-    default:             return null;
-  }
-}
-
-/**
- * Whether canvas-space (px, py) is within grabbing distance of the pivot
- * handle at pivotPoint ({ cx, cy }). Same screen-space sizing as the corner
- * handles, so it feels the same at any zoom.
- */
-export function hitTestPivot(pivotPoint, px, py, scale) {
-  if (!pivotPoint) return false;
-  const radius = (PIVOT_SIZE / 2 + HANDLE_HIT_PAD) / scale;
-  return Math.hypot(px - pivotPoint.cx, py - pivotPoint.cy) <= radius;
-}
-
-// ── SelectionMode ─────────────────────────────────────────────────────────────
-// Map<elId, { mode, peerName?, color? }>
-// overlay.js is the only writer (via setSelectionMode).
-// App.js reads it to answer queries.
-export const SelectionMode = new Map();
+// ── Selection modes ───────────────────────────────────────────────────────────
+// Map<elId, { mode, color, grad }>, written by the local setters below.
+export const SelectionModeLocal = new Map();
+// Map<elId, { mode, peerName, color, gradId }>, rebuilt by syncFromAwareness
+// from selection_shared.js's derive().
+export const SelectionModeShared = new Map();
 
 // ── Drag ghost state ──────────────────────────────────────────────────────────
 // Local drags — managed imperatively; elements survive render() calls.
@@ -209,14 +157,13 @@ const _remoteAddCursors = new Map();
 // { tool, groupEl } | null.
 let _localAddCursor = null;
 
-// Soft-lock "requested" indicator — Map<elId, { ts, requesterGrad, holderGrad }>
+// Soft-lock "requested" indicator — Map<elId, { ts, requesterGradId }>
 // for every element with an outstanding acquisition request, rebuilt on each
-// syncFromAwareness() call. ts is the earliest request's start; the grads are
-// { c1, c2, angle } or null when that player's gradient isn't known.
-// Deliberately independent of SelectionMode: an
-// element can be contested regardless of whether it's 'local', 'remote', or
-// unselected from this client's point of view, so it's rendered as its own
-// decoration layer rather than another mutually-exclusive `kind`.
+// syncFromAwareness() call from selection_shared.js's derive().
+// Deliberately independent of the selection modes: an element can be
+// contested regardless of whether it's mine, a peer's, or unselected from
+// this client's point of view, so it's rendered as its own decoration
+// rather than another mutually-exclusive `kind`.
 let _requests = new Map();
 
 // Remote bowstring charges, keyed by clientId. Rebuilt from awareness on
@@ -227,17 +174,21 @@ let _requests = new Map();
 let _remoteBowstrings = new Map();
 let _remoteChargeRafId = null;
 
-let App       = null;
-let _layerEl  = null;   // #overlay-layer <g>
-let _svgEl    = null;   // root <svg> — used to look up live toy DOM nodes for resize ghost cloning
-let _myUserId = null;   // this player's user.id — see user.js's grad-{id} convention
+let App               = null;
+let _selectionLocalEl = null;   // #selection_local <g>
+let _selectionSharedEl = null;  // #selection_shared <g>
+let _awarenessEl       = null;  // #awareness <g>
+let _svgEl            = null;   // root <svg> — used to look up live toy DOM nodes for resize ghost cloning
+let _myUserId         = null;   // this player's user.id — see user.js's grad-{id} convention
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 export function init(appBus, svgElement, myUser = null) {
-  App       = appBus;
-  _svgEl    = svgElement;
-  _layerEl  = svgElement.querySelector('#overlay-layer') || svgElement.querySelector('#overlay');
-  _myUserId = myUser?.id ?? null;
+  App               = appBus;
+  _svgEl            = svgElement;
+  _selectionLocalEl = svgElement.querySelector('#selection_local');
+  _selectionSharedEl = svgElement.querySelector('#selection_shared');
+  _awarenessEl       = svgElement.querySelector('#awareness');
+  _myUserId         = myUser?.id ?? null;
 
   // #local-action-filter: same colorMatrixValues() trick toy artwork uses,
   // tinting the action-affordance icon squares (see renderActionAffordance)
@@ -257,25 +208,21 @@ function _localGradUrl() {
   return _myUserId ? `url(#grad-${_myUserId})` : null;
 }
 
-// ── SelectionMode setters ─────────────────────────────────────────────────────
+// ── SelectionModeLocal setters ────────────────────────────────────────────────
 /**
- * Called by App whenever _selectedIds changes.
- * Clears all previous local/candidate/resize entries and sets 'local' for
+ * Called by App whenever the set of ids this client holds changes.
+ * Clears all previous local/candidate/mode entries and sets 'local' for
  * each id in the Set. Works for N=0 (deselect), N=1, and N>1 uniformly —
  * the caller passes selectedIds and Overlay decides how to render it.
  */
 export function localSelectionChanged(selectedIds) {
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'local' || entry.mode === 'candidate' || SELECTION_MODES.has(entry.mode)) {
-      SelectionMode.delete(id);
-    }
-  }
+  SelectionModeLocal.clear();
   const color = App.user.color;
   const grad  = App.user.gradient;
   for (const id of selectedIds) {
-    SelectionMode.set(id, { mode: 'local', color, grad });
+    SelectionModeLocal.set(id, { mode: 'local', color, grad });
   }
-  render();
+  renderSelectionLocal();
 }
 
 // Demotes any existing selection-mode entry back to 'local', then
@@ -284,47 +231,48 @@ export function localSelectionChanged(selectedIds) {
 // Pass elId=null to leave everything 'local'.
 // `mode` is one of SELECTION_MODES
 export function setSelectionMode(elId, mode) {
-  for (const [id, entry] of SelectionMode) {
-    if (SELECTION_MODES.has(entry.mode)) SelectionMode.set(id, { ...entry, mode: 'local' });
+  for (const [id, entry] of SelectionModeLocal) {
+    if (SELECTION_MODES.has(entry.mode)) SelectionModeLocal.set(id, { ...entry, mode: 'local' });
   }
   if (elId) {
-    const entry = SelectionMode.get(elId);
-    if (entry && entry.mode === 'local') SelectionMode.set(elId, { ...entry, mode });
+    const entry = SelectionModeLocal.get(elId);
+    if (entry && entry.mode === 'local') SelectionModeLocal.set(elId, { ...entry, mode });
   }
-  render();
+  renderSelectionLocal();
 }
 
-// Replaces any existing candidate entries; leaves 'local', 'remote',
-// 'locked', and mode entries alone. A 'local' or mode entry always
-// takes precedence over the candidate ring.
+// Replaces any existing candidate entries; leaves 'local' and mode
+// entries alone. A 'local' or mode entry always takes precedence over the
+// candidate ring.
 export function setHoverCandidates(ids) {
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'candidate') SelectionMode.delete(id);
+  for (const [id, entry] of SelectionModeLocal) {
+    if (entry.mode === 'candidate') SelectionModeLocal.delete(id);
   }
   const color = App.user.color;
   const grad  = App.user.gradient;
   for (const id of ids) {
-    const existing = SelectionMode.get(id);
+    const existing = SelectionModeLocal.get(id);
     if (existing && (existing.mode === 'local' || SELECTION_MODES.has(existing.mode))) continue;
-    SelectionMode.set(id, { mode: 'candidate', color, grad });
+    SelectionModeLocal.set(id, { mode: 'candidate', color, grad });
   }
-  render();
+  renderSelectionLocal();
 }
 
 // Clear all rubber-band candidate entries (called on box-select cancel or commit).
 export function clearHoverCandidates() {
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'candidate') SelectionMode.delete(id);
+  for (const [id, entry] of SelectionModeLocal) {
+    if (entry.mode === 'candidate') SelectionModeLocal.delete(id);
   }
-  render();
+  renderSelectionLocal();
 }
 
 // Called by App when awareness changes — rebuilds remote selection + drag entries
 export function syncFromAwareness(awarenessStates, myClientId) {
-  // Remove stale remote entries
-  for (const [id, entry] of SelectionMode) {
-    if (entry.mode === 'remote' || entry.mode === 'locked') SelectionMode.delete(id);
-  }
+  const shared = SelectionShared.derive(awarenessStates, myClientId);
+  SelectionModeShared.clear();
+  for (const [elId, entry] of shared.holders) SelectionModeShared.set(elId, entry);
+  _requests = shared.requests;
+
   _remoteDrags.clear();
   _remoteAddCursors.clear();
 
@@ -334,37 +282,12 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     if (clientId === myClientId) return;
 
     // The peer's <linearGradient id="grad-{id}"> is created/kept current
-    // by user.js's upsertUserGradient (see app.js's syncUserGradients) —
+    // by user.js's upsertUserGradient (see app.js's syncUserVisuals) —
     // Overlay only ever references it by id, never creates it.
     const peer     = state?.user;
     const peerName = peer?.name ?? String(clientId);
     const color    = peer?.color ?? '#888';
     const gradId   = peer?.gradient?.c1 ? `grad-${peer.id}` : null;
-
-    // Remote selection rings — one per held (holding:true) key in
-    // `desired`. A holding:false entry is a bid, rendered instead via
-    // the contested/'requested' ring below.
-    if (state?.desired && typeof state.desired === 'object') {
-      const elIds = Object.keys(state.desired).filter((elId) => state.desired[elId].holding);
-      for (const elId of elIds) {
-        // Local selection always takes precedence over a remote peer's
-        // claim to the same elId — mirrors the same rule setHoverCandidates
-        // already applies for candidate-vs-local. Without this, a remote
-        // peer's broadcast can silently clobber my own 'local' entry with
-        // 'remote' any time both sides briefly, even legitimately, claim
-        // the same elId at once (e.g. mid soft-lock handoff) — I'd see the
-        // other peer's ring instead of my own, even though my own
-        // selection data still says I hold it.
-        const existing = SelectionMode.get(elId);
-        if (existing && (existing.mode === 'local' || SELECTION_MODES.has(existing.mode))) continue;
-        SelectionMode.set(elId, {
-          mode: 'remote',
-          peerName,
-          color,
-          gradId,
-        });
-      }
-    }
 
     // Remote single drag ghost
     if (state?.drag?.elId) {
@@ -418,8 +341,8 @@ export function syncFromAwareness(awarenessStates, myClientId) {
     }
   });
   _remoteBowstrings = nextRemoteBowstrings;
-  _requests = collectRequests(awarenessStates, myClientId);
-  render();
+  renderSelectionShared();
+  renderAwareness();
   _pumpRemoteCharge();
 }
 
@@ -430,7 +353,7 @@ export function syncFromAwareness(awarenessStates, myClientId) {
  * No-op if a ghost for this elId already exists.
  */
 export function startDragPlaceholder(elId) {
-  if (!_layerEl || _dragGhosts.has(elId)) return;
+  if (!_selectionLocalEl || _dragGhosts.has(elId)) return;
 
   const href = `#${elId}`;
 
@@ -451,7 +374,7 @@ export function startDragPlaceholder(elId) {
   });
 
   _dragGhosts.set(elId, { placeholderEl, ghostEl, ringEl, dx: 0, dy: 0 });
-  render();
+  renderSelectionLocal();
 }
 
 /**
@@ -461,7 +384,7 @@ export function startDragPlaceholder(elId) {
  */
 export function updateLocalDragGhost(elId, dx, dy) {
   const entry = _dragGhosts.get(elId);
-  if (!entry || !_layerEl) return;
+  if (!entry || !_selectionLocalEl) return;
   entry.dx = dx;
   entry.dy = dy;
   entry.ghostEl.setAttribute('transform', `translate(${dx}, ${dy})`);
@@ -485,7 +408,7 @@ export function endDragPlaceholder(elId) {
   entry.ghostEl.remove();
   entry.ringEl.remove();
   _dragGhosts.delete(elId);
-  render();
+  renderSelectionLocal();
 }
 
 // ── Resize ghosts ────────────────────────────────────────────────────────────
@@ -503,7 +426,7 @@ const _resizeGhosts = new Map();
  * exists, or if the element can't be found/cloned.
  */
 export function startResizeGhost(elId) {
-  if (!_layerEl || _resizeGhosts.has(elId)) return;
+  if (!_selectionLocalEl || _resizeGhosts.has(elId)) return;
   const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
   if (!liveEl) return;
 
@@ -518,7 +441,7 @@ export function startResizeGhost(elId) {
   const ringEl = el('rect', { fill: 'none', class: 'selRing' });
 
   _resizeGhosts.set(elId, { placeholderEl, ghostEl, ringEl });
-  render();
+  renderSelectionLocal();
 }
 
 /**
@@ -543,8 +466,8 @@ export function updateResizeGhost(elId, x, y, width, height) {
     }
   } else if (entry.ghostEl.getAttribute?.('data-module') === 'drawing') {
     // Drawing-layer shapes have no embedded <svg> to resize — the ghost
-    // clone IS the shape. drawing.js owns which attributes that means, and
-    // re-derives a rotated shape's pivot from the new geometry.
+    // clone IS the shape. layer_drawing.js owns which attributes that means,
+    // and re-derives a rotated shape's pivot from the new geometry.
     previewDrawingResize(entry.ghostEl, x, y, width, height);
   } else if (entry.ghostEl.getAttribute?.('data-module') === 'boun_pos') {
     // A boundary/pos-set ghost is a <g> with <path>/<text>(/<circle>...)
@@ -607,7 +530,7 @@ export function endResizeGhost(elId) {
   entry.ghostEl.remove();
   entry.ringEl.remove();
   _resizeGhosts.delete(elId);
-  render();
+  renderSelectionLocal();
 }
 
 // ── Edit-preview ghosts ──────────────────────────────────────────────────────
@@ -626,7 +549,7 @@ const _ghosts = new Map();
  * committed state and a live clone to preview changes into.
  */
 export function startGhost(elId) {
-  if (!_layerEl || _ghosts.has(elId)) return;
+  if (!_selectionLocalEl || _ghosts.has(elId)) return;
   const liveEl = _svgEl?.querySelector(`[data-id="${elId}"]`);
   if (!liveEl) return;
 
@@ -638,7 +561,7 @@ export function startGhost(elId) {
   ghostEl.removeAttribute('id');
 
   _ghosts.set(elId, { placeholderEl, ghostEl });
-  render();
+  renderSelectionLocal();
 }
 
 /**
@@ -665,14 +588,13 @@ export function endGhost(elId) {
   entry.placeholderEl.remove();
   entry.ghostEl.remove();
   _ghosts.delete(elId);
-  render();
+  renderSelectionLocal();
 }
 
 // ── Pivot drag preview ───────────────────────────────────────────────────────
 // Where a pivot drag currently has the handle, before it commits. Module
-// state rather than a DOM node, because this layer is wiped on every render
-// and has to rebuild the handle from scratch each time — same rationale as
-// the bowstring charge above.
+// state rather than a DOM node, because each render draws the handle from
+// state — same rationale as the bowstring charge below.
 let _pivotPreview = null;   // { elId, fx, fy } | null
 
 /** Set (or clear, with null) the live pivot position for elId. */
@@ -684,7 +606,7 @@ export function setPivotPreview(elId, pivot) {
     if (_pivotPreview?.elId === elId && _pivotPreview.fx === pivot.fx && _pivotPreview.fy === pivot.fy) return;
     _pivotPreview = { elId, fx: pivot.fx, fy: pivot.fy };
   }
-  render();
+  renderSelectionLocal();
 }
 
 // ── Drop-target hover
@@ -703,143 +625,53 @@ let _dropTargetId = null;
 export function setDropTargetHover(containerElId) {
   if (_dropTargetId === containerElId) return;
   _dropTargetId = containerElId;
-  render();
-}
-
-function gradientSpecOf(clientId, awarenessStates, myClientId) {
-  const g = clientId === myClientId ? App.user?.gradient : awarenessStates.get(clientId)?.user?.gradient;
-  return g?.c1 ? { c1: g.c1, c2: g.c2 ?? g.c1, angle: g.angle ?? 90 } : null;
-}
-
-// The earliest request per element is the one animated, matching the one
-// resolveElementWinner would pick.
-function collectRequests(awarenessStates, myClientId) {
-  const requests = new Map();
-  for (const elId of SoftLock.getAllContestedElementIds(awarenessStates)) {
-    const first = SoftLock.getAcquirersOf(elId, awarenessStates)
-      .sort((a, b) => a.ts - b.ts || a.clientId - b.clientId)[0];
-    const holderId = SoftLock.getHolderClientId(elId, awarenessStates);
-    requests.set(elId, {
-      ts:            first.ts,
-      requesterGrad: gradientSpecOf(first.clientId, awarenessStates, myClientId),
-      holderGrad:    holderId === null ? null : gradientSpecOf(holderId, awarenessStates, myClientId),
-    });
-  }
-  return requests;
-}
-
-function reducedMotion() {
-  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-}
-
-function requestGradientId(kind, elId) {
-  return `req-${kind}-${elId.replace(/[^A-Za-z0-9_-]/g, '_')}`;
-}
-
-/**
- * Builds a <linearGradient> into `defs` whose colours retreat into one
- * corner over the request window, and returns its id.
- *
- *   kind 'fade': the holder's gradient, colours retreating toward its far end.
- *   kind 'grow': the requester's gradient run backwards (vector and colour
- *                order reversed), so the full ring looks like their normal
- *                one but the colours emerge from the opposite corner.
- *
- * Stops 1 and 2 carry the motion as SMIL <animate>s. Each begins now, with
- * its keyframes rotated to the phase the request's age puts it at, so a
- * re-render lands on the same frame instead of restarting the animation.
- * (Backdating `begin` instead would leave the browser's animation timer
- * unscheduled.) Reduced motion gets the static full ring.
- */
-function buildVanishGradient(defs, id, spec, ts, kind) {
-  const grow = kind === 'grow';
-  const vec = gradientVector(spec.angle);
-  const lg = el('linearGradient', grow
-    ? { id, x1: vec.x2, y1: vec.y2, x2: vec.x1, y2: vec.y1 }
-    : { id, ...vec });
-  const [from, to] = grow ? [spec.c2, spec.c1] : [spec.c1, spec.c2];
-  const calm = reducedMotion();
-  const elapsed = Date.now() - ts;
-  const { a, b } = SoftLock.vanishOffsets(calm ? 0 : (grow ? SoftLock.growVanish : SoftLock.fadeVanish)(SoftLock.windowProgress(elapsed)));
-
-  lg.appendChild(el('stop', { offset: 0, 'stop-color': from, 'stop-opacity': 0 }));
-  const s1 = el('stop', { offset: a, 'stop-color': from, 'stop-opacity': 0 });
-  const s2 = el('stop', { offset: b, 'stop-color': from });
-  lg.appendChild(s1);
-  lg.appendChild(s2);
-  lg.appendChild(el('stop', { offset: 1, 'stop-color': to }));
-
-  if (!calm) {
-    const frames = SoftLock.vanishFrames(grow ? SoftLock.growVanish : SoftLock.fadeVanish, SoftLock.cycleMs(elapsed));
-    const begin = `${((_svgEl?.getCurrentTime?.() ?? 0) + 0.001).toFixed(3)}s`;
-    for (const [stop, values] of [[s1, frames.a], [s2, frames.b]]) {
-      stop.appendChild(el('animate', {
-        attributeName: 'offset', values, keyTimes: frames.keyTimes,
-        dur: `${SoftLock.CYCLE_MS / 1000}s`, begin, repeatCount: 'indefinite',
-      }));
-    }
-  }
-  defs.appendChild(lg);
-  return id;
-}
-
-// A holder's selection entry while someone is asking for the element: the
-// same entry, with its ring stroked by the fading gradient. Local entries use
-// my own gradient; remote ones the holder's.
-function fadedEntry(elId, entry, defs) {
-  const req = _requests.get(elId);
-  if (!req || entry.mode === 'candidate') return entry;
-  const remote = entry.mode === 'remote' || entry.mode === 'locked';
-  const spec = remote ? req.holderGrad : (entry.grad ?? App.user?.gradient);
-  if (!spec?.c1) return entry;
-  const id = buildVanishGradient(defs, requestGradientId('fade', elId), { c2: spec.c1, angle: 90, ...spec }, req.ts, 'fade');
-  return { ...entry, ringStroke: `url(#${id})` };
+  renderSelectionLocal();
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
 export function render() {
-  if (!_layerEl) return;
-  _layerEl.innerHTML = '';
+  renderSelectionLocal();
+  _selectionSharedKey = null;
+  renderSelectionShared();
+  renderAwareness();
+}
+
+// #selection_local: everything drawn from this client's own state. Awareness
+// ticks never reach here, so its nodes are rebuilt only on local or doc change.
+function renderSelectionLocal() {
+  if (!_selectionLocalEl) return;
+  // Collected rather than appended, then reconciled into the live layer, so
+  // a node that is still wanted keeps its identity (see reconcile()).
+  const next = [];
+  const layer = { appendChild: (node) => (next.push(node), node) };
 
   const scale = App.getViewScale();
-  const requestDefs = el('defs', {});   // attached only if a request filled it
 
-  // ── 1. Dim placeholders — z-bottom (local then remote) ────────────────────
+  // ── Dim placeholders — z-bottom ────────────────────────────────────────
   for (const entry of _dragGhosts.values()) {
-    _layerEl.appendChild(entry.placeholderEl);
+    layer.appendChild(entry.placeholderEl);
   }
   for (const entry of _resizeGhosts.values()) {
-    _layerEl.appendChild(entry.placeholderEl);
+    layer.appendChild(entry.placeholderEl);
   }
   for (const entry of _ghosts.values()) {
-    _layerEl.appendChild(entry.placeholderEl);
-  }
-  for (const [elId] of _remoteDrags) {
-    const ph = el('use', {});
-    ph.setAttribute('href',   `#${elId}`);
-    ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
-    _layerEl.appendChild(ph);
+    layer.appendChild(entry.placeholderEl);
   }
 
   // ── Selection rings  ───────────────────────────────
-  for (const [elId, selEntry] of SelectionMode) {
-    if (selEntry.mode === 'none') continue;
-    const entry = fadedEntry(elId, selEntry, requestDefs);
+  for (const [elId, entry] of SelectionModeLocal) {
+    if (entry.mode === 'none') continue;
     const geo = App.getBBox(elId);
     if (!geo) continue;
     // getBBox is UNROTATED; furniture rides the element's own rotation so
     // the ring hugs the shape, not its axis-aligned bounds.
     const rot = App.getRotation?.(elId) ?? null;
-    const parent = decorGroup(rot); // one shared rotation group per element
+    const parent = decorGroup(rot, elId, layer); // one group per element
     switch (entry.mode) {
       case 'local':
       case 'candidate':
       case 'sel-move':
         renderLocalSelection(geo, entry, scale, parent);
-        break;
-      case 'remote':
-      case 'locked':
-        renderRemoteSelection(geo, entry, scale, rot);
         break;
       case 'sel-resize':
         renderLocalResizeSelection(geo, entry, scale, rot, parent);
@@ -856,25 +688,107 @@ export function render() {
         break;
       case 'sel-action':
         renderLocalSelection(geo, entry, scale, parent);
-        if (App.hasToyActions(elId)) renderActionAffordance(bowstringOrigin(geo, rot), scale);
+        if (App.hasToyActions(elId)) renderActionAffordance(bowstringOrigin(geo, rot), scale, 'bowstring', layer, `bowstring:${elId}`);
         break;
     }
   }
 
   // ── Group action square — one for a multi-selection sharing a default action
   const group = App.getGroupAction?.();
-  if (group) renderActionAffordance(group.origin, scale, 'groupAction');
+  if (group) renderActionAffordance(group.origin, scale, 'groupAction', layer, 'group-action');
 
-  // ── Requested/contested indicator — independent of SelectionMode kind ──
-  // Drawn regardless of whether the element is 'local', 'remote', or has no
-  // SelectionMode entry at all — contestedness is orthogonal to who (if
-  // anyone) currently holds it from this client's point of view.
-  for (const [elId, req] of _requests) {
+  // ── Drop-target hover — highlight on the el under the drop point
+  if (_dropTargetId) {
+    const geo = App.getBBox(_dropTargetId);
+    if (geo) renderDropTargetHover(geo, scale, layer);
+  }
+
+  // ── Local drag ghosts + rings — z-top ──────────────────────────────────
+  for (const [elId, entry] of _dragGhosts) {
+    layer.appendChild(entry.ghostEl);
+    layer.appendChild(entry.ringEl);
+    _updateDragRing(entry, elId, scale);
+  }
+
+  // ── Local resize ghosts + rings — z-top ────────────────────────────────
+  for (const entry of _resizeGhosts.values()) {
+    layer.appendChild(entry.ghostEl);
+    layer.appendChild(entry.ringEl);
+  }
+
+  // ── Local edit-preview ghosts — z-top ──────────────────────────────────
+  for (const entry of _ghosts.values()) {
+    layer.appendChild(entry.ghostEl);
+  }
+
+  const local = getBowstringState();
+  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale, layer, local.elId);
+
+  // Retained between renders, same as the drag/resize ghosts.
+  if (_localAddCursor) layer.appendChild(_localAddCursor.groupEl);
+
+  reconcile(_selectionLocalEl, next);
+}
+
+// What #selection_shared was last drawn from. Awareness ticks that change
+// only peers' movement leave it equal, so the layer is left alone. render()
+// clears it to force a redraw.
+let _selectionSharedKey = null;
+
+// Each open request's age when it was first drawn, `${elId}:${ts}` → ms.
+// Its ring's animation-delay comes from this and never changes, so a redraw
+// leaves the running CSS animation alone (see renderRequestedIndicator).
+let _requestAges = new Map();
+
+// #selection_shared: peers' claims and every open request. Reconciled like
+// #selection_local, so a ring that is still wanted keeps its node.
+function renderSelectionShared() {
+  if (!_selectionSharedEl) return;
+  const scale = App.getViewScale();
+  const key = JSON.stringify([scale, [...SelectionModeShared], [..._requests]]);
+  if (key === _selectionSharedKey) return;
+  _selectionSharedKey = key;
+  const next = [];
+  const layer = { appendChild: (node) => (next.push(node), node) };
+
+  for (const [elId, entry] of SelectionModeShared) {
     const geo = App.getBBox(elId);
     if (!geo) continue;
-    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, requestDefs);
+    renderRemoteSelection(geo, entry, scale, App.getRotation?.(elId) ?? null, layer, `remote:${elId}`);
   }
-  if (requestDefs.firstChild) _layerEl.appendChild(requestDefs);
+
+  // ── Requested/contested indicator — independent of the selection modes ──
+  // Drawn regardless of who (if anyone) currently holds the element from
+  // this client's point of view.
+  const ages = new Map();
+  for (const [elId, req] of _requests) {
+    const ageKey = `${elId}:${req.ts}`;
+    const age = _requestAges.get(ageKey) ?? Math.max(0, Date.now() - req.ts);
+    ages.set(ageKey, age);
+    const geo = App.getBBox(elId);
+    if (!geo) continue;
+    renderRequestedIndicator(geo, scale, App.getRotation?.(elId) ?? null, elId, req, age, layer);
+  }
+  _requestAges = ages;
+
+  reconcile(_selectionSharedEl, next);
+}
+
+// #awareness: peers' movement. Rebuilt on every awareness tick.
+function renderAwareness() {
+  if (!_awarenessEl) return;
+  const next = [];
+  const layer = { appendChild: (node) => (next.push(node), node) };
+
+  const scale = App.getViewScale();
+
+  // ── Remote drag placeholders — z-bottom ────────────────────────────────
+  for (const [elId] of _remoteDrags) {
+    const ph = el('use', { 'data-key': `drag-ph:${elId}` });
+    ph.setAttribute('href',   `#${elId}`);
+    ph.setAttribute('filter', 'url(#drag-placeholder-filter)');
+    layer.appendChild(ph);
+  }
 
   // ── Remote drag ghosts + rings ─────────────────────────────────────────
   for (const [elId, drag] of _remoteDrags) {
@@ -883,67 +797,45 @@ export function render() {
     const tdx = drag.bboxX - bbox.x; // relative to current committed
     const tdy = drag.bboxY - bbox.y;
 
-    const ghostEl = el('use', { opacity: '0.85' });
+    const ghostEl = el('use', { opacity: '0.85', 'data-key': `drag-ghost:${elId}` });
     ghostEl.setAttribute('href', `#${elId}`);
     ghostEl.setAttribute('transform', `translate(${tdx}, ${tdy})`);
-    _layerEl.appendChild(ghostEl);
+    layer.appendChild(ghostEl);
 
     renderRemoteSelection(
       { x: drag.bboxX, y: drag.bboxY, width: bbox.width, height: bbox.height },
       { color: drag.color, gradId: drag.gradId, peerName: drag.peerName },
       scale,
+      null,
+      layer,
+      `drag-ring:${elId}`,
     );
   }
 
-  // ── Drop-target hover — highlight on the el under the drop point
-  if (_dropTargetId) {
-    const geo = App.getBBox(_dropTargetId);
-    if (geo) renderDropTargetHover(geo, scale);
-  }
+  renderRemoteBowstringCharges(scale, layer);
+  renderRemoteAddCursors(layer);
 
-  // ── Local drag ghosts + rings — z-top ──────────────────────────────────
-  for (const [elId, entry] of _dragGhosts) {
-    _layerEl.appendChild(entry.ghostEl);
-    _layerEl.appendChild(entry.ringEl);
-    _updateDragRing(entry, elId, scale);
-  }
-
-  // ── Local resize ghosts + rings — z-top ────────────────────────────────
-  for (const entry of _resizeGhosts.values()) {
-    _layerEl.appendChild(entry.ghostEl);
-    _layerEl.appendChild(entry.ringEl);
-  }
-
-  // ── Local edit-preview ghosts — z-top ──────────────────────────────────
-  for (const entry of _ghosts.values()) {
-    _layerEl.appendChild(entry.ghostEl);
-  }
-
-  renderBowstringCharge(scale);
-  renderAddCursors();
+  reconcile(_awarenessEl, next);
 }
 
 // ── Bowstring charge indicators ──────────────────────────────────────────────
-// Read (never written) from delight.js's live gesture state. Pull-based on
-// purpose: this layer is wiped on every render, so it must be able to
-// rebuild itself from scratch each frame off a source that survives the
-// wipe. delight.js's rAF loop calls App.requestOverlayRender() to keep this
-// ticking even when the pointer isn't moving.
+// Read (never written) from layer_delight.js's live gesture state. Pull-based
+// on purpose: the charge is redrawn every frame, so it reads from a source that
+// outlives any one render. layer_delight.js's rAF loop calls
+// App.requestOverlayRender() to keep this ticking even when the pointer isn't
+// moving.
 //
 // Nothing here is persisted: pull and heldMs describe how someone is
 // manipulating a toy right now, not what the toy is, so they stay out of
 // the document entirely.
 
-function renderBowstringCharge(scale) {
-  const local = getBowstringState();
-  if (local) drawCharge(local.elId, local.pull, local.heldMs, _localGradUrl(), scale);
-
-  // Peers' charges are drawn identically, in their own colour, with the
-  // fade timed from when this client first saw the charge rather than from
-  // the sender's clock.
+// Peers' charges are drawn like the local one (see renderSelectionLocal), in
+// their own colour, with the fade timed from when this client first saw the
+// charge rather than from the sender's clock.
+function renderRemoteBowstringCharges(scale, layerEl) {
   const now = performance.now();
-  for (const bs of _remoteBowstrings.values()) {
-    drawCharge(bs.elId, bs.pull, now - bs.firstSeenAt, `url(#${bs.gradId})`, scale);
+  for (const [clientId, bs] of _remoteBowstrings) {
+    drawCharge(bs.elId, bs.pull, now - bs.firstSeenAt, `url(#${bs.gradId})`, scale, layerEl, `peer-${clientId}`);
   }
 }
 
@@ -959,13 +851,14 @@ function _pumpRemoteCharge() {
   const step = () => {
     _remoteChargeRafId = null;
     if (_remoteBowstrings.size === 0) return;
-    render();
+    renderAwareness();
     _remoteChargeRafId = requestAnimationFrame(step);
   };
   _remoteChargeRafId = requestAnimationFrame(step);
 }
 
-function drawCharge(elId, pull, heldMs, stroke, scale) {
+// `key` names this charge's nodes for reconcile(): one charge per key.
+function drawCharge(elId, pull, heldMs, stroke, scale, layerEl, key) {
   const geo = App.getBBox(elId);
   if (!geo) return;
   const rot = App.getRotation?.(elId) ?? null;
@@ -991,11 +884,12 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
     clone.setAttribute('opacity', chargeOpacityFor(heldMs).toFixed(3));
     clone.setAttribute('pointer-events', 'none');
     if (rot) {
-      const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})` });
+      const wrap = el('g', { transform: `rotate(${rot.deg} ${rot.cx} ${rot.cy})`, 'data-key': `charge-clone:${key}` });
       wrap.appendChild(clone);
-      _layerEl.appendChild(wrap);
+      layerEl.appendChild(wrap);
     } else {
-      _layerEl.appendChild(clone);
+      clone.setAttribute('data-key', `charge-clone:${key}`);
+      layerEl.appendChild(clone);
     }
   }
 
@@ -1005,7 +899,7 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
   //    layer draws in and the circle looks identical at any zoom.
   const r = chargeRadiusFor(pull);
   if (r > 0) {
-    _layerEl.appendChild(el('circle', {
+    layerEl.appendChild(el('circle', {
       cx: origin.x,
       cy: origin.y,
       r:  r / scale,
@@ -1013,6 +907,7 @@ function drawCharge(elId, pull, heldMs, stroke, scale) {
       stroke,
       'stroke-width': 2 / scale,
       class: 'bowstring-charge-ring',
+      'data-key': `charge-ring:${key}`,
     }));
   }
 }
@@ -1042,16 +937,15 @@ function _updateDragRing(entry, elId, scale) {
 }
 
 /**
- * Where one element's selection furniture should be appended: a rotated
- * <g> for a rotated element, or the layer itself for the common case, so
- * an unrotated selection costs no extra node. `rot` is a resolved rotation
- * ({ deg, cx, cy }) or null — layers that don't rotate report none and
- * everything below takes the untransformed path unchanged.
+ * The <g> one element's selection furniture is appended to, keyed by the
+ * element so reconcile() keeps it across renders, and turned with the
+ * element when it is rotated. `rot` is a resolved rotation ({ deg, cx, cy })
+ * or null — layers that don't rotate report none and everything below
+ * takes the untransformed path unchanged.
  */
-function decorGroup(rot) {
-  if (!rot) return _layerEl;
-  const g = el('g', { transform: rotationTransform(rot) });
-  _layerEl.appendChild(g);
+function decorGroup(rot, elId, layerEl) {
+  const g = el('g', { 'data-key': `sel:${elId}`, ...(rot && { transform: rotationTransform(rot) }) });
+  layerEl.appendChild(g);
   return g;
 }
 
@@ -1082,9 +976,9 @@ export function handleCursor(corner, deg, kind) {
   return `${COMPASS[(COMPASS.indexOf(axis) + steps % 8 + 8) % 8]}-resize`;
 }
 
-function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
+function renderLocalSelection(geo, entry, scale, parent) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? _localGradUrl();
+  const stroke = _localGradUrl();
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1100,9 +994,9 @@ function renderLocalSelection(geo, entry, scale, parent = _layerEl) {
 
 }
 
-function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _layerEl) {
+function renderLocalResizeSelection(geo, entry, scale, rot, parent) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
+  const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1121,6 +1015,10 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _lay
   const corners = ['nw', 'ne', 'se', 'sw'];
   for (let i = 0; i < resizeCorners(geo).length; i++) {
     const { x: hx, y: hy } = resizeCorners(geo)[i];
+    const cursor = handleCursor(corners[i], rot?.deg ?? 0, 'resize');
+    const hit = handleHit(hx, hy, scale, { 'data-handle': 'resize', 'data-corner': corners[i] });
+    hit.style.cursor = cursor;
+    parent.appendChild(hit);
     const handle = el('rect', {
       x: hx - side_len / 2,
       y: hy - side_len / 2,
@@ -1130,9 +1028,10 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _lay
       fill: 'var(--surface-solid)', stroke: 'var(--info)',
       'stroke-width': 1.5 / scale,
       class: 'handle',
+      'data-handle': 'resize',
       'data-corner': corners[i],
     });
-    handle.style.cursor = handleCursor(corners[i], rot?.deg ?? 0, 'resize');
+    handle.style.cursor = cursor;
     parent.appendChild(handle);
   }
 }
@@ -1143,7 +1042,7 @@ function renderLocalResizeSelection(geo, entry, scale, rot = null, parent = _lay
  * which keeps the handle legible against the rotate handles: a pivot
  * dragged into a corner has already dropped every ray pointing at it.
  */
-function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
+function renderPivotHandle(elId, geo, scale, parent) {
   const committed = App.getPivot?.(elId);
   if (!committed) return;
   // Mid-drag: the shape itself never moves, so the handle is all there is to preview.
@@ -1152,10 +1051,12 @@ function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
     ? { fx: dragged.fx, fy: dragged.fy,
         cx: geo.x + dragged.fx * geo.width, cy: geo.y + dragged.fy * geo.height }
     : committed;
-  const g = el('g', { class: 'pivotHandle' });
-  // Invisible circle at hitTestPivot's own radius: the rays/dot below it
-  // opt out of pointer-events, and a <g> has no geometry of its own to
-  // hover, so without this nothing here ever shows the crosshair cursor.
+  // Drawn after the rotate handles, so a pivot parked on a corner is the
+  // one a press there lands on: it is the smaller, more deliberate target.
+  const g = el('g', { class: 'pivotHandle', 'data-handle': 'pivot' });
+  // Invisible circle giving the handle its grab radius: the rays/dot below
+  // it opt out of pointer-events, and a <g> has no geometry of its own to
+  // hover or press.
   g.appendChild(el('circle', {
     cx: pivot.cx, cy: pivot.cy, r: (PIVOT_SIZE / 2 + HANDLE_HIT_PAD) / scale,
     fill: 'transparent',
@@ -1170,9 +1071,9 @@ function renderPivotHandle(elId, geo, scale, parent = _layerEl) {
  * squares — the one visual cue that says this drag spins the shape rather
  * than stretching it. Shared by both 'sel-rotate' and 'sel-rotate-pivot'.
  */
-function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _layerEl) {
+function renderLocalRotateSelection(geo, entry, scale, rot, parent) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
+  const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   parent.appendChild(el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1187,16 +1088,17 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _lay
 
   // A shade larger than the resize squares — both because a disc reads
   // smaller than a square of the same span, and because the arrow inside
-  // needs the room to be legible. Still well inside hitTestResizeCorner's
-  // grab radius, which both modes share.
+  // needs the room to be legible. Still well inside handleHit's grab
+  // square, which both modes share.
   const r = (HANDLE_SIZE * 0.62) / scale;
   const corners = ['nw', 'ne', 'se', 'sw'];
   resizeCorners(geo).forEach(({ x: hx, y: hy }, i) => {
     // The disc and its glyph ride together in one <g> so the whole handle
     // is addressable as a unit (and so the glyph never takes the pointer
     // away from the disc under it).
-    const handle = el('g', { class: 'handle rotateHandle', 'data-corner': corners[i], 'data-rotate-handle': '' });
+    const handle = el('g', { class: 'handle rotateHandle', 'data-handle': 'rotate', 'data-corner': corners[i], 'data-rotate-handle': '' });
     handle.style.cursor = handleCursor(corners[i], rot?.deg ?? 0, 'rotate');
+    handle.appendChild(handleHit(hx, hy, scale, {}));
     handle.appendChild(el('circle', {
       cx: hx, cy: hy, r,
       fill: 'var(--surface-solid)', stroke: 'var(--info)',
@@ -1212,9 +1114,9 @@ function renderLocalRotateSelection(geo, entry, scale, rot = null, parent = _lay
  * radius-drag handle centered on the right edge instead of four corner
  * handles — used for the 'sel-resize-r' mode (currently: circles).
  */
-function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
+function renderLocalResizeRSelection(geo, entry, scale, parent) {
   const { x, y, width, height } = geo;
-  const stroke = entry.ringStroke ?? (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
+  const stroke = (entry.grad ? (_localGradUrl() ?? entry.color ?? 'var(--info)') : (entry.color ?? 'var(--info)'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1230,6 +1132,7 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
 
   const side_len = HANDLE_SIZE / scale;
   const { x: hx, y: hy } = resizeRHandle(geo);
+  parent.appendChild(handleHit(hx, hy, scale, { 'data-handle': 'resize', 'data-corner': 'r' }));
   parent.appendChild(el('rect', {
     x: hx - side_len / 2,
     y: hy - side_len / 2,
@@ -1239,6 +1142,7 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
     fill: 'var(--surface-solid)', stroke: 'var(--info)',
     'stroke-width': 1.5 / scale,
     class: 'handle',
+    'data-handle': 'resize',
     'data-corner': 'r',
   }));
 }
@@ -1246,17 +1150,24 @@ function renderLocalResizeRSelection(geo, entry, scale, parent = _layerEl) {
 // ── Action-mode affordance ───────────────────────────────────────────────────
 // Render a single rounded-corner icon square — asterisk (*), the bowstring
 // handle's resting state
-function renderActionAffordance(origin, scale, groupClass = 'bowstring') {
+function renderActionAffordance(origin, scale, groupClass, layerEl, key) {
   const side = ACTION_SQUARE_SIDE / scale;
   // Drawn in the layer, not the rotated decorGroup, so it stays upright at
-  // delight.js's bowstringOrigin like the live handle. The <g class="bowstring">
-  // wrapper makes square plus glyph one unit; this layer is wiped each render(),
-  // while the live gesture lives in #delight-layer.
-  drawActionSquare(origin, side, scale, groupClass, _layerEl);
+  // layer_delight.js's bowstringOrigin like the live handle. The
+  // <g class="bowstring"> wrapper makes square plus glyph one unit; the live
+  // gesture lives in #delight-layer.
+  drawActionSquare(origin, side, scale, groupClass, layerEl, key);
 }
 
-function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _layerEl) {
-  const parent = groupClass ? el('g', { class: groupClass }) : host;
+// The data-handle each clickable square carries, read by canvas.js's
+// pointerdown.
+const ACTION_SQUARE_HANDLES = { bowstring: 'bowstring', groupAction: 'group-action' };
+
+function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host, key) {
+  const handle = ACTION_SQUARE_HANDLES[groupClass];
+  const parent = groupClass
+    ? el('g', { class: groupClass, ...(handle && { 'data-handle': handle }), ...(key && { 'data-key': key }) })
+    : host;
   parent.appendChild(el('rect', {
     x: cx - side / 2, y: cy - side / 2,
     width: side, height: side,
@@ -1269,14 +1180,14 @@ function drawActionSquare({ x: cx, y: cy }, side, scale, groupClass, host = _lay
   if (parent !== host) host.appendChild(parent);
 }
 
-function renderRemoteSelection(geo, entry, scale, rot = null) {
+function renderRemoteSelection(geo, entry, scale, rot, layerEl, key = null) {
   const { x, y, width, height } = geo;
-  const group = el('g', { class: 'remote-sel' });
+  const group = el('g', { class: 'remote-sel', ...(key && { 'data-key': key }) });
 
   // Ring strokes with the peer's own <linearGradient id="grad-{id}"> (see
   // user.js's upsertUserGradient) when one is available; solid color is
   // only a fallback for peers who haven't broadcast a gradient.
-  const stroke = entry.ringStroke ?? (entry.gradId ? `url(#${entry.gradId})` : (entry.color ?? '#888'));
+  const stroke = (entry.gradId ? `url(#${entry.gradId})` : (entry.color ?? '#888'));
   const ring = el('rect', {
     x:      x - PAD,
     y:      y - PAD,
@@ -1316,37 +1227,46 @@ function renderRemoteSelection(geo, entry, scale, rot = null) {
   txt.textContent = name;
   group.appendChild(txt);
 
-  _layerEl.appendChild(group);
+  layerEl.appendChild(group);
 }
 
-// Contested/"requested" indicator — a dashed ring on the element's own
-// selection-ring rectangle, in the requester's gradient, growing from the
-// bottom-left corner over the request window. Drawn on top of whatever else
-// is rendered for the element (local/remote selection ring, or nothing at
-// all). Without a known requester gradient it falls back to a static warn
-// ring.
-function renderRequestedIndicator(geo, scale, rot, elId, req, defs) {
-  const { x, y, width, height } = geo;
-  const stroke = req.requesterGrad
-    ? `url(#${buildVanishGradient(defs, requestGradientId('grow', elId), req.requesterGrad, req.ts, 'grow')})`
-    : 'var(--warn)';
-  const ring = el('rect', {
-    x:      x - PAD,
-    y:      y - PAD,
-    width:  width  + PAD * 2,
-    height: height + PAD * 2,
-    rx:     4,
-    fill:               'none',
-    stroke,
-    'stroke-width':     SoftLock.RING_WIDTH / scale,
-    'stroke-dasharray': `${3 / scale} ${3 / scale}`,
-    class:              'requestedRing',
+// The request ring's geometry. Gap and radius are canvas units, like PAD,
+// so the ring always clears the holder's own ring; the width is screen px.
+const REQUEST_RING_PAD    = 10;
+const REQUEST_RING_RADIUS = 6;
+const REQUEST_RING_WIDTH  = 6;
+
+// Contested/"requested" indicator — a ring in the requester's own gradient
+// that draws itself on clockwise from the top-left over the request window,
+// then repeats (ui.css's request-ring keyframes). Drawn on top of whatever
+// else is rendered for the element (my ring, a peer's, or nothing at all).
+// pathLength="1" lets the CSS animate stroke-dashoffset from 1 to 0 at any
+// size. The animation-delay starts it as far in as the request already was
+// when first drawn. Without a known requester gradient it is the warn
+// colour.
+function renderRequestedIndicator(geo, scale, rot, elId, req, ageMs, layerEl) {
+  const pad = REQUEST_RING_PAD;
+  const x = geo.x - pad, y = geo.y - pad;
+  const w = geo.width + pad * 2, h = geo.height + pad * 2;
+  const r = Math.min(REQUEST_RING_RADIUS, w / 2, h / 2);
+  const ring = el('path', {
+    d: `M ${x + r} ${y} H ${x + w - r} A ${r} ${r} 0 0 1 ${x + w} ${y + r} `
+     + `V ${y + h - r} A ${r} ${r} 0 0 1 ${x + w - r} ${y + h} `
+     + `H ${x + r} A ${r} ${r} 0 0 1 ${x} ${y + h - r} `
+     + `V ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y}`,
+    pathLength:     1,
+    fill:           'none',
+    stroke:         req.requesterGradId ? `url(#${req.requesterGradId})` : 'var(--warn)',
+    'stroke-width': REQUEST_RING_WIDTH / scale,
+    class:          'requestedRing',
+    style:          `animation-delay: ${-ageMs}ms`,
+    'data-key':     `request:${elId}`,
   });
   if (rot) ring.setAttribute('transform', rotationTransform(rot));
-  _layerEl.appendChild(ring);
+  layerEl.appendChild(ring);
 }
 
-function renderDropTargetHover(geo, scale) {
+function renderDropTargetHover(geo, scale, layerEl) {
   const { x, y, width, height } = geo;
   const ring = el('rect', {
     x:      x - PAD,
@@ -1358,8 +1278,9 @@ function renderDropTargetHover(geo, scale) {
     stroke:             'var(--warn)',
     'stroke-width':     2.5 / scale,
     class:              'dropTargetRing',
+    'data-key':         'drop-target',
   });
-  _layerEl.appendChild(ring);
+  layerEl.appendChild(ring);
 }
 
 // ── SVG element factory ─────────────────────────────────────────────────────
@@ -1443,7 +1364,7 @@ function _buildAddCursorGroup(tool, color, initArgs) {
  * repositions the existing one.
  */
 export function updateLocalAddCursor(x, y, tool) {
-  if (!_layerEl) return;
+  if (!_selectionLocalEl) return;
   const def = App.getTool(tool);
   const initArgs = def?.toyType ? toolInitArgs(def, App.getToolParams(tool), App.user.color) : null;
   const key = JSON.stringify(initArgs);
@@ -1451,7 +1372,7 @@ export function updateLocalAddCursor(x, y, tool) {
     _localAddCursor?.groupEl.remove();
     const groupEl = _buildAddCursorGroup(tool, App.user.color, initArgs);
     _localAddCursor = { tool, key, groupEl };
-    _layerEl.appendChild(groupEl);
+    _selectionLocalEl.appendChild(groupEl);
   }
   _localAddCursor.groupEl.setAttribute('transform', `translate(${x}, ${y})`);
 }
@@ -1463,17 +1384,63 @@ export function clearLocalAddCursor() {
   _localAddCursor = null;
 }
 
-// Re-appends the local add-cursor group (survives the innerHTML wipe at the
-// top of render(), same as the drag/resize ghosts) and draws one group per
-// remote peer currently in an add-tool, from _remoteAddCursors. Called at
-// the end of render() — z-top, like the bowstring charge.
-function renderAddCursors() {
-  if (_localAddCursor) _layerEl.appendChild(_localAddCursor.groupEl);
-  for (const cursor of _remoteAddCursors.values()) {
+// Draws one group per remote peer currently in an add-tool, from
+// _remoteAddCursors. Called at the end of renderAwareness() — z-top, like the
+// bowstring charge.
+function renderRemoteAddCursors(layerEl) {
+  for (const [clientId, cursor] of _remoteAddCursors) {
     const groupEl = _buildAddCursorGroup(cursor.tool, cursor.color);
     groupEl.setAttribute('transform', `translate(${cursor.x}, ${cursor.y})`);
-    _layerEl.appendChild(groupEl);
+    groupEl.setAttribute('data-key', `cursor:${clientId}`);
+    layerEl.appendChild(groupEl);
   }
+}
+
+/**
+ * Makes layerEl's children exactly `next`, in order. A wanted node that is
+ * already a child (a retained ghost) stays put; a fresh node whose data-key
+ * matches a current child is patched onto that child instead of replacing
+ * it. Either way the node keeps its identity, and with it any CSS
+ * transition or animation running on it. Everything else is removed.
+ */
+function reconcile(layerEl, next) {
+  const byKey = new Map();
+  for (const child of layerEl.children) {
+    const key = child.getAttribute('data-key');
+    if (key) byKey.set(key, child);
+  }
+  const keep = next.map((node) => {
+    if (node.parentNode === layerEl) return node;
+    const old = byKey.get(node.getAttribute('data-key'));
+    if (!old || old.localName !== node.localName) return node;
+    patch(old, node);
+    return old;
+  });
+  const wanted = new Set(keep);
+  for (const child of [...layerEl.children]) if (!wanted.has(child)) child.remove();
+  keep.forEach((node, i) => {
+    if (layerEl.children[i] !== node) layerEl.insertBefore(node, layerEl.children[i] ?? null);
+  });
+}
+
+// Makes `old` match `fresh` in place: attributes, then children by
+// position, patching each pair of the same tag and replacing the rest. A
+// mode change that adds handles to a ring keeps the ring.
+function patch(old, fresh) {
+  for (const { name } of [...old.attributes]) if (!fresh.hasAttribute(name)) old.removeAttribute(name);
+  for (const { name, value } of fresh.attributes) if (old.getAttribute(name) !== value) old.setAttribute(name, value);
+  const b = [...fresh.children];
+  if (!b.length && !old.children.length) {
+    if (old.textContent !== fresh.textContent) old.textContent = fresh.textContent;
+    return;
+  }
+  b.forEach((child, i) => {
+    const mine = old.children[i];
+    if (!mine) old.appendChild(child);
+    else if (mine.localName === child.localName) patch(mine, child);
+    else mine.replaceWith(child);
+  });
+  while (old.children.length > b.length) old.lastElementChild.remove();
 }
 
 function el(tag, attrs) {
