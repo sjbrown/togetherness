@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Toy Landing Tuner</title>
-<meta name="claude:viewport-fit-sides" content="cover">
+  <title>Delight Tuner</title>
 <style>
   /* Layout: controls column on the left, table stage filling the rest; the panel overlays the stage on phones. */
   :root {
@@ -82,6 +81,11 @@
 
   #stage { flex: 1; position: relative; overflow: hidden; background: var(--table, #2d5b45); min-width: 0; }
   #svg { width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+  #stage:not([data-effect="plop"]) #svg { cursor: default; }
+  #stage[data-effect="skid"] #toys-layer .toy { cursor: grab; }
+  #stage[data-effect="cloudburst"] #toys-layer .toy { cursor: pointer; }
+  #toys-layer .toy.tuner-selected { outline: none; }
+  .tuner-sel-ring { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; }
   #hint {
     position: absolute; left: 50%; transform: translateX(-50%);
     bottom: calc(14px + env(safe-area-inset-bottom, 0px));
@@ -103,26 +107,35 @@
 
 <div id="panel">
   <div id="panel-head">
-    <h1>Toy landing tuner</h1>
+    <h1>Delight tuner</h1>
     <button id="panel-close" title="Close controls" aria-label="Close controls">×</button>
   </div>
-  <div class="subtitle">Defaults are what ships in <code>src/delight_plop.js</code>, which implements only this trigger and look. Click the table to place a toy. The real toy goes into <code>#toys-layer</code> untouched; the squash and stretch plays on a clone in <code>#delight-layer</code>, then the clone is removed.</div>
+  <label class="top" for="effect">Effect</label>
+  <select id="effect">
+    <option value="plop">Plop: adding a toy</option>
+    <option value="skid">Skid: moving a toy</option>
+    <option value="cloudburst">Cloudburst: deleting toys</option>
+  </select>
+  <div class="subtitle" id="effect-notes"></div>
 
-  <label class="top">Tool</label>
-  <div id="toy-picker"></div>
+  <div id="plop-only">
+    <label class="top">Tool</label>
+    <div id="toy-picker"></div>
 
-  <label class="top" for="preset">Preset</label>
-  <select id="preset"></select>
+    <label class="top" for="preset">Preset</label>
+    <select id="preset"></select>
+  </div>
 
   <div class="btn-row">
-    <button id="replay">Replay on last toy</button>
+    <button id="replay">Replay</button>
     <button id="clear">Clear table</button>
+    <button id="reseed">Reset toys</button>
     <label class="check"><input type="checkbox" id="loop"> Loop replay</label>
   </div>
 
-  <h2>Shape over time</h2>
-  <svg id="plot" viewBox="0 0 340 120" role="img" aria-label="Horizontal and vertical scale over the landing animation"></svg>
-  <div class="legend"><span><i style="background:var(--plot-x)"></i>scale X</span><span><i style="background:var(--plot-y)"></i>scale Y</span><span id="plot-total"></span></div>
+  <h2 id="plot-title">Shape over time</h2>
+  <svg id="plot" viewBox="0 0 340 120" role="img" aria-label="The effect's curves over time"></svg>
+  <div class="legend"><span id="legend-a"><i style="background:var(--plot-x)"></i><b></b></span><span id="legend-b"><i style="background:var(--plot-y)"></i><b></b></span><span id="plot-total"></span></div>
 
   <h2>Tuning</h2>
   <div id="tuning"></div>
@@ -143,6 +156,8 @@
     <defs>
       <filter id="puff-blur" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur id="puff-blur-sd" stdDeviation="1.2"/></filter>
       <filter id="shadow-blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+      <filter id="skid-blur" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="2.3"/></filter>
+      <filter id="cb-blur" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="3"/></filter>
     </defs>
     <g id="world">
       <g id="toys-layer"></g>
@@ -150,7 +165,7 @@
       <g id="delight-layer" pointer-events="none"></g>
     </g>
   </svg>
-  <div id="hint">Click to place · hold to see the press squash · Esc cancels a held press</div>
+  <div id="hint"></div>
 </div>
 
 <style id="hide-rules"></style>
@@ -160,7 +175,10 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 // Served by bin/dev.sh at /dev/, beside the app's /toy/.
 const TOY_FILES = { d6: ['dice_d6.svg', 'd6'], chip: ['chip.svg', 'Chip'], meeple: ['meeple.svg', 'Meeple'], card: ['single_poker_card.svg', 'Card'] };
 const TOYS = {};
+// The published copy has the toys inlined here; served from /dev/ it fetches them.
+const INLINE_TOYS = /*__TOYS_INLINE__*/null;
 async function loadToys() {
+  if (INLINE_TOYS) { Object.assign(TOYS, INLINE_TOYS); return; }
   for (const [type, [file, label]] of Object.entries(TOY_FILES)) {
     const res = await fetch(`/toy/${file}`);
     if (!res.ok) throw new Error(`/toy/${file}: ${res.status}`);
@@ -186,7 +204,7 @@ const EASES = {
 const easeOpts = Object.keys(EASES).map(k => [k, k]);
 
 const TUNING = [
-  { group: 'Trigger and look', rows: [
+  { group: 'Trigger and look', effect: 'plop', rows: [
     { key: 'trigger', label: 'Trigger', type: 'select', def: 'press', opts: [
       ['release', 'Everything on release'], ['press', 'Squash on press, stretch on release']] },
     { key: 'projection', label: 'Deform as', type: 'select', def: 'top', opts: [
@@ -196,7 +214,7 @@ const TUNING = [
     { key: 'anchor', label: 'Pivot', type: 'select', def: 'center', opts: [['bottom', 'Bottom edge'], ['center', 'Centre']] },
     { key: 'axis', label: 'Squash axis', type: 'select', def: 'screen', opts: [['screen', 'Screen (ignores rotation)'], ['toy', 'Toy (rotates with it)']] },
   ]},
-  { group: 'Squash', rows: [
+  { group: 'Squash', effect: 'plop', rows: [
     { key: 'squash',    label: 'Amount',          type: 'num', min: 0, max: 0.6, step: 0.01, def: 0.1 },
     { key: 'squashMs',  label: 'Duration (ms)',   type: 'num', min: 20, max: 400, step: 5, def: 90 },
     { key: 'squashEase',label: 'Easing',          type: 'select', def: 'ease-out', opts: easeOpts },
@@ -205,21 +223,21 @@ const TUNING = [
     { key: 'holdExtra', label: 'Extra squash while held', type: 'num', min: 0, max: 0.4, step: 0.01, def: 0.1, only: { trigger: 'press' } },
     { key: 'holdMs',    label: 'Held time to max (ms)', type: 'num', min: 0, max: 2000, step: 50, def: 1000, only: { trigger: 'press' } },
   ]},
-  { group: 'Stretch and settle', rows: [
+  { group: 'Stretch and settle', effect: 'plop', rows: [
     { key: 'stretch',   label: 'Stretch amount',  type: 'num', min: 0, max: 0.6, step: 0.01, def: 0.15 },
     { key: 'stretchMs', label: 'Stretch duration (ms)', type: 'num', min: 20, max: 400, step: 5, def: 60 },
     { key: 'stretchEase', label: 'Stretch easing', type: 'select', def: 'ease-out', opts: easeOpts },
     { key: 'springHz',  label: 'Wobble frequency (Hz)', type: 'num', min: 1, max: 14, step: 0.25, def: 5 },
     { key: 'damping',   label: 'Wobble damping', type: 'num', min: 0.05, max: 1, step: 0.01, def: 0.45 },
   ]},
-  { group: 'Entrance', rows: [
+  { group: 'Entrance', effect: 'plop', rows: [
     { key: 'introMs',     label: 'Duration (ms)',   type: 'num', min: 40, max: 600, step: 10, def: 200, onlyNot: { intro: 'none' } },
     { key: 'fallHeight',  label: 'Drop height (screen px)', type: 'num', min: 0, max: 200, step: 2, def: 60, only: { intro: 'fall' } },
     { key: 'fallStretch', label: 'Stretch while falling', type: 'num', min: 0, max: 0.5, step: 0.01, def: 0.05, only: { intro: 'fall' } },
     { key: 'shadow',      label: 'Contact shadow',  type: 'bool', def: true },
     { key: 'shadowOpacity', label: 'Shadow opacity', type: 'num', min: 0, max: 0.8, step: 0.05, def: 0.2, only: { shadow: true } },
   ]},
-  { group: 'Dust puff', rows: [
+  { group: 'Dust puff', effect: 'plop', rows: [
     { key: 'puff',        label: 'Show puff',       type: 'bool', def: true },
     { key: 'puffWhen',    label: 'Fires at', type: 'select', def: 'impact', opts: [['impact', 'Impact (start of squash)'], ['release', 'Pointer release'], ['stretch', 'Stretch peak']], only: { puff: true } },
     { key: 'puffDelay',   label: 'Offset (ms)',     type: 'num', min: -100, max: 200, step: 5, def: 0, only: { puff: true } },
@@ -236,7 +254,7 @@ const TUNING = [
     { key: 'puffBlur',    label: 'Softness (blur px)', type: 'num', min: 0, max: 4, step: 0.1, def: 2.3, only: { puff: true } },
     { key: 'puffRing',    label: 'Add shock ring',  type: 'bool', def: false, only: { puff: true } },
   ]},
-  { group: 'How it is wired', note: 'These mimic the app: placement is async, initialize() can change the toy after it lands, and the real toy must be hidden without touching its DOM.', rows: [
+  { group: 'How it is wired', effect: 'plop', note: 'These mimic the app: placement is async, initialize() can change the toy after it lands, and the real toy must be hidden without touching its DOM.', rows: [
     { key: 'cloneMethod', label: 'Clone', type: 'select', def: 'use', opts: [
       ['use', '<use href> (live)'], ['clone', 'cloneNode of real toy'], ['template', 'Built from template only']] },
     { key: 'realToy', label: 'Real toy while animating', type: 'select', def: 'hidden', opts: [
@@ -244,7 +262,40 @@ const TUNING = [
     { key: 'fetchDelay', label: 'Template fetch delay (ms)', type: 'num', min: 0, max: 600, step: 10, def: 0 },
     { key: 'initChange', label: 'initialize() changes the toy', type: 'bool', def: true },
   ]},
-  { group: 'Preview only', rows: [
+  { group: 'Skid', effect: 'skid', note: 'How far the puffs go grows with how far the toy went, both in screen px: from the floor for a short move up to the ceiling once the toy has gone the distance below.', rows: [
+    { key: 'skidCount',   label: 'Count',            type: 'num', min: 1, max: 12, step: 1, def: 3 },
+    { key: 'skidArc',     label: 'Arc (deg)',        type: 'num', min: 0, max: 360, step: 5, def: 90 },
+    { key: 'skidMinDist', label: 'Puff travel floor (px)', type: 'num', min: 0, max: 200, step: 5, def: 50 },
+    { key: 'skidMaxDist', label: 'Puff travel ceiling (px)', type: 'num', min: 0, max: 400, step: 5, def: 180 },
+    { key: 'skidMaxAt',   label: 'Ceiling at toy travel (px)', type: 'num', min: 50, max: 2000, step: 50, def: 800 },
+  ]},
+  { group: 'Skid puff', effect: 'skid', rows: [
+    { key: 'skidSpread',  label: 'Start ring (of toy size)', type: 'num', min: 0, max: 1, step: 0.05, def: 0.6 },
+    { key: 'skidRise',    label: 'Rise (px)',        type: 'num', min: 0, max: 60, step: 1, def: 10 },
+    { key: 'skidMs',      label: 'Duration (ms)',    type: 'num', min: 100, max: 2000, step: 10, def: 500 },
+    { key: 'skidRiseMs',  label: 'Rise duration (ms, 0 = same)', type: 'num', min: 0, max: 2000, step: 10, def: 0 },
+    { key: 'skidFlatten', label: 'Flatten (1 = circle)', type: 'num', min: 0.1, max: 1, step: 0.05, def: 0.8 },
+    { key: 'skidSize',    label: 'Start radius (px)', type: 'num', min: 1, max: 20, step: 0.5, def: 2.5 },
+    { key: 'skidGrow',    label: 'Grows by',         type: 'num', min: 1, max: 6, step: 0.1, def: 3 },
+    { key: 'skidJitter',  label: 'Randomness',       type: 'num', min: 0, max: 1, step: 0.05, def: 0.4 },
+    { key: 'skidColor',   label: 'Colour',           type: 'color', def: '#ece6d6', alpha: 0.4 },
+    { key: 'skidBlur',    label: 'Softness (blur px)', type: 'num', min: 0, max: 6, step: 0.1, def: 2.3 },
+  ]},
+  { group: 'Cloudburst', effect: 'cloudburst', rows: [
+    { key: 'cbCount',   label: 'Count',              type: 'num', min: 1, max: 30, step: 1, def: 10 },
+    { key: 'cbSpread',  label: 'Start ring (of toy size)', type: 'num', min: 0, max: 1.5, step: 0.05, def: 0.5 },
+    { key: 'cbDist',    label: 'Outward travel (px)', type: 'num', min: 0, max: 200, step: 1, def: 40 },
+    { key: 'cbRise',    label: 'Rise (px)',          type: 'num', min: 0, max: 120, step: 1, def: 28 },
+    { key: 'cbMs',      label: 'Duration (ms)',      type: 'num', min: 100, max: 3000, step: 10, def: 1100 },
+    { key: 'cbRiseMs',  label: 'Rise duration (ms, 0 = same)', type: 'num', min: 0, max: 3000, step: 10, def: 550 },
+    { key: 'cbFlatten', label: 'Flatten (1 = circle)', type: 'num', min: 0.1, max: 1, step: 0.05, def: 0.8 },
+    { key: 'cbSize',    label: 'Start radius (px)',  type: 'num', min: 1, max: 20, step: 0.5, def: 4.5 },
+    { key: 'cbGrow',    label: 'Grows by',           type: 'num', min: 1, max: 6, step: 0.1, def: 3.5 },
+    { key: 'cbJitter',  label: 'Randomness',         type: 'num', min: 0, max: 1, step: 0.05, def: 0.5 },
+    { key: 'cbColor',   label: 'Colour',             type: 'color', def: '#ece6d6', alpha: 0.5 },
+    { key: 'cbBlur',    label: 'Softness (blur px)', type: 'num', min: 0, max: 6, step: 0.1, def: 3 },
+  ]},
+  { group: 'Preview only', effect: 'all', rows: [
     { key: 'slowmo',   label: 'Speed',          type: 'num', min: 0.05, max: 1, step: 0.05, def: 1 },
     { key: 'zoom',     label: 'Zoom',           type: 'num', min: 0.4, max: 2.5, step: 0.1, def: 1 },
     { key: 'rotation', label: 'Toy rotation (deg)', type: 'num', min: -180, max: 180, step: 5, def: 0 },
@@ -268,7 +319,9 @@ const PRESETS = {
 };
 
 const ROWS = TUNING.flatMap(g => g.rows);
-const STORAGE_KEY = 'landing-tuner-values-v2';
+const STORAGE_KEY = 'delight-tuner-values';
+const EFFECT_KEY = 'delight-tuner-effect';
+let effect = 'plop';
 const V = {};
 
 // ── Small helpers ────────────────────────────────────────────────────────
@@ -643,7 +696,15 @@ function renderPuffs() {
     const u = (vNow - p.t0) / p.dur;
     if (u >= 1) { p.el.remove(); puffs.delete(p); continue; }
     const k = puffEase(clamp(u, 0, 1));
-    if (p.kind === 'dot') {
+    if (p.kind === 'gen') {
+      const q = p.q;
+      const kr = puffEase(clamp((vNow - p.t0) / q.riseMs, 0, 1));
+      p.el.setAttribute('cx', q.x + q.tx * k);
+      p.el.setAttribute('cy', q.y + q.ty * k - q.rise * kr);
+      p.el.setAttribute('r', lerp(q.r0, q.r1, k));
+      const peak = p.alpha * 0.875;
+      p.el.setAttribute('opacity', u < 0.125 ? peak * u / 0.125 : peak * (1 - u) / 0.875);
+    } else if (p.kind === 'dot') {
       p.el.setAttribute('cx', p.x0 + p.dx * k);
       p.el.setAttribute('cy', p.y0 + p.dy * k - p.rise * k);
       p.el.setAttribute('r', p.r0 * lerp(1, p.grow, k));
@@ -655,6 +716,105 @@ function renderPuffs() {
       p.el.setAttribute('opacity', p.alpha * (1 - u) * 0.8);
     }
   }
+}
+
+// ── Skid and cloudburst puffs ────────────────────────────────────────────
+// puffParticles is src/delight_puff.js's, copied; firePuff renders it the
+// way .delight-puff's CSS does (travel and growth eased over ms, the rise
+// eased over riseMs, a linear fade after a quick fade-in), on the virtual
+// clock so the Speed slider applies.
+function puffParticles(cx, cy, w, h, scale, o, rand = Math.random) {
+  const { count, spread, dist, rise, riseMs, flatten, size, grow, ms, jitter, direction, arc } = o;
+  const ring = Math.max(w, h) * 0.5 * spread;
+  const step = (Math.PI * 2) / count;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const ang = direction == null
+      ? i * step + (rand() - 0.5) * jitter * step
+      : direction + (rand() - 0.5) * arc;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const travel = (dist * (1 + (rand() - 0.5) * jitter)) / scale;
+    const r0 = (size * (1 + (rand() - 0.5) * jitter * 0.8)) / scale;
+    const pace = 1 + (rand() - 0.5) * jitter * 0.5;
+    out.push({
+      x: cx + ca * ring, y: cy + sa * ring * flatten,
+      tx: ca * travel, ty: sa * travel * flatten, rise: rise / scale,
+      r0, r1: r0 * grow, ms: ms * pace, riseMs: (riseMs ?? ms) * pace,
+    });
+  }
+  return out;
+}
+function firePuff(cx, cy, w, h, o, filterId) {
+  document.querySelector(`#${filterId} feGaussianBlur`).setAttribute('stdDeviation', o.blur / view.z);
+  for (const q of puffParticles(cx, cy, w, h, view.z, o)) {
+    const c = el('circle', { cx: q.x, cy: q.y, r: q.r0, fill: o.color.hex, opacity: 0, filter: o.blur > 0 ? `url(#${filterId})` : 'none' }, delightLayer);
+    puffs.add({ el: c, kind: 'gen', t0: vNow, dur: q.ms, q, alpha: o.color.alpha });
+  }
+  tick();
+}
+
+// Skid: src/delight_skid.js.
+function skidDistFor(travel) {
+  return V.skidMinDist + (V.skidMaxDist - V.skidMinDist) * clamp(travel / V.skidMaxAt, 0, 1);
+}
+let lastSkid = null;
+function skid(from, to, w, h) {
+  const travel = Math.hypot(to.x - from.x, to.y - from.y);
+  lastSkid = { from, to, w, h, travelPx: travel * view.z };
+  const heading = travel < 1 ? {} : { direction: Math.atan2(to.y - from.y, to.x - from.x), arc: V.skidArc * Math.PI / 180 };
+  firePuff(to.x, to.y, w, h, {
+    count: V.skidCount, spread: V.skidSpread, dist: skidDistFor(travel * view.z), rise: V.skidRise,
+    ms: V.skidMs, riseMs: V.skidRiseMs || null, flatten: V.skidFlatten, size: V.skidSize, grow: V.skidGrow,
+    jitter: V.skidJitter, color: V.skidColor, blur: V.skidBlur, ...heading,
+  }, 'skid-blur');
+  drawPlot();
+}
+
+// Cloudburst: src/delight_cloudburst.js.
+let lastBurst = null;
+function cloudburst(toys) {
+  lastBurst = toys;
+  for (const t of toys) {
+    firePuff(t.x, t.y, t.w, t.h, {
+      count: V.cbCount, spread: V.cbSpread, dist: V.cbDist, rise: V.cbRise, ms: V.cbMs,
+      riseMs: V.cbRiseMs || null, flatten: V.cbFlatten, size: V.cbSize, grow: V.cbGrow,
+      jitter: V.cbJitter, color: V.cbColor, blur: V.cbBlur,
+    }, 'cb-blur');
+  }
+}
+const toyEls = () => [...toysLayer.querySelectorAll(':scope > .toy')];
+const toyAt = (target) => target?.closest?.('#toys-layer > .toy') ?? null;
+const sizeOfToy = (g) => ({ w: TOYS[g._toy.type].w, h: TOYS[g._toy.type].h });
+function setToyCentre(g, c) {
+  g._toy.c = { ...c };
+  g.setAttribute('transform', toyTransform(g._toy.type, c.x, c.y, g._toy.rot));
+}
+let selected = new Set();
+function syncSelectionRings() {
+  for (const n of [...selectionLocal.querySelectorAll('.tuner-sel-ring')]) n.remove();
+  for (const g of selected) {
+    const { w, h } = sizeOfToy(g), c = g._toy.c;
+    el('rect', { class: 'tuner-sel-ring', x: c.x - w / 2 - 6, y: c.y - h / 2 - 6, width: w + 12, height: h + 12, rx: 6 }, selectionLocal);
+  }
+}
+function deleteToys(gs) {
+  const gone = gs.map(g => ({ id: g.getAttribute('data-id'), x: g._toy.c.x, y: g._toy.c.y, ...sizeOfToy(g) }));
+  for (const g of gs) { g.remove(); selected.delete(g); }
+  syncSelectionRings();
+  cloudburst(gone);
+  logLine(`deleted ${gone.length} toy${gone.length === 1 ? '' : 's'}`);
+}
+function seedToys() {
+  toysLayer.replaceChildren(); selected.clear(); syncSelectionRings();
+  const types = Object.keys(TOYS);
+  types.forEach((type, i) => {
+    const id = `toy${++idCounter}`;
+    const c = { x: (i - (types.length - 1) / 2) * 120, y: 0 };
+    const g = placeReal(type, id, c, 0);
+    hiddenIds.delete(id);
+    lastToy = { type, id, c, rot: 0, el: g };
+  });
+  syncHideRules();
 }
 
 // ── Frame loop ───────────────────────────────────────────────────────────
@@ -675,6 +835,7 @@ function tick() {
 // ── Placing (mirrors canvas.js finishDraft → App.commitToy) ──────────────
 function placeReal(type, id, c, rot) {
   const g = el('g', { class: 'toy', 'data-id': id, 'data-toy-type': type, transform: toyTransform(type, c.x, c.y, rot) });
+  g._toy = { type, c: { ...c }, rot };
   g.appendChild(buildToySvg(type, id, V.color));
   hiddenIds.add(id); syncHideRules();
   toysLayer.appendChild(g);
@@ -705,8 +866,26 @@ function commit(L) {
 }
 
 let press = null;
+let drag = null;   // skid mode: { pointerId, g, from, grab, pointerFrom, pointer, moved, cancelled }
 svgEl.addEventListener('pointerdown', (e) => {
   if (e.button !== 0) return;
+  if (effect === 'skid') {
+    const g = toyAt(e.target);
+    if (!g) return;
+    svgEl.setPointerCapture(e.pointerId);
+    const p = toCanvas(e.clientX, e.clientY);
+    drag = { pointerId: e.pointerId, g, from: { ...g._toy.c }, grab: { x: p.x - g._toy.c.x, y: p.y - g._toy.c.y }, pointerFrom: p, pointer: p, moved: false, cancelled: false };
+    return;
+  }
+  if (effect === 'cloudburst') {
+    const g = toyAt(e.target);
+    if (!g) { if (!e.shiftKey) { selected.clear(); syncSelectionRings(); } return; }
+    if (e.shiftKey) {
+      if (selected.has(g)) selected.delete(g); else selected.add(g);
+      syncSelectionRings();
+    } else deleteToys([g]);
+    return;
+  }
   svgEl.setPointerCapture(e.pointerId);
   const p = toCanvas(e.clientX, e.clientY);
   const id = `toy${++idCounter}`;
@@ -717,11 +896,28 @@ svgEl.addEventListener('pointerdown', (e) => {
   }
 });
 svgEl.addEventListener('pointermove', (e) => {
+  if (effect === 'skid') {
+    if (!drag || drag.cancelled || e.pointerId !== drag.pointerId) return;
+    const p = toCanvas(e.clientX, e.clientY);
+    drag.pointer = p;
+    if (Math.hypot(p.x - drag.pointerFrom.x, p.y - drag.pointerFrom.y) * view.z >= 3) drag.moved = true;
+    if (drag.moved) setToyCentre(drag.g, { x: p.x - drag.grab.x, y: p.y - drag.grab.y });
+    return;
+  }
+  if (effect !== 'plop') return;
   if (press && V.trigger === 'press' && V.intro === 'preview') return;
   moveAddCursor(toCanvas(e.clientX, e.clientY));
 });
 svgEl.addEventListener('pointerleave', () => addCursor?.g.setAttribute('visibility', 'hidden'));
 svgEl.addEventListener('pointerup', (e) => {
+  if (effect === 'skid') {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const d = drag; drag = null;
+    if (d.cancelled || !d.moved) return;
+    skid(d.from, { ...d.g._toy.c }, sizeOfToy(d.g).w, sizeOfToy(d.g).h);
+    logLine('moved, skid at rest');
+    return;
+  }
   if (!press || e.pointerId !== press.pointerId) return;
   const pr = press; press = null;
   let L = pr.landing;
@@ -736,11 +932,34 @@ function cancelPress() {
   logLine('press cancelled, nothing placed');
   press = null;
 }
-svgEl.addEventListener('pointercancel', cancelPress);
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelPress(); });
+// Skid's cancel: the toy snaps back, and the skid puffs at the pointer.
+function cancelDrag() {
+  if (!drag || drag.cancelled) return;
+  drag.cancelled = true;
+  setToyCentre(drag.g, drag.from);
+  if (drag.moved) skid(drag.pointerFrom, drag.pointer, 0, 0);
+  logLine(drag.moved ? 'drag cancelled, skid at the pointer' : 'drag cancelled');
+}
+svgEl.addEventListener('pointercancel', () => { if (effect === 'skid') cancelDrag(); else cancelPress(); });
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { if (effect === 'skid') cancelDrag(); else cancelPress(); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && effect === 'cloudburst' && selected.size) {
+    e.preventDefault();
+    deleteToys([...selected]);
+  }
+});
 
 // ── Replay on the last toy ───────────────────────────────────────────────
 function replay() {
+  if (effect === 'skid') {
+    const k = lastSkid ?? { from: { x: -200, y: 0 }, to: { x: 0, y: 0 }, w: 80, h: 100 };
+    skid(k.from, k.to, k.w, k.h);
+    return;
+  }
+  if (effect === 'cloudburst') {
+    cloudburst(lastBurst ?? [{ x: 0, y: 0, w: 80, h: 100 }]);
+    return;
+  }
   if (!lastToy || !lastToy.el.isConnected) {
     const c = { x: 0, y: 0 };
     const id = `toy${++idCounter}`;
@@ -759,11 +978,14 @@ let loopTimer = 0;
 function loopOn() { return document.getElementById('loop').checked; }
 function scheduleLoop() {
   if (!loopOn()) return;
-  const total = sequenceLength() + (V.trigger === 'press' ? V.demoHold : 0) + 700;
+  const total = effect === 'skid' ? Math.max(V.skidMs, V.skidRiseMs) * 1.25 + 700
+    : effect === 'cloudburst' ? Math.max(V.cbMs, V.cbRiseMs) * 1.25 + 700
+    : sequenceLength() + (V.trigger === 'press' ? V.demoHold : 0) + 700;
   loopTimer = vNow + total;
 }
 function loopCheck() {
-  if (loopOn() && vNow >= loopTimer && !landings.size) { replay(); scheduleLoop(); }
+  const busy = effect === 'plop' ? landings.size : puffs.size;
+  if (loopOn() && vNow >= loopTimer && !busy) { replay(); scheduleLoop(); }
   requestAnimationFrame(loopCheck);
 }
 
@@ -772,9 +994,52 @@ function sequenceLength() {
   const fake = { type: tool, c: { x: 0, y: 0 }, rot: 0, P: { x: 0, y: 0 }, cursorAt: { x: -60, y: -30 } };
   return V.trigger === 'press' ? buildPressRelease(fake, pressPose(fake, 1e9)).t : buildReleaseOnly(fake).t;
 }
+// Shared frame for the skid and cloudburst plots: x and y each map a
+// [lo, hi] range into the plot, with labelled gridlines at yTicks.
+function plotFrame(plot, { xMax, yMax, yTicks, xLabel, yFmt }) {
+  const W = 340, H = 120, padL = 30, padR = 8, padT = 8, padB = 18;
+  const X = v => padL + (v / xMax) * (W - padL - padR);
+  const Y = v => padT + (1 - v / yMax) * (H - padT - padB);
+  for (const v of yTicks) {
+    el('line', { x1: padL, x2: W - padR, y1: Y(v), y2: Y(v), stroke: 'var(--plot-grid)', 'stroke-width': 0.5 }, plot);
+    const tx = el('text', { x: padL - 4, y: Y(v) + 3, 'text-anchor': 'end' }, plot); tx.textContent = yFmt(v);
+  }
+  const t0 = el('text', { x: padL, y: H - 4 }, plot); t0.textContent = '0';
+  const t1 = el('text', { x: W - padR, y: H - 4, 'text-anchor': 'end' }, plot); t1.textContent = xLabel;
+  const line = (pts, color) => el('polyline', { points: pts.map(([a, b]) => `${X(a).toFixed(1)},${Y(b).toFixed(1)}`).join(' '), fill: 'none', stroke: color, 'stroke-width': 1.6, 'stroke-linejoin': 'round' }, plot);
+  return { X, Y, line, H, padB, padT };
+}
+function drawSkidPlot(plot) {
+  const xMax = Math.max(1000, V.skidMaxAt * 1.25), yMax = Math.max(V.skidMaxDist, V.skidMinDist) * 1.15 || 1;
+  const f = plotFrame(plot, { xMax, yMax, yTicks: [0, V.skidMinDist, V.skidMaxDist], xLabel: `${Math.round(xMax)} px toy travel`, yFmt: v => Math.round(v) });
+  const pts = [];
+  for (let t = 0; t <= xMax; t += xMax / 100) pts.push([t, skidDistFor(t)]);
+  f.line(pts, 'var(--plot-x)');
+  if (lastSkid) {
+    const t = Math.min(lastSkid.travelPx, xMax);
+    el('circle', { cx: f.X(t), cy: f.Y(skidDistFor(lastSkid.travelPx)), r: 3.5, fill: 'var(--accent)' }, plot);
+  }
+  document.getElementById('plot-total').textContent = lastSkid
+    ? `last: toy ${Math.round(lastSkid.travelPx)} px → puff ${Math.round(skidDistFor(lastSkid.travelPx))} px` : '';
+}
+function drawCloudburstPlot(plot) {
+  const riseMs = V.cbRiseMs || V.cbMs;
+  const xMax = Math.max(V.cbMs, riseMs);
+  const f = plotFrame(plot, { xMax, yMax: 1.05, yTicks: [0, 0.5, 1], xLabel: `${Math.round(xMax)} ms`, yFmt: v => `${Math.round(v * 100)}%` });
+  const out = [], up = [];
+  for (let t = 0; t <= xMax; t += xMax / 100) {
+    out.push([t, puffEase(clamp(t / V.cbMs, 0, 1))]);
+    up.push([t, puffEase(clamp(t / riseMs, 0, 1))]);
+  }
+  f.line(out, 'var(--plot-x)');
+  f.line(up, 'var(--plot-y)');
+  document.getElementById('plot-total').textContent = `${V.cbCount} puffs, ${Math.round(V.cbDist)} px out, ${Math.round(V.cbRise)} px up`;
+}
 function drawPlot() {
   const plot = document.getElementById('plot');
   plot.replaceChildren();
+  if (effect === 'skid') return drawSkidPlot(plot);
+  if (effect === 'cloudburst') return drawCloudburstPlot(plot);
   const W = 340, H = 120, padL = 26, padR = 8, padT = 8, padB = 18;
   const fake = { type: tool, c: { x: 0, y: 0 }, rot: 0, P: { x: 0, y: 0 }, cursorAt: { x: -60, y: -30 } };
   const pts = [];
@@ -824,12 +1089,49 @@ function rowApplies(r) {
 }
 function valuesText() {
   const out = {};
-  for (const r of ROWS) {
-    if (TUNING.find(g => g.group === 'Preview only').rows.includes(r)) continue;
-    const v = V[r.key];
-    out[r.key] = r.type === 'color' ? (v.alpha === 1 ? v.hex : `${v.hex} @ ${v.alpha}`) : v;
+  for (const g of TUNING.filter(g => g.effect === effect)) {
+    for (const r of g.rows) {
+      const v = V[r.key];
+      out[r.key] = r.type === 'color' ? (v.alpha === 1 ? v.hex : `${v.hex} @ ${v.alpha}`) : v;
+    }
   }
-  return `LANDING ANIMATION\n${JSON.stringify(out, null, 2)}`;
+  return `${effect.toUpperCase()}\n${JSON.stringify(out, null, 2)}`;
+}
+const EFFECT_INFO = {
+  plop: {
+    notes: 'Defaults are what ships in src/delight_plop.js, which implements only this trigger and look. Click the table to place a toy. The real toy goes into #toys-layer untouched; the squash and stretch plays on a clone in #delight-layer, then the clone is removed.',
+    hint: 'Click to place · hold to see the press squash · Esc cancels a held press',
+    plotTitle: 'Shape over time', legend: ['scale X', 'scale Y'],
+  },
+  skid: {
+    notes: 'Defaults are what ships in src/delight_skid.js. Drag a toy and let go: the skid puffs where it rests, kicked the way it was going. Press Escape mid-drag: the toy snaps back and the skid puffs at the pointer instead.',
+    hint: 'Drag a toy and let go · Esc mid-drag cancels, with a skid at the pointer',
+    plotTitle: 'Puff travel by toy travel', legend: ['puff travel (px)', null],
+  },
+  cloudburst: {
+    notes: 'Defaults are what ships in src/delight_cloudburst.js. Click a toy to delete it, or shift-click several and press Delete to delete them together. Reset toys puts them back.',
+    hint: 'Click a toy to delete it · shift-click several, then Delete',
+    plotTitle: 'Puff progress over time', legend: ['outward', 'rise'],
+  },
+};
+function applyEffect() {
+  const info = EFFECT_INFO[effect];
+  document.getElementById('stage').dataset.effect = effect;
+  document.getElementById('effect').value = effect;
+  document.getElementById('effect-notes').textContent = info.notes;
+  document.getElementById('hint').textContent = info.hint;
+  document.getElementById('plot-title').textContent = info.plotTitle;
+  document.getElementById('plop-only').hidden = effect !== 'plop';
+  document.getElementById('clear').hidden = effect !== 'plop';
+  for (const [id, text] of [['legend-a', info.legend[0]], ['legend-b', info.legend[1]]]) {
+    const span = document.getElementById(id);
+    span.hidden = !text;
+    span.querySelector('b').textContent = text ?? '';
+  }
+  if (effect !== 'plop') addCursor?.g.setAttribute('visibility', 'hidden');
+  selected.clear(); syncSelectionRings();
+  drag = null;
+  try { localStorage.setItem(EFFECT_KEY, effect); } catch {}
 }
 function applyTuning({ fromPreset = false } = {}) {
   document.getElementById('values').value = valuesText();
@@ -842,12 +1144,13 @@ function applyTuning({ fromPreset = false } = {}) {
   document.getElementById('puff-blur-sd').setAttribute('stdDeviation', V.puffBlur / view.z);
   syncHideRules();
   buildAddCursor();
+  if (effect !== 'plop') addCursor?.g.setAttribute('visibility', 'hidden');
   drawPlot();
 }
 function buildTuningPanel() {
   const host = document.getElementById('tuning');
   host.replaceChildren();
-  for (const g of TUNING) {
+  for (const g of TUNING.filter(g => g.effect === effect || g.effect === 'all')) {
     const fs = document.createElement('fieldset');
     const lg = document.createElement('legend');
     lg.textContent = g.group;
@@ -937,6 +1240,13 @@ presetSel.addEventListener('input', () => {
 });
 
 document.getElementById('replay').addEventListener('click', replay);
+document.getElementById('reseed').addEventListener('click', () => { seedToys(); logLine('toys reset'); });
+document.getElementById('effect').addEventListener('input', (e) => {
+  effect = e.target.value;
+  applyEffect();
+  buildTuningPanel();
+  applyTuning();
+});
 document.getElementById('clear').addEventListener('click', () => {
   toysLayer.replaceChildren(); lastToy = null;
   for (const L of landings) L.root.remove();
@@ -965,20 +1275,13 @@ function init() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
     if (saved) for (const r of ROWS) if (r.key in saved) V[r.key] = saved[r.key];
   } catch {}
+  try { const saved = localStorage.getItem(EFFECT_KEY); if (EFFECT_INFO[saved]) effect = saved; } catch {}
   if (matchMedia('(max-width: 700px)').matches) document.body.classList.add('panel-closed');
+  applyEffect();
   buildTuningPanel();
   buildToyPicker();
   applyTuning();
-  // Seed the table so Replay has something to work on.
-  const types = Object.keys(TOYS);
-  types.forEach((type, i) => {
-    const id = `toy${++idCounter}`;
-    const c = { x: (i - (types.length - 1) / 2) * 120, y: 0 };
-    const g = placeReal(type, id, c, 0);
-    hiddenIds.delete(id);
-    lastToy = { type, id, c, rot: 0, el: g };
-  });
-  syncHideRules();
+  seedToys();
   requestAnimationFrame(loopCheck);
 }
 loadToys().then(init).catch((err) => {

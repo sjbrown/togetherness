@@ -13,7 +13,7 @@
 
 import { spawnPuff } from './delight_puff.js';
 
-// Tunables (from tests/dev/landing-tuner.html, cloudburst mode).
+// Tunables (from tests/dev/delight-tuner.html, cloudburst mode).
 export const CLOUDBURST = {
   count: 10,
   spread: 0.5,

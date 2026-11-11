@@ -32,7 +32,7 @@ import { spawnPuff, blurFilter } from './delight_puff.js';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
-// ── Tunables (from tests/dev/landing-tuner.html) ──────────────────────────
+// ── Tunables (from tests/dev/delight-tuner.html, plop mode) ───────────────
 // Deformation d: negative squashes (the toy spreads), positive stretches.
 export const SQUASH = 0.1;        // d reached SQUASH_MS into a press
 export const SQUASH_MS = 90;
