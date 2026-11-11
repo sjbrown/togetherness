@@ -32,7 +32,7 @@ describe('cloudburst', () => {
   })
 
   it('bursts ten puffs around each deleted toy’s centre', () => {
-    emit('toy:delete', { toys: [
+    emit('toy:gone', { toys: [
       { id: 'a', x: 100, y: 100, w: 80, h: 100 },
       { id: 'b', x: 400, y: 300, w: 80, h: 80 },
     ] })
@@ -44,7 +44,7 @@ describe('cloudburst', () => {
   })
 
   it('spreads all round, not in one direction', () => {
-    emit('toy:delete', { toys: [{ id: 'a', x: 100, y: 100, w: 80, h: 100 }] })
+    emit('toy:gone', { toys: [{ id: 'a', x: 100, y: 100, w: 80, h: 100 }] })
     const xs = puffs().map(c => +c.getAttribute('cx'))
     const ys = puffs().map(c => +c.getAttribute('cy'))
     expect(Math.min(...xs)).toBeLessThan(100)
@@ -55,7 +55,7 @@ describe('cloudburst', () => {
 
   it('climbs faster than it spreads', () => {
     expect(CLOUDBURST.riseMs).toBeLessThan(CLOUDBURST.ms)
-    emit('toy:delete', { toys: [{ id: 'a', x: 0, y: 0, w: 80, h: 80 }] })
+    emit('toy:gone', { toys: [{ id: 'a', x: 0, y: 0, w: 80, h: 80 }] })
     for (const c of puffs()) {
       expect(parseFloat(c.style.getPropertyValue('--rise-ms'))).toBeLessThan(parseFloat(c.style.getPropertyValue('--puff-ms')))
       expect(parseFloat(c.style.getPropertyValue('--rise'))).toBeLessThan(0)
@@ -64,7 +64,7 @@ describe('cloudburst', () => {
 
   it('does nothing when motion is reduced', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true }))
-    emit('toy:delete', { toys: [{ id: 'a', x: 100, y: 100, w: 80, h: 100 }] })
+    emit('toy:gone', { toys: [{ id: 'a', x: 100, y: 100, w: 80, h: 100 }] })
     expect(puffs()).toHaveLength(0)
     vi.unstubAllGlobals()
   })
@@ -72,7 +72,7 @@ describe('cloudburst', () => {
   it('a second init drops the first subscription', () => {
     const first = bus
     init({ getViewScale: () => 1, on: () => () => {} }, svg)
-    first.dispatchEvent(new CustomEvent('toy:delete', { detail: { toys: [{ id: 'a', x: 0, y: 0, w: 10, h: 10 }] } }))
+    first.dispatchEvent(new CustomEvent('toy:gone', { detail: { toys: [{ id: 'a', x: 0, y: 0, w: 10, h: 10 }] } }))
     expect(puffs()).toHaveLength(0)
   })
 })

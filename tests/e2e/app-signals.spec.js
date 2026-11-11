@@ -137,7 +137,7 @@ test('moving a drawing sends no toy:move:* signals', async ({ page }) => {
   expect(await page.evaluate(() => window.__signals)).toEqual([]);
 });
 
-test('deleting toys sends toy:delete with each toy’s centre and size; deleting a drawing sends nothing', async ({ page }) => {
+test('deleting toys sends toy:gone with each toy’s centre and size; deleting a drawing sends nothing', async ({ page }) => {
   await openAsCreator(page, { appUrl: APP_URL, signalingUrl: SIGNALING_URL });
   await waitForPeerCount(page, 0);
   const box = await page.locator('#canvas').boundingBox();
@@ -160,7 +160,7 @@ test('deleting toys sends toy:delete with each toy’s centre and size; deleting
 
   await page.evaluate(() => {
     window.__deletes = [];
-    window.App.on('toy:delete', (d) => window.__deletes.push(d));
+    window.App.on('toy:gone', (d) => window.__deletes.push(d));
   });
   await page.evaluate(() => window.UI.pillTap('select'));
 

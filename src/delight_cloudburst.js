@@ -2,8 +2,8 @@
  * delight_cloudburst.js — a cloud of dust where the local player's deleted
  * toys were
  *
- * Driven by App's toy:delete signal (see App.on):
- *   toy:delete → a cloudburst centred on each deleted toy
+ * Driven by App's toy:gone signal (see App.on):
+ *   toy:gone → a cloudburst centred on each deleted toy
  * A cloudburst is ten soft puffs from a ring around the toy, rolling gently
  * outward and climbing a little faster than they spread (riseMs < ms).
  *
@@ -38,7 +38,7 @@ export function init(appBus, svgElement) {
   if (!_layerEl) throw new Error("delight_cloudburst.init: '#delight-layer' not found");
   for (const off of _unsubscribe) off();
   _unsubscribe = [
-    App.on('toy:delete', ({ toys }) => {
+    App.on('toy:gone', ({ toys }) => {
       if (reducedMotion()) return;
       const scale = App.getViewScale?.() ?? 1;
       for (const toy of toys) spawnPuff(_layerEl, toy, scale, CLOUDBURST);
