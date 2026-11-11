@@ -98,7 +98,7 @@ describe('skid', () => {
       for (const p of starts()) expect(p.x).toBeGreaterThan(300)
       for (const t of travel()) {
         expect(t.x).toBeGreaterThan(0)
-        expect(Math.abs(t.y + 10)).toBeLessThanOrEqual(t.x * 0.8 + 1e-9)   // within 45deg, after rise and flatten
+        expect(Math.abs(t.y)).toBeLessThanOrEqual(t.x * 0.8 + 1e-9)   // within 45deg, after flatten
       }
     })
 

@@ -84,7 +84,7 @@ describe('puffParticles with a direction', () => {
         for (const p of puffParticles(10, 20, 80, 100, 1, { direction, arc, count: 4 }, () => r)) {
           expect(Math.abs(diff(angleOf(p, 10, 20), direction))).toBeLessThanOrEqual(arc / 2 + 1e-9)
           // and travels the same way it started
-          expect(Math.abs(diff(Math.atan2((p.ty + PUFF.rise) / PUFF.flatten, p.tx), direction))).toBeLessThanOrEqual(arc / 2 + 1e-9)
+          expect(Math.abs(diff(Math.atan2(p.ty / PUFF.flatten, p.tx), direction))).toBeLessThanOrEqual(arc / 2 + 1e-9)
         }
       }
     }
@@ -95,5 +95,34 @@ describe('puffParticles with a direction', () => {
     for (const p of puffParticles(0, 0, 80, 100, 1, { direction: 0 }, () => 0)) {
       expect(angleOf(p, 0, 0)).toBeCloseTo(-Math.PI / 4)
     }
+  })
+})
+
+describe('the rise', () => {
+  const mid = () => 0.5
+
+  it('is its own value, scaled to the view, apart from the outward travel', () => {
+    const [a] = puffParticles(0, 0, 80, 100, 1, { direction: 0, arc: 0 }, mid)
+    expect(a.ty).toBeCloseTo(0)
+    expect(a.rise).toBe(PUFF.rise)
+    const [b] = puffParticles(0, 0, 80, 100, 2, { direction: 0, arc: 0 }, mid)
+    expect(b.rise).toBe(PUFF.rise / 2)
+  })
+
+  it('takes as long as the puff unless riseMs says otherwise', () => {
+    const [a] = puffParticles(0, 0, 80, 100, 1, {}, mid)
+    expect(a.riseMs).toBe(a.ms)
+    const [b] = puffParticles(0, 0, 80, 100, 1, { ms: 900, riseMs: 500 }, mid)
+    expect(b.ms).toBe(900)
+    expect(b.riseMs).toBe(500)
+  })
+
+  it('reaches the circle as --rise (upward) and --rise-ms', () => {
+    document.body.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg"><g id="l"></g></svg>`
+    const layer = document.getElementById('l')
+    spawnPuff(layer, { x: 0, y: 0, w: 10, h: 10 }, 1, { count: 1, rise: 12, riseMs: 300, jitter: 0 })
+    const c = layer.querySelector('circle')
+    expect(c.style.getPropertyValue('--rise')).toBe('-12px')
+    expect(c.style.getPropertyValue('--rise-ms')).toBe('300ms')
   })
 })

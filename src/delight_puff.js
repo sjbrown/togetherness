@@ -5,7 +5,8 @@
  * grow and fade. Positions are canvas units; sizes are screen px divided by
  * the view scale, so a puff looks the same at any zoom. The motion is a CSS
  * animation (.delight-puff in ui.css), and each circle removes itself when
- * it ends. The blur filter is injected into the canvas <defs> on first use.
+ * it ends. The rise is animated separately from the outward travel, over
+ * riseMs, so a puff can climb faster (or slower) than it spreads. The blur filter is injected into the canvas <defs> on first use.
  */
 
 const SVGNS = 'http://www.w3.org/2000/svg';
@@ -17,6 +18,7 @@ export const PUFF = {
   spread: 0.6,     // starting ring radius, as a fraction of half the larger of w, h
   dist: 30,        // outward travel
   rise: 10,        // upward drift on top of the travel
+  riseMs: null,    // how long the rise takes; null for the same as ms
   flatten: 0.8,    // vertical squeeze of the ring and the travel
   size: 2.5,       // starting radius
   grow: 3,         // end radius = start radius * grow
@@ -36,7 +38,7 @@ export const PUFF = {
  * for tests.
  */
 export function puffParticles(cx, cy, w, h, scale, overrides = {}, rand = Math.random) {
-  const { count, spread, dist, rise, flatten, size, grow, ms, jitter, direction, arc } = { ...PUFF, ...overrides };
+  const { count, spread, dist, rise, riseMs, flatten, size, grow, ms, jitter, direction, arc } = { ...PUFF, ...overrides };
   const ring = Math.max(w, h) * 0.5 * spread;
   const step = (Math.PI * 2) / count;
   const out = [];
@@ -47,14 +49,17 @@ export function puffParticles(cx, cy, w, h, scale, overrides = {}, rand = Math.r
     const ca = Math.cos(ang), sa = Math.sin(ang);
     const travel = (dist * (1 + (rand() - 0.5) * jitter)) / scale;
     const r0 = (size * (1 + (rand() - 0.5) * jitter * 0.8)) / scale;
+    const pace = 1 + (rand() - 0.5) * jitter * 0.5;
     out.push({
       x: cx + ca * ring,
       y: cy + sa * ring * flatten,
       tx: ca * travel,
-      ty: sa * travel * flatten - rise / scale,
+      ty: sa * travel * flatten,
+      rise: rise / scale,
       r0,
       r1: r0 * grow,
-      ms: ms * (1 + (rand() - 0.5) * jitter * 0.5),
+      ms: ms * pace,
+      riseMs: (riseMs ?? ms) * pace,
     });
   }
   return out;
@@ -79,6 +84,8 @@ export function spawnPuff(layerEl, { x, y, w, h }, scale, overrides = {}) {
     c.style.setProperty('--r1', `${p.r1}px`);
     c.style.setProperty('--peak', alpha * 0.875);
     c.style.setProperty('--puff-ms', `${p.ms}ms`);
+    c.style.setProperty('--rise', `${-p.rise}px`);
+    c.style.setProperty('--rise-ms', `${p.riseMs}ms`);
     c.addEventListener('animationend', (e) => {
       if (e.animationName === 'delight-puff-fade') c.remove();
     });
