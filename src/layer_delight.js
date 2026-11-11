@@ -58,8 +58,9 @@ import { rotatePoint } from './geometry.js';
 import * as Radial from './ui_radial.js';
 import * as Plop from './delight_plop.js';
 import * as Skid from './delight_skid.js';
+import * as Cloudburst from './delight_cloudburst.js';
 
-const DELIGHT_EFFECTS = [Plop, Skid];
+const DELIGHT_EFFECTS = [Plop, Skid, Cloudburst];
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 

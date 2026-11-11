@@ -138,6 +138,23 @@ function _moveFrom(el) {
   return { id: el.id, from: { x: el.anchorX, y: el.anchorY } };
 }
 
+// A toy about to be deleted, as a toy:delete signal's { id, x, y, w, h }:
+// its centre carried through its own transform (and any container's) into
+// the toys layer, so a rotated or contained toy reports where it shows, and
+// its own size. Null for anything that isn't a toy.
+function _toyGone(svgEl) {
+  if (!svgEl || moduleForElement(svgEl) !== 'toys') return null;
+  const geom = Toys.getGeom(svgEl);
+  if (!geom) return null;
+  const local = { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 };
+  const toyCtm = svgEl.getScreenCTM?.();
+  const layerCtm = layerElOf('toys')?.getScreenCTM?.();
+  const centre = toyCtm && layerCtm
+    ? new DOMPoint(local.x, local.y).matrixTransform(layerCtm.inverse().multiply(toyCtm))
+    : local;
+  return { id: svgEl.getAttribute('data-id'), x: centre.x, y: centre.y, w: geom.width, h: geom.height };
+}
+
 // computeResize keeps the corner opposite the dragged one fixed in the
 // shape's own space, but a resize also moves the pivot a rotated shape
 // turns about, sliding that anchor corner on canvas even though it never
@@ -971,12 +988,15 @@ const App = {
     const firstEl = ids.map(id => _svgEl.querySelector(`[data-id="${id}"]`)).find(Boolean);
     const mtype   = firstEl ? moduleForElement(firstEl) : null;
 
+    const gone = ids.map(id => _toyGone(_svgEl.querySelector(`[data-id="${id}"]`))).filter(Boolean);
+
     // One op for the whole batch; the exact per-id count isn't tracked.
     const op = _Layers[mtype]?.deleteMany(ids);
     const deleted = op ? ids.length : 0;
 
     if (deleted > 0) {
       App.addLog(`deleted ${deleted} objects`, 'local');
+      if (gone.length) _emit('toy:delete', { toys: gone });
     }
     SelectionLocal.clearClaims();
     Overlay.clearHoverCandidates();
@@ -1161,6 +1181,9 @@ const App = {
    *                    { from: { x, y }, x, y }: where the pointer pressed
    *                    and where it is now; null for a tap, or a failed
    *                    drop
+   * Deleting isn't a pointer gesture, so it has one signal, no phases:
+   *   toy:delete       { toys: [{ id, x, y, w, h }] } — the player deleted
+   *                    these toys; each was centred on (x, y), w×h
    */
   on: (type, handler) => {
     const listener = (e) => handler(e.detail);
@@ -1247,8 +1270,10 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
+    const gone = _toyGone(svgEl);
     L.delete(id);
     App.addLog(`deleted ${id}`, 'local');
+    if (gone) _emit('toy:delete', { toys: [gone] });
     if (SelectionLocal.isHeld(id)) {
       SelectionLocal.unclaim([id]);
     }
