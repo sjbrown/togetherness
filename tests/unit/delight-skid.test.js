@@ -6,8 +6,34 @@
  */
 
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { init } from '../../src/delight_skid.js'
+import { describe, it, test, expect, beforeEach, vi } from 'vitest'
+import { init, puffDistFor, MIN_PUFF_DIST, MAX_PUFF_DIST, MAX_AT_TRAVEL } from '../../src/delight_skid.js'
+import { PUFF } from '../../src/delight_puff.js'
+
+describe('puffDistFor', () => {
+  test('starts at the floor for no travel', () => {
+    expect(puffDistFor(0)).toBe(MIN_PUFF_DIST)
+    expect(MIN_PUFF_DIST).toBe(PUFF.dist)
+  })
+
+  test('grows linearly, reaching 250 at 800', () => {
+    expect(puffDistFor(400)).toBeCloseTo((MIN_PUFF_DIST + MAX_PUFF_DIST) / 2)
+    expect(MAX_AT_TRAVEL).toBe(800)
+    expect(puffDistFor(800)).toBe(250)
+  })
+
+  test('holds at the ceiling past 800', () => {
+    expect(puffDistFor(5000)).toBe(MAX_PUFF_DIST)
+  })
+
+  test('only ever grows with travel', () => {
+    let prev = 0
+    for (let d = 0; d <= 1000; d += 25) {
+      expect(puffDistFor(d)).toBeGreaterThanOrEqual(prev)
+      prev = puffDistFor(d)
+    }
+  })
+})
 
 describe('skid', () => {
   const SVGNS = 'http://www.w3.org/2000/svg'
@@ -91,6 +117,45 @@ describe('skid', () => {
       const xs = starts().map(p => p.x)
       expect(Math.max(...xs)).toBeGreaterThan(100)
       expect(Math.min(...xs)).toBeLessThan(100)
+    })
+  })
+
+  describe('puffs further the further the toy went', () => {
+    // A rightward move keeps every particle within 45deg of +x, so its
+    // horizontal travel is between cos(45deg) and 1 of the full distance,
+    // times the puff's own +/-20% jitter.
+    const txs = () => puffs().map(c => parseFloat(c.style.getPropertyValue('--tx')))
+    const moveRight = (by, pressId = 1) => emit('toy:move:place', {
+      pressId, moves: [{ id: 'a', from: { x: 100, y: 100 }, x: 100 + by, y: 100 }],
+    })
+
+    it('a short move gives a short puff', () => {
+      toysLayer.append(toy('a', 120, 100, 80, 100))
+      moveRight(20)
+      for (const tx of txs()) expect(tx).toBeLessThanOrEqual(puffDistFor(20) * 1.2)
+    })
+
+    it('a move of 800px or more puffs at the ceiling', () => {
+      toysLayer.append(toy('a', 1000, 100, 80, 100))
+      for (let i = 0; i < 10; i++) moveRight(900, i)
+      for (const tx of txs()) {
+        expect(tx).toBeGreaterThanOrEqual(MAX_PUFF_DIST * Math.SQRT1_2 * 0.8)
+        expect(tx).toBeLessThanOrEqual(MAX_PUFF_DIST * 1.2)
+      }
+    })
+
+    it('measures the toy\u2019s travel and the puff\u2019s in screen px, so zoom doesn\u2019t change the look', () => {
+      init({ getViewScale: () => 2, on: (type, handler) => {
+        const l = (e) => handler(e.detail)
+        bus.addEventListener(type, l)
+        return () => bus.removeEventListener(type, l)
+      } }, svg)
+      toysLayer.append(toy('a', 500, 100, 80, 100))
+      for (let i = 0; i < 10; i++) moveRight(400, i)   // 800 screen px at 2x
+      for (const tx of txs()) {
+        expect(tx).toBeGreaterThanOrEqual(MAX_PUFF_DIST * Math.SQRT1_2 * 0.8 / 2)
+        expect(tx).toBeLessThanOrEqual(MAX_PUFF_DIST * 1.2 / 2)
+      }
     })
   })
 

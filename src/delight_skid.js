@@ -5,7 +5,8 @@
  * Driven by App's toy:move:* signals (see App.on):
  *   toy:move:place → a small puff at each moved toy where it now rests,
  *                    kicked forward: each particle heads off at a random
- *                    angle within ARC of the direction it travelled
+ *                    angle within ARC of the direction it travelled, and
+ *                    further the further the toy went (puffDistFor)
  *
  * Local only. Nothing here reaches the doc or awareness, and the toys in
  * #toys-layer are never touched: the puff plays in #delight-layer.
@@ -15,6 +16,17 @@ import { spawnPuff } from './delight_puff.js';
 
 const PUFF = { count: 3 };
 const ARC = Math.PI / 2;
+// Puff travel grows linearly with toy travel, both in screen px, from
+// MIN_PUFF_DIST to MAX_PUFF_DIST once the toy has gone MAX_AT_TRAVEL.
+export const MIN_PUFF_DIST = 30;
+export const MAX_PUFF_DIST = 250;
+export const MAX_AT_TRAVEL = 800;
+
+/** How far the puff travels, in screen px, for a toy that moved `travel` screen px. */
+export function puffDistFor(travel) {
+  const t = Math.min(Math.max(travel, 0) / MAX_AT_TRAVEL, 1);
+  return MIN_PUFF_DIST + (MAX_PUFF_DIST - MIN_PUFF_DIST) * t;
+}
 
 let App = null;
 let _svgEl = null;
@@ -33,7 +45,10 @@ export function init(appBus, svgElement) {
       const scale = App.getViewScale?.() ?? 1;
       for (const { id, from, x, y } of moves) {
         const toyEl = _svgEl.querySelector(`#toys-layer [data-id="${id}"]`);
-        spawnPuff(_layerEl, { x, y, ...sizeOf(toyEl) }, scale, { ...PUFF, ...headingOf(from, x, y) });
+        const travel = from ? Math.hypot(x - from.x, y - from.y) * scale : 0;
+        spawnPuff(_layerEl, { x, y, ...sizeOf(toyEl) }, scale, {
+          ...PUFF, ...headingOf(from, x, y), dist: puffDistFor(travel),
+        });
       }
     }),
   ];
