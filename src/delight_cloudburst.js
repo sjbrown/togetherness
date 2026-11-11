@@ -4,8 +4,9 @@
  *
  * Driven by App's toy:gone signal (see App.on):
  *   toy:gone → a cloudburst centred on each deleted toy
- * A cloudburst is ten soft puffs from a ring around the toy, rolling gently
- * outward and climbing a little faster than they spread (riseMs < ms).
+ * A cloudburst is a dozen soft puffs from close around the toy's centre,
+ * rolling outward and climbing. The rise runs over riseMs, longer than the
+ * puffs last, so they fade while still climbing.
  *
  * Local only. Nothing here reaches the doc or awareness: the puffs play in
  * #delight-layer.
@@ -15,17 +16,19 @@ import { spawnPuff } from './delight_puff.js';
 
 // Tunables (from tests/dev/delight-tuner.html, cloudburst mode).
 export const CLOUDBURST = {
-  count: 10,
-  spread: 0.5,
+  count: 12,
+  spread: 0.1,
   dist: 40,
-  rise: 28,
-  ms: 1100,
-  riseMs: 550,
-  size: 4.5,
-  grow: 3.5,
+  rise: 45,
+  ms: 580,
+  riseMs: 770,
+  flatten: 0.5,
+  size: 8,
+  grow: 3,
   jitter: 0.5,
-  alpha: 0.5,
-  blur: 3,
+  color: '#ece6d6',
+  alpha: 0.2,
+  blur: 1,
 };
 
 let App = null;

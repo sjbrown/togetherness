@@ -53,11 +53,11 @@ test('deleting multi-selected toys bursts a cloud at each, locally', async () =>
   await expect(page1.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
   await page1.evaluate(() => window.UI.deleteSelected());
 
-  await expect(puffs).toHaveCount(20);
+  await expect(puffs).toHaveCount(24);
   const starts = await puffs.evaluateAll(cs => cs.map(c => [+c.getAttribute('cx'), +c.getAttribute('cy')]));
   const near = (x, y) => starts.filter(([cx, cy]) => Math.hypot(cx - x, cy - y) <= 30).length;
-  expect(near(200, 200)).toBe(10);
-  expect(near(400, 300)).toBe(10);
+  expect(near(200, 200)).toBe(12);
+  expect(near(400, 300)).toBe(12);
   await expect(page1.locator('#toys-layer [data-toy-type]')).toHaveCount(0);
   await expect(puffs).toHaveCount(0, { timeout: 3000 });
 

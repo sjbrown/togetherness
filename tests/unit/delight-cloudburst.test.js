@@ -1,8 +1,8 @@
 /**
  * tests/unit/delight-cloudburst.test.js
  *
- * The cloudburst: ten puffs centred on each deleted toy, rising faster than
- * they spread, for the local player only.
+ * The cloudburst: a dozen puffs centred on each deleted toy, rising on their
+ * own timing, for the local player only.
  */
 
 // @vitest-environment jsdom
@@ -31,16 +31,16 @@ describe('cloudburst', () => {
     }, svg)
   })
 
-  it('bursts ten puffs around each deleted toy’s centre', () => {
+  it('bursts CLOUDBURST.count puffs around each deleted toy’s centre', () => {
     emit('toy:gone', { toys: [
       { id: 'a', x: 100, y: 100, w: 80, h: 100 },
       { id: 'b', x: 400, y: 300, w: 80, h: 80 },
     ] })
-    expect(puffs()).toHaveLength(20)
+    expect(puffs()).toHaveLength(2 * CLOUDBURST.count)
     const around = (x, y) => puffs().filter(c =>
       Math.hypot(+c.getAttribute('cx') - x, +c.getAttribute('cy') - y) <= 50 * CLOUDBURST.spread + 1e-9)
-    expect(around(100, 100)).toHaveLength(10)
-    expect(around(400, 300)).toHaveLength(10)
+    expect(around(100, 100)).toHaveLength(CLOUDBURST.count)
+    expect(around(400, 300)).toHaveLength(CLOUDBURST.count)
   })
 
   it('spreads all round, not in one direction', () => {
@@ -53,12 +53,12 @@ describe('cloudburst', () => {
     expect(Math.max(...ys)).toBeGreaterThan(100)
   })
 
-  it('climbs faster than it spreads', () => {
-    expect(CLOUDBURST.riseMs).toBeLessThan(CLOUDBURST.ms)
+  it('rises on its own timing, riseMs against the puff’s ms', () => {
     emit('toy:gone', { toys: [{ id: 'a', x: 0, y: 0, w: 80, h: 80 }] })
     for (const c of puffs()) {
-      expect(parseFloat(c.style.getPropertyValue('--rise-ms'))).toBeLessThan(parseFloat(c.style.getPropertyValue('--puff-ms')))
-      expect(parseFloat(c.style.getPropertyValue('--rise'))).toBeLessThan(0)
+      const ratio = parseFloat(c.style.getPropertyValue('--rise-ms')) / parseFloat(c.style.getPropertyValue('--puff-ms'))
+      expect(ratio).toBeCloseTo(CLOUDBURST.riseMs / CLOUDBURST.ms)
+      expect(parseFloat(c.style.getPropertyValue('--rise'))).toBeCloseTo(-CLOUDBURST.rise)
     }
   })
 
