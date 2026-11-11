@@ -62,7 +62,7 @@ describe('skid', () => {
 
   it('ignores the rest of the toy:move:* signals', () => {
     toysLayer.append(toy('a', 100, 100, 80, 100))
-    emit('toy:move:press', { pressId: 2, ids: ['a'] })
+    emit('toy:move:press', { pressId: 2, moves: [{ id: 'a', from: { x: 100, y: 100 } }] })
     emit('toy:move:release', { pressId: 2 })
     emit('toy:move:cancel', { pressId: 2 })
     expect(puffs()).toHaveLength(0)

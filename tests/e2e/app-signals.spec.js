@@ -63,7 +63,7 @@ test('pointer gestures on toys send toy:add:* and toy:move:* in order, paired by
   const tap = await take(2);
   expect(types(tap)).toEqual(['toy:move:press', 'toy:move:cancel']);
   onePress(tap);
-  expect(tap[0].ids).toEqual([idA]);
+  expect(tap[0].moves).toEqual([{ id: idA, from: { x: 200, y: 200 } }]);
 
   // One toy, dragged 100 down.
   await page.mouse.down();
@@ -73,7 +73,8 @@ test('pointer gestures on toys send toy:add:* and toy:move:* in order, paired by
   const single = await take(3);
   expect(types(single)).toEqual(['toy:move:press', 'toy:move:release', 'toy:move:place']);
   onePress(single);
-  expect(single[2].moves).toEqual([{ id: idA, ...(await anchorOf(idA)) }]);
+  expect(single[0].moves).toEqual([{ id: idA, from: { x: 200, y: 200 } }]);
+  expect(single[2].moves).toEqual([{ id: idA, from: { x: 200, y: 200 }, ...(await anchorOf(idA)) }]);
   expect(single[2].moves[0].y).toBe(300);
 
   // Both toys, shift-rubber-banded (no signals), dragged 50 right together.
@@ -85,6 +86,7 @@ test('pointer gestures on toys send toy:add:* and toy:move:* in order, paired by
   await page.keyboard.up('Shift');
   await expect(page.locator('#selection_local .selRing')).toHaveCount(2, { timeout: 3000 });
   expect(await page.evaluate(() => window.__signals)).toEqual([]);
+  const before = { [idA]: await anchorOf(idA), [idB]: await anchorOf(idB) };
   await page.mouse.move(sc(400, 200).x, sc(400, 200).y);
   await page.mouse.down();
   await page.mouse.move(sc(402, 200).x, sc(402, 200).y);
@@ -93,9 +95,16 @@ test('pointer gestures on toys send toy:add:* and toy:move:* in order, paired by
   const multi = await take(3);
   expect(types(multi)).toEqual(['toy:move:press', 'toy:move:release', 'toy:move:place']);
   onePress(multi);
-  expect(multi[0].ids.sort()).toEqual([idA, idB].sort());
-  expect(multi[2].moves.map(m => m.id).sort()).toEqual([idA, idB].sort());
-  for (const m of multi[2].moves) expect({ x: m.x, y: m.y }).toEqual(await anchorOf(m.id));
+  const byId = (ms) => Object.fromEntries(ms.map(m => [m.id, m]));
+  expect(byId(multi[0].moves)).toEqual({
+    [idA]: { id: idA, from: before[idA] },
+    [idB]: { id: idB, from: before[idB] },
+  });
+  for (const id of [idA, idB]) {
+    const after = await anchorOf(id);
+    expect(byId(multi[2].moves)[id]).toEqual({ id, from: before[id], ...after });
+    expect(after).toEqual({ x: before[id].x + 50, y: before[id].y });
+  }
 });
 
 test('moving a drawing sends no toy:move:* signals', async ({ page }) => {

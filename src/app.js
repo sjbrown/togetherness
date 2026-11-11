@@ -133,6 +133,11 @@ function _emit(type, detail) {
 // Pairs a :press signal with the release, place or cancel that follows it.
 let _pressSeq = 0;
 
+// A multi-drag element as a toy:move:* signal's { id, from }.
+function _moveFrom(el) {
+  return { id: el.id, from: { x: el.anchorX, y: el.anchorY } };
+}
+
 // computeResize keeps the corner opposite the dragged one fixed in the
 // shape's own space, but a resize also moves the pivot a rotated shape
 // turns about, sliding that anchor corner on canvas even though it never
@@ -1145,10 +1150,12 @@ const App = {
    *   toy:add:release  { pressId } — placement starts
    *   toy:add:place    { pressId, id } — the toy is in its layer
    *   toy:add:cancel   { pressId }
-   *   toy:move:press   { pressId, ids }
+   *   toy:move:press   { pressId, moves: [{ id, from: { x, y } }] } — each
+   *                    toy is centred on from
    *   toy:move:release { pressId }
-   *   toy:move:place   { pressId, moves: [{ id, x, y }] } — each toy now
-   *                    rests centred on (x, y)
+   *   toy:move:place   { pressId, moves: [{ id, from: { x, y }, x, y }] } —
+   *                    each toy moved from `from` and now rests centred on
+   *                    (x, y)
    *   toy:move:cancel  { pressId } — a tap that didn't move, or a failed drop
    */
   on: (type, handler) => {
@@ -1301,7 +1308,7 @@ const App = {
     };
     Overlay.startDragPlaceholder(id);
     _awareness.setLocalStateField('drag', { elId: id, bboxX: bbox.x, bboxY: bbox.y });
-    if (isToy) _emit('toy:move:press', { pressId: _dragState.pressId, ids: [id] });
+    if (isToy) _emit('toy:move:press', { pressId: _dragState.pressId, moves: [{ id, from: { x: anchor.x, y: anchor.y } }] });
   },
 
   move: (id, x, y) => {
@@ -1381,7 +1388,8 @@ const App = {
       ? Toys.findDropTarget(layerElOf('toys'), id, rx, ry)
       : null;
 
-    const { pressId } = _dragState;
+    const { pressId, startX, startY } = _dragState;
+    const from = { x: startX, y: startY };
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
@@ -1424,7 +1432,7 @@ const App = {
 
       // A toy landing inside a container leaves selection
       SelectionLocal.clearClaims();
-      if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, x: rx, y: ry }] });
+      if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, from, x: rx, y: ry }] });
 
       return;
     }
@@ -1435,7 +1443,7 @@ const App = {
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
     // the selection ring from whatever the DOM currently shows.
     Overlay.endDragPlaceholder(id);
-    if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, x: rx, y: ry }] });
+    if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, from, x: rx, y: ry }] });
   },
 
   cancelMove: () => {
@@ -1789,7 +1797,7 @@ const App = {
       elIds:   elements.map(e => e.id),
       offsets: elements.map(e => ({ bboxX: e.bboxX, bboxY: e.bboxY })),
     });
-    if (isToy) _emit('toy:move:press', { pressId: _multiDragState.pressId, ids: elements.map(e => e.id) });
+    if (isToy) _emit('toy:move:press', { pressId: _multiDragState.pressId, moves: elements.map(_moveFrom) });
   },
 
   moveMulti: (ddx, ddy) => {
@@ -1867,7 +1875,9 @@ const App = {
 
     App.addLog(`moved ${elements.length} objects`, 'local');
     _multiDragState = null;
-    if (pressId != null) _emit('toy:move:place', { pressId, moves });
+    if (pressId != null) {
+      _emit('toy:move:place', { pressId, moves: moves.map((m, i) => ({ ..._moveFrom(elements[i]), ...m })) });
+    }
   },
 
   cancelMultiMove: () => {
