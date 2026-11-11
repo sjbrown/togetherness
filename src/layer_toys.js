@@ -2132,6 +2132,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
+    doubleClickAction: getDoubleClickAction,
     computeResize,
     getRotation,
     resolveRotation,

@@ -515,52 +515,6 @@ export function endBowstring(e) {
   });
 }
 
-// ── Standing radial menu ──────────────────────────────────────────────────
-// The radial menu opened without a bowstring pull (a double-click). It stays
-// until the next press: a press on a spoke fires it, a press anywhere else
-// just closes it.
-
-let _standing = null;   // { elId, radial } or null
-
-export function standingRadialActive() {
-  return _standing !== null;
-}
-
-/** Open elId's radial menu around its centre. False when it has none. */
-export function openStandingRadial(elId) {
-  if (_standing || _active) return false;
-  const geo = App.getBBox(elId);
-  const menu = geo && App.getRadialMenu?.(elId);
-  if (!menu) return false;
-  const origin = { x: geo.x + geo.width / 2, y: geo.y + geo.height / 2 };
-  const radial = Radial.open(_layerEl, { spokes: menu.spokes, origin, scale: App.getViewScale(), paint: menu.paint });
-  Radial.show(radial);
-  _standing = { elId, radial };
-  return true;
-}
-
-function standingPick(canvasPoint) {
-  const { radial } = _standing;
-  const { origin, scale, spokes } = radial;
-  return Radial.pickAt(spokes, (canvasPoint.x - origin.x) * scale, (canvasPoint.y - origin.y) * scale);
-}
-
-export function moveStandingRadial(canvasPoint) {
-  if (_standing) Radial.setPick(_standing.radial, standingPick(canvasPoint));
-}
-
-/** Resolve the menu at the pressed point: fire the spoke under it, if any, and close. */
-export function pressStandingRadial(canvasPoint) {
-  if (!_standing) return;
-  const { elId, radial } = _standing;
-  const pick = standingPick(canvasPoint);
-  _standing = null;
-  Radial.close(radial);
-  if (pick) {
-    App.fireBowstring(elId, { namespace: pick.spoke.namespace, key: pick.spoke.key, params: pick.params });
-  }
-}
-
 function fireClickPop() {
   const visual = _active.visual;
   if (typeof visual.animate !== 'function') { visual.style.transform = 'scale(1)'; return; }
