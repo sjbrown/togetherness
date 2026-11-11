@@ -313,7 +313,7 @@ function onPointerDown(e) {
       // selection. A real drag leaves the mode untouched.
       const wasSoleSelected =
         App.getSelectedIds().length === 1 && App.getSelectedIds()[0] === hitId;
-      ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false, wasReclick: wasSoleSelected };
+      ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, sx: e.clientX, sy: e.clientY, moved: false, wasReclick: wasSoleSelected };
       App.select(hitId);
       // select() may have bailed into a soft-lock request instead of
       // actually selecting hitId (held by another peer) — in that case
@@ -340,6 +340,8 @@ function onPointerDown(e) {
     ToolMode._gesture = 'draw';
     const p = toCanvas(e.clientX, e.clientY);
     ToolMode._draft = { type: ToolMode.tool, ox: p.x, oy: p.y };
+    // Placement happens on release, but a toy tool announces the press now.
+    ToolMode._draft.pressId = App.toyAddPress(ToolMode.tool, Math.round(p.x), Math.round(p.y));
     App.hideDragBox('draw');
   }
 }
@@ -512,7 +514,7 @@ function onPointerUp(e) {
   if (ToolMode._gesture === 'move' && ToolMode._moveRef) {
     if (ToolMode._moveRef.moved) {
       if (isCancelled) {
-        App.cancelMove();
+        App.cancelMove(pointerPath(e.clientX, e.clientY));
       } else {
         const ref = ToolMode._moveRef;
         const p   = toCanvas(e.clientX, e.clientY);
@@ -563,7 +565,7 @@ function onPointerUp(e) {
   if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
     if (ToolMode._moveRef.moved) {
       if (isCancelled) {
-        App.cancelMultiMove();
+        App.cancelMultiMove(pointerPath(e.clientX, e.clientY));
       } else {
         const ref = ToolMode._moveRef;
         const ddx = (e.clientX - ref.sx) / _view.scale;
@@ -705,7 +707,7 @@ function finishDraft(e) {
   } else {
     // Toy tools (marker, d6, etc.) and future drawing tools (pen, text):
     // drop the toy centered on the tap/drag origin.
-    App.commitToy(d.type, Math.round(d.ox), Math.round(d.oy));
+    App.commitToy(d.type, Math.round(d.ox), Math.round(d.oy), d.pressId);
   }
 }
 
@@ -719,8 +721,50 @@ function drawAttrs() {
 }
 
 function cancelDraft() {
+  if (ToolMode._draft?.pressId != null) App.toyAddCancel(ToolMode._draft.pressId);
   ToolMode._draft = null;
   App.hideDragBox('draw');
+}
+
+// Where a drag's pointer pressed and where it is now (client coords in,
+// canvas coords out), for the cancel signals; null for a press that never
+// moved.
+function pointerPath(clientX, clientY) {
+  const ref = ToolMode._moveRef;
+  if (!ref?.moved || ref.sx == null) return null;
+  return { from: toCanvas(ref.sx, ref.sy), ...toCanvas(clientX, clientY) };
+}
+
+function currentPointerPath() {
+  const [pt] = ToolMode._pointers.values();
+  return pt ? pointerPath(pt.x, pt.y) : null;
+}
+
+// What each cancellable gesture undoes, as its pointercancel would.
+const GESTURE_CANCELS = {
+  'move':       () => App.cancelMove(currentPointerPath()),
+  'multi-move': () => App.cancelMultiMove(currentPointerPath()),
+  'resize':     () => App.cancelResize(),
+  'rotate':     () => App.cancelRotate(),
+  'pivot':      () => App.cancelPivot(),
+  'draw':       () => cancelDraft(),
+  'box-select': () => { App.clearBoxCandidates(); App.hideDragBox('select'); },
+};
+
+/**
+ * Abandon the pointer gesture in flight (Escape): a drag, resize, rotate
+ * or pivot snaps back, a draft or rubber band is dropped, and nothing is
+ * committed. The pointer is ignored until it lifts, and its release
+ * doesn't count as a tap. Returns false when nothing was in flight.
+ */
+export function cancelGesture() {
+  const cancel = GESTURE_CANCELS[ToolMode._gesture];
+  if (!cancel) return false;
+  cancel();
+  _stageEl?.classList.remove('dragging', 'pivot-dragging');
+  ToolMode._gesture = 'cancelled';
+  ToolMode._moveRef = { moved: true };
+  return true;
 }
 
 // ── Wheel (trackpad + mouse) ──────────────────────────────────────────────────

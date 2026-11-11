@@ -88,6 +88,8 @@ function makeApp(overrides = {}) {
     movePivot:          () => {},
     commitPivot:        () => {},
     cancelPivot:        () => {},
+    toyAddPress:        () => null,
+    toyAddCancel:       () => {},
     ...overrides,
   }
 }
@@ -324,5 +326,36 @@ describe('attention mode', () => {
     tap(stage, { pointerId: 2 })
     tap(stage, { pointerId: 3 })
     expect(app.attentionEnter).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('toy add press wiring', () => {
+  test('a press with a toy tool is announced, and the release hands its pressId to commitToy', () => {
+    const stage = document.getElementById('stage')
+    const app = makeApp({ toyAddPress: vi.fn(() => 7), commitToy: vi.fn(), updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('d6', {})
+
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 1, clientX: 40.4, clientY: 60.6 }))
+    expect(app.toyAddPress).toHaveBeenCalledWith('d6', 40, 61)
+    expect(app.commitToy).not.toHaveBeenCalled()
+
+    stage.dispatchEvent(makePointerEvent('pointerup', { pointerId: 1, clientX: 90, clientY: 90 }))
+    expect(app.commitToy).toHaveBeenCalledWith('d6', 40, 61, 7)
+  })
+
+  test('a second finger turning the press into a pinch cancels the add', () => {
+    const stage = document.getElementById('stage')
+    const app = makeApp({ toyAddPress: () => 7, toyAddCancel: vi.fn(), commitToy: vi.fn(), updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('d6', {})
+
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 1, clientX: 40, clientY: 60 }))
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 2, clientX: 140, clientY: 60 }))
+    expect(app.toyAddCancel).toHaveBeenCalledWith(7)
+
+    stage.dispatchEvent(makePointerEvent('pointerup', { pointerId: 1 }))
+    stage.dispatchEvent(makePointerEvent('pointerup', { pointerId: 2 }))
+    expect(app.commitToy).not.toHaveBeenCalled()
   })
 })

@@ -21,7 +21,6 @@ import { icon } from './icons.js';
 import * as Debug from './debug_panel.js';
 import * as Trace from './trace.js';
 import { networkStatusBarHTML } from './external_services_status.js';
-import { buildToyPreviewSvg, toolInitArgs } from './layer_toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 
@@ -1036,8 +1035,7 @@ function gatherToolsData() {
     defaultBackgrounds:  App.getDefaultBackgrounds(),
     toyClasses:          App.getToyClasses(),
     toolDef:             App.getTool(activeTool),
-    toyPreviewMarkup:    App.getToolPreviewMarkup(activeTool),
-    userColor:           App.user?.color,
+    toolPreview:         App.toolPreview(activeTool),
   };
 }
 function gatherPeersData() {
@@ -1105,18 +1103,19 @@ export function applyBackgroundPreset(url, width, height) {
   App.setBackground({ url, width, height });
 }
 
-// Full-size toy rendered with the tool's current colour, as inline SVG.
-// The box is always emitted so the panel doesn't reflow; it's empty for
-// non-toy tools and until the toy's SVG has been fetched (the fetch
-// re-renders the panel).
+// What the tool would place, with its current options, as inline SVG
+// filling the box. The box is always emitted so the panel doesn't reflow;
+// it's empty for tools with no preview and until the toy's SVG has been
+// fetched (the fetch re-renders the panel).
 function toyPreviewHTML(data) {
-  let svg = '';
-  if (data.toolDef?.toyType && data.toyPreviewMarkup) {
-    const params = data.activeToolParams ?? {};
-    svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, data.toolDef.toyType,
-      toolInitArgs(data.toolDef, params, data.userColor)).outerHTML;
+  const svg = data.toolPreview?.firstElementChild;
+  if (svg) {
+    svg.setAttribute('x', '0');
+    svg.setAttribute('y', '0');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
   }
-  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg}</div>`;
+  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg?.outerHTML ?? ''}</div>`;
 }
 
 // Swaps the preview in place after a tool option changes; the panel body

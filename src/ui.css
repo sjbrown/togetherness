@@ -868,6 +868,30 @@ svg.tt-icon-letter {
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
 }
 
+/* Dust puff (delight_puff.js). Travel, growth and the rise ease out; the
+ * rise is its own animation (on transform, adding to the translate) so it
+ * can take a different time. The fade is linear after a quick fade-in. */
+.delight-puff {
+  pointer-events: none;
+  animation:
+    delight-puff-move var(--puff-ms, 500ms) cubic-bezier(.2,.7,.3,1) forwards,
+    delight-puff-rise var(--rise-ms, var(--puff-ms, 500ms)) cubic-bezier(.2,.7,.3,1) forwards,
+    delight-puff-fade var(--puff-ms, 500ms) linear forwards;
+}
+@keyframes delight-puff-move {
+  0%   { translate: 0px 0px; r: var(--r0); }
+  100% { translate: var(--tx) var(--ty); r: var(--r1); }
+}
+@keyframes delight-puff-rise {
+  0%   { transform: translateY(0px); }
+  100% { transform: translateY(var(--rise)); }
+}
+@keyframes delight-puff-fade {
+  0%    { opacity: 0; }
+  12.5% { opacity: var(--peak); }
+  100%  { opacity: 0; }
+}
+
 /* ── Radial menu (ui_radial.js / #delight-layer) ─────────────────────────────
  * Colours only: sizes and stroke widths are attributes, divided by the view
  * scale so the menu is the same size at any zoom. --radial-grad and

@@ -454,19 +454,20 @@ export function toolInitArgs(def, params, fallbackColor) {
 }
 
 /**
- * A toy's artwork as a standalone <svg> filling its container, tinted with
- * initArgs.color and run through the toy's initialize() hook so its options
- * show. Ids are scoped by `id`. Decorative: scripts are dropped.
+ * A toy as it would be placed at (x, y): built from svgText and run through
+ * the toy's initialize() hook with initArgs, but inert. It has no id,
+ * data-id, data-module, data-toy-type or toy class (stripped after
+ * initialize, which may read them), its scripts are dropped, and its
+ * internal ids are scoped by a fresh prefix, so any number of copies can sit
+ * in the canvas without being mistaken for a toy or colliding with each
+ * other.
  */
-export function buildToyPreviewSvg(id, svgText, toyType, initArgs) {
-  const { toyEl } = buildToyEl({ id, toyType, x: 0, y: 0, color: initArgs.color }, svgText)
-  const svg = toyEl.firstElementChild
+let _previewSeq = 0
+export function buildToyPreview(toyType, svgText, initArgs, { x = 0, y = 0 } = {}) {
+  const { toyEl } = buildToyEl({ id: `preview-${++_previewSeq}`, toyType, x, y, color: initArgs.color }, svgText)
   try { runInitializers(toyEl, toyType, initArgs) } catch (err) { console.warn('[toys] preview initialize failed', err) }
-  svg.setAttribute('x', '0')
-  svg.setAttribute('y', '0')
-  svg.setAttribute('width', '100%')
-  svg.setAttribute('height', '100%')
-  return svg
+  for (const attr of ['id', 'data-id', 'data-module', 'data-toy-type', 'class']) toyEl.removeAttribute(attr)
+  return toyEl
 }
 
 /**
@@ -2121,6 +2122,8 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     rotationCenter:  (svgEl, geom = getGeom(svgEl)) => rotationCenter(geom),
     computeRotate: Geometry.computeRotate,
     previewEdit,
+    /** A tool's toy as it would be placed; see buildToyPreview. */
+    preview: (def, svgText, initArgs, at) => buildToyPreview(def.toyType, svgText, initArgs, at),
     /** Place a toy from its template. Resolves to the placed element. */
     add: (attrs) => placeToy(ydoc, layerEl(), attrs, { authorId: user.id, tableId }),
     applyMoveCommit: (el, x, y) => {

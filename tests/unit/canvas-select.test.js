@@ -14,7 +14,7 @@
 
 // @vitest-environment jsdom
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { init, setTool, setParams, resetView, ToolMode } from '../../src/canvas.js'
+import { init, setTool, setParams, resetView, ToolMode, cancelGesture } from '../../src/canvas.js'
 
 // ── DOM setup ────────────────────────────────────────────────────────────────
 
@@ -94,6 +94,8 @@ function makeApp(overrides = {}) {
     movePivot:          () => {},
     commitPivot:        () => {},
     cancelPivot:        () => {},
+    toyAddPress:        () => null,
+    toyAddCancel:       () => {},
     ...overrides,
   }
 }
@@ -1150,4 +1152,113 @@ describe('handle dispatch', () => {
       press(handle, corner, makeApp(recording(call, calls)))
       expect(calls).toEqual([])
     })
+})
+
+describe('cancelGesture (Escape mid-gesture)', () => {
+  const stage = () => document.getElementById('stage')
+
+  test('does nothing, and says so, with no gesture in flight', () => {
+    init(makeApp(), document.getElementById('canvas'))
+    setTool('select', {})
+    expect(cancelGesture()).toBe(false)
+  })
+
+  test('a drag in progress snaps back and its release commits nothing', () => {
+    const app = makeApp({
+      getSelectedIds: () => ['shape-a'],
+      move: vi.fn(), cancelMove: vi.fn(), commitMove: vi.fn(),
+      nextSelectionMode: vi.fn(), select: vi.fn(),
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage().dispatchEvent(makePointerEvent('pointermove', { clientX: 200, clientY: 100 }))
+    expect(app.move).toHaveBeenCalled()
+    app.move.mockClear()
+    app.select.mockClear()
+
+    expect(cancelGesture()).toBe(true)
+    expect(app.cancelMove).toHaveBeenCalledTimes(1)
+    expect(app.cancelMove).toHaveBeenCalledWith({ from: { x: 100, y: 100 }, x: 200, y: 100 })
+
+    stage().dispatchEvent(makePointerEvent('pointermove', { clientX: 260, clientY: 100 }))
+    stage().dispatchEvent(makePointerEvent('pointerup',   { clientX: 260, clientY: 100 }))
+    expect(app.move).not.toHaveBeenCalled()
+    expect(app.commitMove).not.toHaveBeenCalled()
+    expect(app.cancelMove).toHaveBeenCalledTimes(1)
+    expect(app.nextSelectionMode).not.toHaveBeenCalled()
+    expect(app.select).not.toHaveBeenCalled()
+    expect(ToolMode._gesture).toBeNull()
+  })
+
+  test('a toy-add press is cancelled and its release adds nothing', () => {
+    const app = makeApp({ toyAddPress: () => 7, toyAddCancel: vi.fn(), commitToy: vi.fn(), updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('d6', {})
+
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100 }))
+    expect(cancelGesture()).toBe(true)
+    expect(app.toyAddCancel).toHaveBeenCalledWith(7)
+    stage().dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+    expect(app.commitToy).not.toHaveBeenCalled()
+  })
+
+  test('a rubber band is dropped without changing the selection', () => {
+    const app = makeApp({ commitMultiSelect: vi.fn(), select: vi.fn(), clearBoxCandidates: vi.fn() })
+    init(app, document.getElementById('canvas'))
+    setTool('select', { multi: true })
+
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100 }))
+    stage().dispatchEvent(makePointerEvent('pointermove', { clientX: 200, clientY: 200 }))
+    expect(cancelGesture()).toBe(true)
+    expect(app.clearBoxCandidates).toHaveBeenCalled()
+    stage().dispatchEvent(makePointerEvent('pointerup', { clientX: 200, clientY: 200 }))
+    expect(app.commitMultiSelect).not.toHaveBeenCalled()
+    expect(app.select).not.toHaveBeenCalled()
+  })
+
+  test('the cancelled release does not count toward a double-click', () => {
+    vi.useFakeTimers()
+    const app = makeApp({ getSelectedIds: () => ['shape-a'], onViewReset: vi.fn() })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    cancelGesture()
+    stage().dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 300, clientY: 300 }))
+    stage().dispatchEvent(makePointerEvent('pointerup',   { clientX: 300, clientY: 300 }))
+    vi.advanceTimersByTime(400)
+    expect(app.onViewReset).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+})
+
+describe('the pointer path handed to cancelMove', () => {
+  const stage = () => document.getElementById('stage')
+
+  test('a pointercancel after moving passes where the pointer pressed and is now', () => {
+    const app = makeApp({ getSelectedIds: () => ['shape-a'], cancelMove: vi.fn() })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage().dispatchEvent(makePointerEvent('pointermove', { clientX: 150, clientY: 130 }))
+    stage().dispatchEvent(makePointerEvent('pointercancel', { clientX: 160, clientY: 140 }))
+    expect(app.cancelMove).toHaveBeenCalledWith({ from: { x: 100, y: 100 }, x: 160, y: 140 })
+  })
+
+  test('a tap passes none', () => {
+    const app = makeApp({ getSelectedIds: () => ['shape-a'], cancelMove: vi.fn() })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    const el = makeHitEl('shape-a')
+    stage().dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage().dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
+    expect(app.cancelMove).toHaveBeenCalledTimes(1)
+    expect(app.cancelMove.mock.calls[0][0] ?? null).toBeNull()
+  })
 })

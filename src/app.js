@@ -123,6 +123,38 @@ function _rotationCenterOf(id, geom) {
   return layer?.rotationCenter?.(domEl, geom) ?? null;
 }
 
+// Local-only notifications (App.on), for modules that decorate what
+// happens on the table. Nothing sent here reaches the doc or awareness.
+const _localEvents = new EventTarget();
+function _emit(type, detail) {
+  _localEvents.dispatchEvent(new CustomEvent(type, { detail }));
+}
+
+// Pairs a :press signal with the release, place or cancel that follows it.
+let _pressSeq = 0;
+
+// A multi-drag element as a toy:move:* signal's { id, from }.
+function _moveFrom(el) {
+  return { id: el.id, from: { x: el.anchorX, y: el.anchorY } };
+}
+
+// A toy about to be deleted, as a toy:gone signal's { id, x, y, w, h }:
+// its centre carried through its own transform (and any container's) into
+// the toys layer, so a rotated or contained toy reports where it shows, and
+// its own size. Null for anything that isn't a toy.
+function _toyGone(svgEl) {
+  if (!svgEl || moduleForElement(svgEl) !== 'toys') return null;
+  const geom = Toys.getGeom(svgEl);
+  if (!geom) return null;
+  const local = { x: geom.x + geom.width / 2, y: geom.y + geom.height / 2 };
+  const toyCtm = svgEl.getScreenCTM?.();
+  const layerCtm = layerElOf('toys')?.getScreenCTM?.();
+  const centre = toyCtm && layerCtm
+    ? new DOMPoint(local.x, local.y).matrixTransform(layerCtm.inverse().multiply(toyCtm))
+    : local;
+  return { id: svgEl.getAttribute('data-id'), x: centre.x, y: centre.y, w: geom.width, h: geom.height };
+}
+
 // computeResize keeps the corner opposite the dragged one fixed in the
 // shape's own space, but a resize also moves the pivot a rotated shape
 // turns about, sliding that anchor corner on canvas even though it never
@@ -400,7 +432,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
   // Awareness layer - indicators of peers and for peers
   Overlay.init(App, _svgEl, user);
 
-  // Delight (bowstring handle and sparks)
+  // Delight (bowstring handle, sparks, and the delight effects)
   Delight.init(App, _svgEl);
 
   // Attention mode (triple-click pointing), on its own top layer
@@ -956,12 +988,15 @@ const App = {
     const firstEl = ids.map(id => _svgEl.querySelector(`[data-id="${id}"]`)).find(Boolean);
     const mtype   = firstEl ? moduleForElement(firstEl) : null;
 
+    const gone = ids.map(id => _toyGone(_svgEl.querySelector(`[data-id="${id}"]`))).filter(Boolean);
+
     // One op for the whole batch; the exact per-id count isn't tracked.
     const op = _Layers[mtype]?.deleteMany(ids);
     const deleted = op ? ids.length : 0;
 
     if (deleted > 0) {
       App.addLog(`deleted ${deleted} objects`, 'local');
+      if (gone.length) _emit('toy:gone', { toys: gone });
     }
     SelectionLocal.clearClaims();
     Overlay.clearHoverCandidates();
@@ -1125,24 +1160,92 @@ const App = {
   cancelEdit: (id) => Overlay.endGhost(id),
 
   /**
-   * Place a toy on the table, then run its namespace(s)' initialize(elem)
-   * hook exactly once
+   * Subscribe to a local-only notification; handler gets its detail.
+   * Returns the unsubscribe function. Signals are <thing>:<verb>:<phase>;
+   * a pointer gesture sends :press, then :release, then :place or :cancel
+   * (:cancel can also follow :release, when the change fails), all with the
+   * same pressId.
+   *   toy:add:press    { pressId, tool, x, y, preview } — preview() builds a
+   *                    fresh App.toolPreview of what will be added, at (x, y)
+   *   toy:add:release  { pressId } — placement starts
+   *   toy:add:place    { pressId, id } — the toy is in its layer
+   *   toy:add:cancel   { pressId }
+   *   toy:move:press   { pressId, moves: [{ id, from: { x, y } }] } — each
+   *                    toy is centred on from
+   *   toy:move:release { pressId }
+   *   toy:move:place   { pressId, moves: [{ id, from: { x, y }, x, y }] } —
+   *                    each toy moved from `from` and now rests centred on
+   *                    (x, y)
+   *   toy:move:cancel  { pressId, pointer } — Escape, a pointercancel, a
+   *                    tap that didn't move, or a failed drop. pointer is
+   *                    { from: { x, y }, x, y }: where the pointer pressed
+   *                    and where it is now; null for a tap, or a failed
+   *                    drop
+   * Deleting isn't a pointer gesture, so it has one signal, no phases:
+   *   toy:gone         { toys: [{ id, x, y, w, h }] } — the player deleted
+   *                    these toys; each was centred on (x, y), w×h
    */
-  commitToy: (toolName, x, y) => {
+  on: (type, handler) => {
+    const listener = (e) => handler(e.detail);
+    _localEvents.addEventListener(type, listener);
+    return () => _localEvents.removeEventListener(type, listener);
+  },
+
+  /**
+   * What toolName would place, as a detached, inert element centred on
+   * (x, y): nothing that marks it as a toy (id, data-id, data-toy-type…),
+   * scripts dropped, internal ids freshly scoped.
+   * Built by the tool's layer with the tool's current options. Null for a
+   * tool whose layer has no preview, or until its SVG is cached.
+   */
+  toolPreview: (toolName, { x = 0, y = 0 } = {}) => {
     const def = _toolById[toolName];
-    if (!def?.toyType) { UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
+    const markup = def && UI.getToolPreviewMarkup(def);
+    const layer = def && _Layers[def.layer];
+    if (!markup || !layer?.preview) return null;
+    const initArgs = Toys.toolInitArgs(def, _toolParams[toolName] ?? {}, App.user.color);
+    return layer.preview(def, markup, initArgs, { x, y });
+  },
+
+  /**
+   * A press that will add toolName's toy at (x, y) on release. Returns the
+   * pressId to hand to commitToy or toyAddCancel, or null for a tool that
+   * doesn't add a toy.
+   */
+  toyAddPress: (toolName, x, y) => {
+    if (!_toolById[toolName]?.toyType) return null;
+    const pressId = ++_pressSeq;
+    _emit('toy:add:press', { pressId, tool: toolName, x, y, preview: () => App.toolPreview(toolName, { x, y }) });
+    return pressId;
+  },
+
+  /** The press from toyAddPress was abandoned. */
+  toyAddCancel: (pressId) => {
+    if (pressId != null) _emit('toy:add:cancel', { pressId });
+  },
+
+  /**
+   * Place a toy on the table, then run its namespace(s)' initialize(elem)
+   * hook exactly once. pressId, from toyAddPress, keys the toy:add:*
+   * signals.
+   */
+  commitToy: (toolName, x, y, pressId = null) => {
+    const def = _toolById[toolName];
+    if (!def?.toyType) { App.toyAddCancel(pressId); UI.toast(`Unknown toy: ${toolName}`, 'warn'); return; }
     const id = Toys.newToyId();
     const layerEl = layerElOf('toys');
-    if (!layerEl) return;
+    if (!layerEl) { App.toyAddCancel(pressId); return; }
     const params = _toolParams[toolName] ?? {};
     // initialize()'s options always carries color + every other tool option
     const initArgs = Toys.toolInitArgs(def, params, App.user.color);
     const color    = initArgs.color;
+    if (pressId != null) _emit('toy:add:release', { pressId });
     // initializeToy below runs its own gesture, so initialize commits as a
     // separate op from placement. Deliberate: initialize is its own
     // gesture, not part of "place".
     _Layers.toys.add({ id, toyType: def.toyType, x, y, color }).then(async () => {
       App.addLog(`placed ${def.label} ${id}`, 'local');
+      if (pressId != null) _emit('toy:add:place', { pressId, id });
 
       // Awaiting activateToyScripts() here guarantees the namespace is actually
       // ready before initialize() reads it off window[namespace]. Placing the toy
@@ -1154,6 +1257,7 @@ const App = {
         Toys.initializeToy(_ydoc, layerEl, svgEl, def.toyType, App.user.id, _tableId, initArgs);
       }
     }).catch(err => {
+      App.toyAddCancel(pressId);
       UI.toast(`Failed to place ${def.label}`, 'warn');
       App.addLog(`place failed: ${err.message}`, 'del');
     });
@@ -1166,8 +1270,10 @@ const App = {
     if (!L) return false;
     const yEl = L.find(id);
     if (!yEl) return false;
+    const gone = _toyGone(svgEl);
     L.delete(id);
     App.addLog(`deleted ${id}`, 'local');
+    if (gone) _emit('toy:gone', { toys: [gone] });
     if (SelectionLocal.isHeld(id)) {
       SelectionLocal.unclaim([id]);
     }
@@ -1227,9 +1333,11 @@ const App = {
       lastValidX: anchor.x,
       lastValidY: anchor.y,
       snapPoints,
+      pressId: isToy ? ++_pressSeq : null,
     };
     Overlay.startDragPlaceholder(id);
     _awareness.setLocalStateField('drag', { elId: id, bboxX: bbox.x, bboxY: bbox.y });
+    if (isToy) _emit('toy:move:press', { pressId: _dragState.pressId, moves: [{ id, from: { x: anchor.x, y: anchor.y } }] });
   },
 
   move: (id, x, y) => {
@@ -1309,9 +1417,12 @@ const App = {
       ? Toys.findDropTarget(layerElOf('toys'), id, rx, ry)
       : null;
 
+    const { pressId, startX, startY } = _dragState;
+    const from = { x: startX, y: startY };
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
+    if (pressId != null) _emit('toy:move:release', { pressId });
 
     if (dropContainerId) {
       // Drop into a container = reparent + reposition into it, plus its
@@ -1340,6 +1451,7 @@ const App = {
         // Surface it, else the pointerup handler may crash silently mid-drag.
         UI.toast(`Could not move into container: ${err.message}`, 'warn');
         Overlay.endDragPlaceholder(id);
+        if (pressId != null) _emit('toy:move:cancel', { pressId, pointer: null });
         return;
       }
 
@@ -1349,6 +1461,7 @@ const App = {
 
       // A toy landing inside a container leaves selection
       SelectionLocal.clearClaims();
+      if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, from, x: rx, y: ry }] });
 
       return;
     }
@@ -1359,15 +1472,21 @@ const App = {
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
     // the selection ring from whatever the DOM currently shows.
     Overlay.endDragPlaceholder(id);
+    if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, from, x: rx, y: ry }] });
   },
 
-  cancelMove: () => {
+  /** Abandon the pointer gesture in flight; false if there was none. */
+  cancelGesture: () => Canvas.cancelGesture(),
+
+  /** pointer: the drag's pointer path for toy:move:cancel, or null. */
+  cancelMove: (pointer = null) => {
     if (!_dragState) return;
-    const id = _dragState.id;
+    const { id, pressId } = _dragState;
     Overlay.endDragPlaceholder(id);
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
     _dragState = null;
+    if (pressId != null) _emit('toy:move:cancel', { pressId, pointer });
   },
 
   // The generic "further click" gesture: asks id's own owning LayerAPI
@@ -1698,6 +1817,7 @@ const App = {
       snapPoints,
       lastValidDx: 0,
       lastValidDy: 0,
+      pressId: isToy ? ++_pressSeq : null,
     };
 
     for (const el of elements) Overlay.startDragPlaceholder(el.id);
@@ -1710,6 +1830,7 @@ const App = {
       elIds:   elements.map(e => e.id),
       offsets: elements.map(e => ({ bboxX: e.bboxX, bboxY: e.bboxY })),
     });
+    if (isToy) _emit('toy:move:press', { pressId: _multiDragState.pressId, moves: elements.map(_moveFrom) });
   },
 
   moveMulti: (ddx, ddy) => {
@@ -1762,9 +1883,10 @@ const App = {
 
   commitMultiMove: (ddx, ddy) => {
     if (!_multiDragState) return;
-    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy } = _multiDragState;
+    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy, pressId } = _multiDragState;
 
     _awareness.setLocalStateField('multidrag', null);
+    if (pressId != null) _emit('toy:move:release', { pressId });
 
     // Use the last constrained (dx, dy) from moveMulti, falling back to
     // the raw offset only if no pointermove fired (immediate pointerup).
@@ -1786,13 +1908,19 @@ const App = {
 
     App.addLog(`moved ${elements.length} objects`, 'local');
     _multiDragState = null;
+    if (pressId != null) {
+      _emit('toy:move:place', { pressId, moves: moves.map((m, i) => ({ ..._moveFrom(elements[i]), ...m })) });
+    }
   },
 
-  cancelMultiMove: () => {
+  /** pointer: the drag's pointer path for toy:move:cancel, or null. */
+  cancelMultiMove: (pointer = null) => {
     if (!_multiDragState) return;
-    for (const el of _multiDragState.elements) Overlay.endDragPlaceholder(el.id);
+    const { elements, pressId } = _multiDragState;
+    for (const el of elements) Overlay.endDragPlaceholder(el.id);
     _awareness.setLocalStateField('multidrag', null);
     _multiDragState = null;
+    if (pressId != null) _emit('toy:move:cancel', { pressId, pointer });
   },
 
   setTool: (name) => {

@@ -1,5 +1,5 @@
 /**
- * layer_delight.js — the Bowstring Handle
+ * layer_delight.js — the Bowstring Handle, and the delight effects
  *
  * A drag-to-fire control attached to the SE action square of the locally
  * selected toy. Click it for an immediate action; pull it back like a
@@ -44,11 +44,23 @@
  * Coordinates: the handle's resting position is canvas-space (so it tracks
  * the toy at any zoom), but the pull physics are screen-space px, so the
  * gesture feels identical regardless of zoom.
+ *
+ * ── Delight effects ───────────────────────────────────────────────────────
+ * #delight-layer's other tenants decorate what the local player did, for
+ * that player only. Each is a delight_<name>.js module that listens to App.on
+ * signals and exports init(App, svgEl), where it subscribes and injects any
+ * <defs> it needs. DELIGHT_EFFECTS lists them; adding or removing one is its
+ * module plus a line there.
  */
 
 import { LOCAL_ACTION_FILTER_ID, GLOW_FILTER_ID } from './defs.js';
 import { rotatePoint } from './geometry.js';
 import * as Radial from './ui_radial.js';
+import * as Plop from './delight_plop.js';
+import * as Skid from './delight_skid.js';
+import * as Cloudburst from './delight_cloudburst.js';
+
+const DELIGHT_EFFECTS = [Plop, Skid, Cloudburst];
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -155,6 +167,7 @@ export function init(appBus, svgElement) {
   if (!_layerEl) {
     throw new Error("delight.init: '#delight-layer' not found in SVG document — malformed template?");
   }
+  for (const effect of DELIGHT_EFFECTS) effect.init(appBus, svgElement);
 }
 
 /**
