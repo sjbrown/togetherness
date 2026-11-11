@@ -892,6 +892,19 @@ svg.tt-icon-letter {
   100%  { opacity: 0; }
 }
 
+/* ── Clack (delight_clack.js / #delight-layer) ─────────────────────────────
+ * Each line scales toward its transform-origin, the toy's centre, set inline
+ * by delight_clack.js, and fades over the last stretch. */
+.delight-clack {
+  pointer-events: none;
+  animation: delight-clack var(--clack-ms, 300ms) cubic-bezier(.5,0,.9,.6) forwards;
+}
+@keyframes delight-clack {
+  0%   { transform: scale(1);   opacity: 1; }
+  70%  { opacity: 1; }
+  100% { transform: scale(.15); opacity: 0; }
+}
+
 /* ── Radial menu (ui_radial.js / #delight-layer) ─────────────────────────────
  * Colours only: sizes and stroke widths are attributes, divided by the view
  * scale so the menu is the same size at any zoom. --radial-grad and

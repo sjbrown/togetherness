@@ -1176,6 +1176,9 @@ const App = {
    *   toy:move:place   { pressId, moves: [{ id, from: { x, y }, x, y }] } —
    *                    each toy moved from `from` and now rests centred on
    *                    (x, y)
+   *   toy:move:snap    { pressId, moves: [{ id, x, y }] } — right after
+   *                    :place, for the toys of a move that ended on a snap
+   *                    point, each now centred on (x, y)
    *   toy:move:cancel  { pressId, pointer } — Escape, a pointercancel, a
    *                    tap that didn't move, or a failed drop. pointer is
    *                    { from: { x, y }, x, y }: where the pointer pressed
@@ -1332,6 +1335,7 @@ const App = {
       boundsRects,
       lastValidX: anchor.x,
       lastValidY: anchor.y,
+      snapped: false,
       snapPoints,
       pressId: isToy ? ++_pressSeq : null,
     };
@@ -1376,6 +1380,7 @@ const App = {
       if (snapOk) { rx = snapped.cx; ry = snapped.cy; }
     }
 
+    _dragState.snapped = !!snapped && (rx === snapped.cx && ry === snapped.cy);
     _dragState.lastValidX = rx;
     _dragState.lastValidY = ry;
 
@@ -1417,7 +1422,7 @@ const App = {
       ? Toys.findDropTarget(layerElOf('toys'), id, rx, ry)
       : null;
 
-    const { pressId, startX, startY } = _dragState;
+    const { pressId, startX, startY, snapped } = _dragState;
     const from = { x: startX, y: startY };
     Overlay.setDropTargetHover(null);
     _awareness.setLocalStateField('drag', null);
@@ -1472,7 +1477,10 @@ const App = {
     // Ghost ends after the commit: endDragPlaceholder's own render() paints
     // the selection ring from whatever the DOM currently shows.
     Overlay.endDragPlaceholder(id);
-    if (pressId != null) _emit('toy:move:place', { pressId, moves: [{ id, from, x: rx, y: ry }] });
+    if (pressId != null) {
+      _emit('toy:move:place', { pressId, moves: [{ id, from, x: rx, y: ry }] });
+      if (constrained && snapped) _emit('toy:move:snap', { pressId, moves: [{ id, x: rx, y: ry }] });
+    }
   },
 
   /** Abandon the pointer gesture in flight; false if there was none. */
@@ -1817,6 +1825,7 @@ const App = {
       snapPoints,
       lastValidDx: 0,
       lastValidDy: 0,
+      snapped: false,
       pressId: isToy ? ++_pressSeq : null,
     };
 
@@ -1869,6 +1878,7 @@ const App = {
     // Derive actual (dx, dy) from the constrained anchor position
     const cdx = rx - leaderEl.anchorX;
     const cdy = ry - leaderEl.anchorY;
+    _multiDragState.snapped = !!snapped && rx === snapped.cx && ry === snapped.cy;
     _multiDragState.lastValidDx = cdx;
     _multiDragState.lastValidDy = cdy;
 
@@ -1883,7 +1893,7 @@ const App = {
 
   commitMultiMove: (ddx, ddy) => {
     if (!_multiDragState) return;
-    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy, pressId } = _multiDragState;
+    const { elements, boundsRects, snapPoints, lastValidDx, lastValidDy, snapped, pressId, leaderEl } = _multiDragState;
 
     _awareness.setLocalStateField('multidrag', null);
     if (pressId != null) _emit('toy:move:release', { pressId });
@@ -1910,6 +1920,8 @@ const App = {
     _multiDragState = null;
     if (pressId != null) {
       _emit('toy:move:place', { pressId, moves: moves.map((m, i) => ({ ..._moveFrom(elements[i]), ...m })) });
+      const lead = moves.find(m => m.id === leaderEl.id);
+      if (constrained && snapped && lead) _emit('toy:move:snap', { pressId, moves: [lead] });
     }
   },
 
