@@ -41,7 +41,7 @@ describe('clack', () => {
   let svg, layer, bus
 
   const emit = (type, detail) => bus.dispatchEvent(new CustomEvent(type, { detail }))
-  const lines = () => [...layer.querySelectorAll('line.delight-clack')]
+  const lines = () => [...layer.querySelectorAll('polygon.delight-clack')]
 
   beforeEach(() => {
     document.body.innerHTML = `<svg id="canvas" xmlns="${SVGNS}"><g id="toys-layer"></g><g id="delight-layer"></g></svg>`
@@ -49,6 +49,7 @@ describe('clack', () => {
     layer = svg.querySelector('#delight-layer')
     bus = new EventTarget()
     init({
+      user: { id: 'u1', color: '#f00', gradient: { c1: '#f00', c2: '#00f', angle: 90 } },
       getViewScale: () => 1,
       on: (type, handler) => {
         const l = (e) => handler(e.detail)
@@ -74,6 +75,11 @@ describe('clack', () => {
     expect(first.style.transformOrigin).toBe('10px 10px')
     for (const l of lines()) l.dispatchEvent(new Event('animationend'))
     expect(lines()).toHaveLength(0)
+  })
+
+  it('fills the lines with the player’s gradient', () => {
+    emit('toy:move:snap', { pressId: 1, moves: [{ id: 'a', x: 10, y: 10 }] })
+    for (const l of lines()) expect(l.getAttribute('fill')).toBe('url(#grad-u1)')
   })
 
   it('does nothing under reduced motion', () => {

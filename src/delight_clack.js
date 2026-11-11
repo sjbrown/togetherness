@@ -8,6 +8,8 @@
  * MAX_EXTENT screen px from the toy's centre, that snap in toward it over
  * MS and fade. Sizes are screen px divided by the view scale.
  *
+ * Lines are filled with the local player's gradient.
+ *
  * Local only. Nothing here reaches the doc or awareness, and the toys in
  * #toys-layer are never touched: the lines play in #delight-layer. The motion
  * is a CSS animation (.delight-clack in ui.css); each line removes itself
@@ -23,8 +25,8 @@ export const MIN_EXTENT = 70;
 export const MIN_LEN = 14;
 export const MAX_LEN = 30;
 export const MS = 300;
-const COLOR = '#ffe9a0';
-const WIDTH = 2;
+const FALLBACK = '#ffe9a0';   // when the player has no colour yet
+const WIDTH = 3;       // screen px
 
 /**
  * The lines for a clack centred on (cx, cy), at view scale `scale`.
@@ -64,13 +66,23 @@ export function init(appBus, svgElement) {
   ];
 }
 
+// Each line is a thin polygon rather than a stroked <line>: the player's
+// gradient is in objectBoundingBox units, which a stroked axis-aligned
+// line (zero-width box) would never paint.
 function clack(cx, cy, scale) {
+  const user = App.user;
+  const paint = user?.gradient?.c1 && user.id ? `url(#grad-${user.id})` : (user?.color ?? FALLBACK);
+  const half = WIDTH / 2 / scale;
   for (const l of clackLines(cx, cy, scale)) {
-    const el = document.createElementNS(SVGNS, 'line');
-    for (const [k, v] of Object.entries({
-      class: 'delight-clack', x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2,
-      stroke: COLOR, 'stroke-width': WIDTH / scale, 'stroke-linecap': 'round',
-    })) el.setAttribute(k, v);
+    const len = Math.hypot(l.x2 - l.x1, l.y2 - l.y1) || 1;
+    const nx = -(l.y2 - l.y1) / len * half, ny = (l.x2 - l.x1) / len * half;
+    const el = document.createElementNS(SVGNS, 'polygon');
+    el.setAttribute('class', 'delight-clack');
+    el.setAttribute('fill', paint);
+    el.setAttribute('points', [
+      [l.x1 + nx, l.y1 + ny], [l.x2 + nx, l.y2 + ny],
+      [l.x2 - nx, l.y2 - ny], [l.x1 - nx, l.y1 - ny],
+    ].map(p => p.join(',')).join(' '));
     el.style.setProperty('--clack-ms', `${MS}ms`);
     el.style.transformOrigin = `${cx}px ${cy}px`;
     el.addEventListener('animationend', () => el.remove());
