@@ -278,6 +278,47 @@ export function close(state) {
   setTimeout(() => state.group.remove(), FADE_MS);
 }
 
+// ── Standing menu ─────────────────────────────────────────────────────────
+// A menu opened without a bowstring pull (a double-click). It stays until
+// the next press: a press on a spoke calls onPick with that pick, a press
+// anywhere else just closes it.
+
+let _standing = null;   // { state, onPick } or null
+
+export function standingActive() {
+  return _standing !== null;
+}
+
+export function openStanding(hostEl, { spokes, origin, scale, paint, onPick }) {
+  closeStanding();
+  const state = open(hostEl, { spokes, origin, scale, paint });
+  show(state);
+  _standing = { state, onPick };
+}
+
+function closeStanding() {
+  if (!_standing) return;
+  close(_standing.state);
+  _standing = null;
+}
+
+function standingPick(canvasPoint) {
+  const { origin, scale, spokes } = _standing.state;
+  return pickAt(spokes, (canvasPoint.x - origin.x) * scale, (canvasPoint.y - origin.y) * scale);
+}
+
+export function moveStanding(canvasPoint) {
+  if (_standing) setPick(_standing.state, standingPick(canvasPoint));
+}
+
+export function pressStanding(canvasPoint) {
+  if (!_standing) return;
+  const { onPick } = _standing;
+  const pick = standingPick(canvasPoint);
+  closeStanding();
+  if (pick) onPick(pick);
+}
+
 function render(state) {
   const { group, spokes, origin: { x: cx, y: cy }, scale } = state;
   group.textContent = '';

@@ -1607,6 +1607,46 @@ const App = {
   moveBowstring: (e, canvasPoint) => Delight.moveBowstring(e, canvasPoint),
   endBowstring:  (e)              => Delight.endBowstring(e),
 
+  standingRadialActive: ()     => Radial.standingActive(),
+  standingRadialMove:   (x, y) => Radial.moveStanding({ x, y }),
+  standingRadialPress:  (x, y) => Radial.pressStanding({ x, y }),
+
+  /**
+   * Open id's radial menu around its centre, and fire whichever spoke the
+   * next press lands on. False when it has none.
+   */
+  openRadialMenu: (id) => {
+    const geo = App.getBBox(id);
+    const menu = geo && App.getRadialMenu(id);
+    if (!menu) return false;
+    Radial.openStanding(_svgEl.querySelector('#delight-layer'), {
+      spokes: menu.spokes,
+      origin: { x: geo.x + geo.width / 2, y: geo.y + geo.height / 2 },
+      scale:  App.getViewScale(),
+      paint:  menu.paint,
+      onPick: (pick) => App.fireBowstring(id, { namespace: pick.spoke.namespace, key: pick.spoke.key, params: pick.params }),
+    });
+    return true;
+  },
+
+  /**
+   * A double-click on layer object id: its layer's double-click action if
+   * it offers one, else its radial menu, else centre the view on it.
+   */
+  objectDoubleClick: (id) => {
+    const { domEl, layer } = _layerFor(id);
+    if (!domEl) return;
+    const action = layer?.doubleClickAction?.(domEl);
+    if (action) {
+      App.invokeToyMenuAction(id, action.namespace, action.key);
+      App.addLog(`double-click → ${action.key}`, 'local');
+      return;
+    }
+    if (App.openRadialMenu(id)) return;
+    const geo = App.getBBox(id);
+    if (geo) Canvas.centerOn(geo.x + geo.width / 2, geo.y + geo.height / 2);
+  },
+
   /**
    * Called by layer_delight.js when a bowstring resolves — on click, or on the
    * far end of a charged pull's snap-back. A release on a radial spoke

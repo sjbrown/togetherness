@@ -1792,6 +1792,23 @@ export function getRadialItems(svgEl) {
   return items
 }
 
+/**
+ * The first applicable menu action declaring 'dblclick' in otherEvents, as
+ * { namespace, key }, or null.
+ */
+export function getDoubleClickAction(svgEl) {
+  const toyType = svgEl?.getAttribute?.('data-toy-type')
+  if (!toyType) return null
+  for (const { name, ns } of namespacesFor(toyType)) {
+    for (const [key, entry] of Object.entries(ns.menu)) {
+      if (!entry.otherEvents?.includes('dblclick')) continue
+      if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) continue
+      return { namespace: name, key }
+    }
+  }
+  return null
+}
+
 function resolveRadial(entry, svgEl) {
   return typeof entry.radial === 'function' ? entry.radial(svgEl) : entry.radial
 }
@@ -2116,6 +2133,7 @@ export function makeLayerAPI(ydoc, getLayerEl, user, tableId, isCreator = false)
     getTtStateSchema,
     selectModes,
     nextSelectMode,
+    doubleClickAction: getDoubleClickAction,
     computeResize,
     getRotation,
     resolveRotation,
