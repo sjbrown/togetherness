@@ -1,8 +1,8 @@
 /**
  * tests/e2e/delight-skid.spec.js
  *
- * Moving a toy puffs a little dust where it comes to rest, for the moving
- * player only, without touching the toy; the peer sees no puff.
+ * Moving a toy puffs a little dust ahead of it where it comes to rest, for
+ * the moving player only, without touching the toy; the peer sees no puff.
  */
 
 import { test, expect, chromium } from '@playwright/test';
@@ -52,8 +52,10 @@ test('a moved toy puffs dust where it rests, locally', async () => {
 
   const puffs = page1.locator('#delight-layer .delight-puff');
   await expect(puffs).toHaveCount(3);
+  // Travel was right and a little down, so the puff leads on the right.
   for (const cx of await puffs.evaluateAll(cs => cs.map(c => +c.getAttribute('cx')))) {
-    expect(Math.abs(cx - 400)).toBeLessThan(40);
+    expect(cx).toBeGreaterThan(400);
+    expect(cx).toBeLessThan(440);
   }
   expect(await toy.getAttribute('style')).toBeNull();
   await expect(puffs).toHaveCount(0, { timeout: 2000 });

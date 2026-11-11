@@ -60,6 +60,40 @@ describe('skid', () => {
     expect(toysLayer.innerHTML).toBe(before)
   })
 
+  describe('kicks the puff forward, within 90 degrees of the direction of travel', () => {
+    const starts = () => puffs().map(c => ({ x: +c.getAttribute('cx'), y: +c.getAttribute('cy') }))
+    const travel = () => puffs().map(c => ({ x: parseFloat(c.style.getPropertyValue('--tx')), y: parseFloat(c.style.getPropertyValue('--ty')) }))
+
+    it('a move to the right puffs to the right', () => {
+      toysLayer.append(toy('a', 300, 100, 80, 100))
+      for (let i = 0; i < 20; i++) {
+        emit('toy:move:place', { pressId: i, moves: [{ id: 'a', from: { x: 100, y: 100 }, x: 300, y: 100 }] })
+      }
+      expect(puffs()).toHaveLength(60)
+      for (const p of starts()) expect(p.x).toBeGreaterThan(300)
+      for (const t of travel()) {
+        expect(t.x).toBeGreaterThan(0)
+        expect(Math.abs(t.y + 10)).toBeLessThanOrEqual(t.x * 0.8 + 1e-9)   // within 45deg, after rise and flatten
+      }
+    })
+
+    it('a move straight down puffs downward', () => {
+      toysLayer.append(toy('a', 100, 300, 80, 100))
+      for (let i = 0; i < 20; i++) {
+        emit('toy:move:place', { pressId: i, moves: [{ id: 'a', from: { x: 100, y: 100 }, x: 100, y: 300 }] })
+      }
+      for (const p of starts()) expect(p.y).toBeGreaterThan(300)
+    })
+
+    it('a move that ends where it began puffs all round', () => {
+      toysLayer.append(toy('a', 100, 100, 80, 100))
+      emit('toy:move:place', { pressId: 1, moves: [{ id: 'a', from: { x: 100, y: 100 }, x: 100, y: 100 }] })
+      const xs = starts().map(p => p.x)
+      expect(Math.max(...xs)).toBeGreaterThan(100)
+      expect(Math.min(...xs)).toBeLessThan(100)
+    })
+  })
+
   it('ignores the rest of the toy:move:* signals', () => {
     toysLayer.append(toy('a', 100, 100, 80, 100))
     emit('toy:move:press', { pressId: 2, moves: [{ id: 'a', from: { x: 100, y: 100 } }] })

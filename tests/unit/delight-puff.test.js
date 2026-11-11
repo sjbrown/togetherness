@@ -72,3 +72,28 @@ describe('spawnPuff', () => {
     expect(filters[0].querySelector('feGaussianBlur').getAttribute('stdDeviation')).toBe(String(PUFF.blur / 2))
   })
 })
+
+describe('puffParticles with a direction', () => {
+  // Angle of a particle's start point around the centre, undoing flatten.
+  const angleOf = (p, cx, cy) => Math.atan2((p.y - cy) / PUFF.flatten, p.x - cx)
+  const diff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b))
+
+  it('places every particle within arc of the direction, even at the ends of rand', () => {
+    for (const [direction, arc] of [[0, Math.PI / 2], [Math.PI / 2, Math.PI / 2], [-2.5, Math.PI / 3]]) {
+      for (const r of [0, 0.5, 0.999]) {
+        for (const p of puffParticles(10, 20, 80, 100, 1, { direction, arc, count: 4 }, () => r)) {
+          expect(Math.abs(diff(angleOf(p, 10, 20), direction))).toBeLessThanOrEqual(arc / 2 + 1e-9)
+          // and travels the same way it started
+          expect(Math.abs(diff(Math.atan2((p.ty + PUFF.rise) / PUFF.flatten, p.tx), direction))).toBeLessThanOrEqual(arc / 2 + 1e-9)
+        }
+      }
+    }
+  })
+
+  it('defaults to a 90 degree arc', () => {
+    expect(PUFF.arc).toBeCloseTo(Math.PI / 2)
+    for (const p of puffParticles(0, 0, 80, 100, 1, { direction: 0 }, () => 0)) {
+      expect(angleOf(p, 0, 0)).toBeCloseTo(-Math.PI / 4)
+    }
+  })
+})

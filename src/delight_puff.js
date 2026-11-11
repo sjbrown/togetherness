@@ -22,6 +22,8 @@ export const PUFF = {
   grow: 3,         // end radius = start radius * grow
   ms: 500,
   jitter: 0.4,
+  direction: null, // canvas angle in radians: puff only that way, within arc
+  arc: Math.PI / 2,
   color: '#ece6d6',
   alpha: 0.4,
   blur: 2.3,
@@ -29,15 +31,19 @@ export const PUFF = {
 
 /**
  * The particles for a puff around something w×h centred on (cx, cy), at
- * view scale `scale`. Canvas units. rand is injectable for tests.
+ * view scale `scale`. Canvas units. Evenly spaced all round, or with a
+ * direction, each at a random angle within arc of it. rand is injectable
+ * for tests.
  */
 export function puffParticles(cx, cy, w, h, scale, overrides = {}, rand = Math.random) {
-  const { count, spread, dist, rise, flatten, size, grow, ms, jitter } = { ...PUFF, ...overrides };
+  const { count, spread, dist, rise, flatten, size, grow, ms, jitter, direction, arc } = { ...PUFF, ...overrides };
   const ring = Math.max(w, h) * 0.5 * spread;
   const step = (Math.PI * 2) / count;
   const out = [];
   for (let i = 0; i < count; i++) {
-    const ang = i * step + (rand() - 0.5) * jitter * step;
+    const ang = direction == null
+      ? i * step + (rand() - 0.5) * jitter * step
+      : direction + (rand() - 0.5) * arc;
     const ca = Math.cos(ang), sa = Math.sin(ang);
     const travel = (dist * (1 + (rand() - 0.5) * jitter)) / scale;
     const r0 = (size * (1 + (rand() - 0.5) * jitter * 0.8)) / scale;
