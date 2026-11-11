@@ -18,8 +18,8 @@ const PUFF = { count: 3 };
 const ARC = Math.PI / 2;
 // Puff travel grows linearly with toy travel, both in screen px, from
 // MIN_PUFF_DIST to MAX_PUFF_DIST once the toy has gone MAX_AT_TRAVEL.
-export const MIN_PUFF_DIST = 30;
-export const MAX_PUFF_DIST = 250;
+export const MIN_PUFF_DIST = 50;
+export const MAX_PUFF_DIST = 180;
 export const MAX_AT_TRAVEL = 800;
 
 /** How far the puff travels, in screen px, for a toy that moved `travel` screen px. */

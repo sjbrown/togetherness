@@ -8,18 +8,17 @@
 // @vitest-environment jsdom
 import { describe, it, test, expect, beforeEach, vi } from 'vitest'
 import { init, puffDistFor, MIN_PUFF_DIST, MAX_PUFF_DIST, MAX_AT_TRAVEL } from '../../src/delight_skid.js'
-import { PUFF } from '../../src/delight_puff.js'
 
 describe('puffDistFor', () => {
-  test('starts at the floor for no travel', () => {
-    expect(puffDistFor(0)).toBe(MIN_PUFF_DIST)
-    expect(MIN_PUFF_DIST).toBe(PUFF.dist)
+  test('starts at the floor, 50, for no travel', () => {
+    expect(puffDistFor(0)).toBe(50)
+    expect(MIN_PUFF_DIST).toBe(50)
   })
 
-  test('grows linearly, reaching 250 at 800', () => {
+  test('grows linearly, reaching 180 at 800', () => {
     expect(puffDistFor(400)).toBeCloseTo((MIN_PUFF_DIST + MAX_PUFF_DIST) / 2)
     expect(MAX_AT_TRAVEL).toBe(800)
-    expect(puffDistFor(800)).toBe(250)
+    expect(puffDistFor(800)).toBe(180)
   })
 
   test('holds at the ceiling past 800', () => {
