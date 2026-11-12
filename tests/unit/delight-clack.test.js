@@ -7,7 +7,7 @@
 
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest'
-import { init, clackLines, MIN_LINES, MAX_LINES, MAX_EXTENT, MS } from '../../src/delight_clack.js'
+import { init, clackLines, MIN_LINES, MAX_LINES, MAX_EXTENT, MS, MIN_STEP_DEG, STEP_JITTER_DEG } from '../../src/delight_clack.js'
 
 describe('clackLines', () => {
   it('makes 5 to 8 lines, never reaching past 100px from the centre', () => {
@@ -25,6 +25,20 @@ describe('clackLines', () => {
       }
     }
     expect(counts.size).toBe(4)
+  })
+
+  it('starts at 0deg, then steps 60 to 75deg round from each line to the next', () => {
+    const angOf = (l) => Math.atan2(l.y2, l.x2)
+    const turn = (a, b) => ((b - a) * 180 / Math.PI + 720) % 360
+    for (let i = 0; i < 100; i++) {
+      const lines = clackLines(0, 0, 1)
+      expect(angOf(lines[0])).toBeCloseTo(0)
+      for (let j = 1; j < lines.length; j++) {
+        const t = turn(angOf(lines[j - 1]), angOf(lines[j]))
+        expect(t).toBeGreaterThanOrEqual(MIN_STEP_DEG - 1e-6)
+        expect(t).toBeLessThanOrEqual(MIN_STEP_DEG + STEP_JITTER_DEG + 1e-6)
+      }
+    }
   })
 
   it('divides screen px by the view scale', () => {
