@@ -4,7 +4,8 @@
  *
  * Driven by App's toy:move:snap signal (see App.on):
  *   toy:move:snap → a clack around each toy that ended on a snap point
- * A clack is 5–8 short lines at random angles, their outer ends at most
+ * A clack is 5–8 short lines, fanned round from 0° in steps of 60–75°
+ * (wrapping past a full turn is fine), so they spread rather than bunch, their outer ends at most
  * MAX_EXTENT screen px from the toy's centre, that snap in toward it over
  * MS and fade. Sizes are screen px divided by the view scale.
  *
@@ -25,6 +26,8 @@ export const MIN_EXTENT = 70;
 export const MIN_LEN = 14;
 export const MAX_LEN = 30;
 export const MS = 300;
+export const MIN_STEP_DEG = 60;     // each line is this far round from the last,
+export const STEP_JITTER_DEG = 15;  // plus up to this much more
 const FALLBACK = '#ffe9a0';   // when the player has no colour yet
 const WIDTH = 3;       // screen px
 
@@ -35,8 +38,9 @@ const WIDTH = 3;       // screen px
 export function clackLines(cx, cy, scale, rand = Math.random) {
   const count = MIN_LINES + Math.floor(rand() * (MAX_LINES - MIN_LINES + 1));
   const out = [];
+  let ang = 0;
   for (let i = 0; i < count; i++) {
-    const ang = rand() * Math.PI * 2;
+    if (i > 0) ang += (MIN_STEP_DEG + rand() * STEP_JITTER_DEG) * Math.PI / 180;
     const outer = (MIN_EXTENT + rand() * (MAX_EXTENT - MIN_EXTENT)) / scale;
     const inner = outer - (MIN_LEN + rand() * (MAX_LEN - MIN_LEN)) / scale;
     const ca = Math.cos(ang), sa = Math.sin(ang);
