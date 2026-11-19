@@ -18,6 +18,7 @@
  */
 
 import { icon } from './icons.js';
+import { gradientVector } from './entity_gradient.js';
 import * as Debug from './debug_panel.js';
 import * as Trace from './trace.js';
 import { networkStatusBarHTML } from './external_services_status.js';
@@ -1259,6 +1260,27 @@ function avatarSVG(p, { size = 32, tip = false } = {}) {
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>
     <text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${initial}</text>
   </svg>`;
+}
+// Tab icon: the player's avatar as a self-contained SVG (the page's
+// <linearGradient id="grad-..."> defs aren't visible from a data URI).
+export function setFavicon(user) {
+  const g = user.gradient;
+  let fill = user.color;
+  let defs = '';
+  if (g?.c1 && g?.c2) {
+    const v = gradientVector(g.angle);
+    defs = `<defs><linearGradient id="g" x1="${v.x1}" y1="${v.y1}" x2="${v.x2}" y2="${v.y2}"><stop offset="0" stop-color="${g.c1}"/><stop offset="1" stop-color="${g.c2}"/></linearGradient></defs>`;
+    fill = 'url(#g)';
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">${defs}<circle cx="16" cy="16" r="16" fill="${fill}"/><text x="16" y="22" text-anchor="middle" font-size="18" font-weight="700" font-family="sans-serif" fill="#fff">${escapeHtml(user.name[0].toUpperCase())}</text></svg>`;
+  let link = document.querySelector('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.type = 'image/svg+xml';
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 function meRowHTML(user) {
   return `<div class="peer-row me-row">${avatarSVG(user)}<div><div style="font-size:14px">${user.name}</div><div style="font-size:12px;color:var(--text-3)">${user.id}</div></div><a class="me-edit-btn" href="home.html" title="Edit profile" aria-label="Edit profile">${icon('edit', { size: 16 })}</a></div>`;
