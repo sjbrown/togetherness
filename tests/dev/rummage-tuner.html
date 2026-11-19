@@ -97,10 +97,11 @@
 // values proposed for rummage mode.
 const GROUPS = {
   h: [
-    ['bar', 'bar width', 0.5, 8, 0.5, 1],
+    ['upw', 'upright width', 0.5, 8, 0.5, 1],
+    ['barw', 'bar width', 0.5, 12, 0.5, 2],
     ['hgap', 'gap between Hs', 0, 20, 0.5, 4],
-    ['aw', 'bar height', 0.5, 8, 0.1, 4],
-    ['bw', 'crossbar thick', 0.5, 8, 0.1, 1.5],
+    ['aw', 'upright height', 0.5, 8, 0.1, 4],
+    ['bw', 'bar thickness', 0.5, 8, 0.1, 1.5],
     ['op', 'opacity', 0, 1, 0.05, 1],
   ],
   o: [
@@ -153,7 +154,6 @@ for (const [gid, params] of Object.entries(GROUPS)) {
 }
 
 const NS = 'http://www.w3.org/2000/svg';
-const OPEN = 2; // fixed span between an H's two bars
 function applyGradient() {
   const g = GRADS[vals.grad], lg = q('#player-grad');
   for (const [k, v] of Object.entries(gradVector(g.angle))) lg.setAttribute(k, v);
@@ -167,10 +167,10 @@ function applyGradient() {
 }
 function draw() {
   const v = vals;
-  // Bars are stroke A's dashes, the crossbar is stroke B's dash between them.
-  const aDash = `${v.bar}, ${OPEN}, ${v.bar}, ${v.hgap}`;
-  const bDash = `${OPEN}, ${2 * v.bar + v.hgap}`;
-  const bOff = -v.bar;
+  // Uprights are stroke A's dashes; the bar is stroke B's dash between them.
+  const aDash = `${v.upw}, ${v.barw}, ${v.upw}, ${v.hgap}`;
+  const bDash = `${v.barw}, ${2 * v.upw + v.hgap}`;
+  const bOff = -v.upw;
   applyGradient();
   for (const f of document.querySelectorAll('#stage figure')) f.style.zoom = v.zoom;
   for (const g of document.querySelectorAll('.rummage')) {
@@ -188,12 +188,12 @@ function draw() {
   }
   const gr = GRADS[v.grad];
   q('#out').textContent =
-`/* H pattern: bar ${v.bar}, gap between Hs ${v.hgap} */
-/* stroke A (bars) */
+`/* H pattern: upright ${v.upw}, bar ${v.barw}, gap between Hs ${v.hgap} */
+/* stroke A (uprights) */
 stroke-width: ${v.aw}; stroke-opacity: ${v.op}; stroke-linecap: ${v.cap};
 stroke-dasharray: ${aDash}; stroke-dashoffset: 0;
 
-/* stroke B (crossbar) */
+/* stroke B (bar) */
 stroke-width: ${v.bw}; stroke-opacity: ${v.op}; stroke-linecap: ${v.cap};
 stroke-dasharray: ${bDash}; stroke-dashoffset: ${bOff};
 
