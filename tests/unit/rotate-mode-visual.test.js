@@ -572,3 +572,40 @@ describe('updateRotateGhost', () => {
     endResizeGhost('shape1')
   })
 })
+
+describe("'sel-rummage' stitched border", () => {
+  const ring = () => document.querySelector('#selection_local .rummageRing')
+
+  test('two dashed strokes over one outline, no plain ring or handles, flat color without a player gradient', () => {
+    enter('sel-rummage')
+    const [uprights, bar] = ring().querySelectorAll('rect')
+    expect(uprights.getAttribute('stroke-dasharray')).toBe('2.5 12 2.5 18')
+    expect(uprights.getAttribute('stroke-width')).toBe('6.5')
+    expect(bar.getAttribute('stroke-dasharray')).toBe('12 23')
+    expect(bar.getAttribute('stroke-dashoffset')).toBe('-2.5')
+    expect(bar.getAttribute('stroke-width')).toBe('3')
+    for (const r of [uprights, bar]) {
+      expect(r.getAttribute('x')).toBe(String(BBOX.x - 5))
+      expect(r.getAttribute('width')).toBe(String(BBOX.width + 10))
+      expect(r.getAttribute('stroke')).toBe('#5a7ea8')
+    }
+    expect(document.querySelectorAll('#selection_local .selRing, #selection_local .handle')).toHaveLength(0)
+  })
+
+  test('lengths scale with the view so the stitching stays the same size on screen', () => {
+    boot({ scale: 2 })
+    enter('sel-rummage')
+    const [uprights, bar] = ring().querySelectorAll('rect')
+    expect(uprights.getAttribute('stroke-dasharray')).toBe('1.25 6 1.25 9')
+    expect(bar.getAttribute('stroke-dasharray')).toBe('6 11.5')
+    expect(bar.getAttribute('stroke-dashoffset')).toBe('-1.25')
+  })
+
+  test('turns with a rotated element, and leaving the mode clears it', () => {
+    boot({ rotation: 30 })
+    enter('sel-rummage')
+    expect(ring().closest('g[transform]').getAttribute('transform')).toBe('rotate(30 200 150)')
+    setSelectionMode('rect1', 'sel-rotate')
+    expect(ring()).toBeNull()
+  })
+})

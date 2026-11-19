@@ -31,6 +31,8 @@
  *                    every rendering path below.
  *   'sel-action'   — local selection ring + the action affordance square
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
+ *   'sel-rummage'  — a stitched border of "H" shapes in the player's gradient,
+ *                    in place of the ring: two dashed strokes over one outline
  *
  * SelectionModeShared entries are all mode 'remote': a dashed border and
  * the peer's name label.
@@ -88,7 +90,21 @@ const PIVOT_SIZE = 9;     // px in canvas-space — the pivot handle's ray reach
 
 const SELECTION_MODES = new Set([
   'sel-move', 'sel-resize', 'sel-resize-r', 'sel-rotate', 'sel-rotate-pivot', 'sel-action',
+  'sel-rummage',
 ]);
+
+// Rummage border: stroke A's dashes are each H's two uprights, stroke B's
+// dash is the bar between them. Both are laid on one outline, B shifted by
+// one upright so it starts where the first upright ends. Lengths are screen
+// px; the renderer divides by view scale as the selection ring does.
+const RUMMAGE_UPRIGHT = 2.5;
+const RUMMAGE_BAR     = 12;
+const RUMMAGE_GAP     = 18;
+const RUMMAGE_PAD     = 5;
+const RUMMAGE_RADIUS  = 10;
+const RUMMAGE_UPRIGHT_HEIGHT = 6.5;
+const RUMMAGE_BAR_THICKNESS  = 3;
+
 
 /**
  * The four resize corner points for a geo rect (already padded out to the
@@ -686,6 +702,9 @@ function renderSelectionLocal() {
         renderLocalRotateSelection(geo, entry, scale, rot, parent);
         renderPivotHandle(elId, geo, scale, parent);
         break;
+      case 'sel-rummage':
+        renderLocalRummage(geo, entry, scale, parent);
+        break;
       case 'sel-action':
         renderLocalSelection(geo, entry, scale, parent);
         if (App.hasToyActions(elId)) renderActionAffordance(bowstringOrigin(geo, rot), scale, 'bowstring', layer, `bowstring:${elId}`);
@@ -992,6 +1011,40 @@ function renderLocalSelection(geo, entry, scale, parent) {
   });
   parent.appendChild(ring);
 
+}
+
+function renderLocalRummage(geo, entry, scale, parent) {
+  const { x, y, width, height } = geo;
+  const stroke = _localGradUrl() ?? entry.color ?? 'var(--info)';
+  const u = RUMMAGE_UPRIGHT / scale;
+  const bar = RUMMAGE_BAR / scale;
+  const gap = RUMMAGE_GAP / scale;
+  const pad = RUMMAGE_PAD / scale;
+  const outline = {
+    x:      x - pad,
+    y:      y - pad,
+    width:  width  + pad * 2,
+    height: height + pad * 2,
+    rx:     RUMMAGE_RADIUS,
+    fill:   'none',
+    stroke,
+    'stroke-linecap': 'butt',
+  };
+  const g = el('g', { class: 'rummageRing' });
+  g.appendChild(el('rect', {
+    ...outline,
+    class:              'rummageUprights',
+    'stroke-width':     RUMMAGE_UPRIGHT_HEIGHT / scale,
+    'stroke-dasharray': `${u} ${bar} ${u} ${gap}`,
+  }));
+  g.appendChild(el('rect', {
+    ...outline,
+    class:               'rummageBar',
+    'stroke-width':      RUMMAGE_BAR_THICKNESS / scale,
+    'stroke-dasharray':  `${bar} ${2 * u + gap}`,
+    'stroke-dashoffset': -u,
+  }));
+  parent.appendChild(g);
 }
 
 function renderLocalResizeSelection(geo, entry, scale, rot, parent) {
