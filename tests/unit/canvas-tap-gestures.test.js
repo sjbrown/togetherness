@@ -275,6 +275,110 @@ describe('double-click on a layer object', () => {
   })
 })
 
+describe('double-click on an already-selected object', () => {
+  function selectedApp(overrides = {}) {
+    document.getElementById('toys-layer').innerHTML = '<g data-id="a" data-module="drawing"></g>'
+    return makeApp({
+      getSelectedIds: () => ['a'],
+      objectDoubleClick: vi.fn(),
+      nextSelectionMode: vi.fn(),
+      ...overrides,
+    })
+  }
+  const down = (stage, id, pointerId) =>
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId, target: document.querySelector(`[data-id="${id}"]`) }))
+  const up = (stage, pointerId) => stage.dispatchEvent(makePointerEvent('pointerup', { pointerId }))
+
+  test('does not cycle the mode, and still runs the double-click', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = selectedApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    down(stage, 'a', 1); up(stage, 1)
+    down(stage, 'a', 2); up(stage, 2)
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.nextSelectionMode).not.toHaveBeenCalled()
+    expect(app.objectDoubleClick).toHaveBeenCalledWith('a')
+  })
+
+  test('a single reclick cycles once the window has passed', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = selectedApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    down(stage, 'a', 1); up(stage, 1)
+    expect(app.nextSelectionMode).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.nextSelectionMode).toHaveBeenCalledTimes(1)
+    expect(app.nextSelectionMode).toHaveBeenCalledWith('a')
+    expect(app.objectDoubleClick).not.toHaveBeenCalled()
+  })
+
+  test('a triple-click does not leave a cycle pending', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = selectedApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    down(stage, 'a', 1); up(stage, 1)
+    down(stage, 'a', 2); up(stage, 2)
+    down(stage, 'a', 3); up(stage, 3)
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
+
+    expect(app.attentionEnter).toHaveBeenCalledTimes(1)
+    expect(app.nextSelectionMode).not.toHaveBeenCalled()
+  })
+})
+
+describe('object drag threshold', () => {
+  function dragApp() {
+    document.getElementById('toys-layer').innerHTML = '<g data-id="a" data-module="drawing"></g>'
+    return makeApp({ move: vi.fn(), commitMove: vi.fn(), cancelMove: vi.fn() })
+  }
+  const moveTo = (stage, x, y) =>
+    stage.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientX: x, clientY: y }))
+
+  test('a wobble under the threshold is a click, not a move', () => {
+    const stage = document.getElementById('stage')
+    const app = dragApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 1, target: document.querySelector('[data-id="a"]') }))
+    moveTo(stage, 102, 101)
+    stage.dispatchEvent(makePointerEvent('pointerup', { pointerId: 1, clientX: 102, clientY: 101 }))
+
+    expect(app.move).not.toHaveBeenCalled()
+    expect(app.commitMove).not.toHaveBeenCalled()
+    expect(app.cancelMove).toHaveBeenCalledTimes(1)
+  })
+
+  test('past the threshold it moves, following the pointer', () => {
+    const stage = document.getElementById('stage')
+    const app = dragApp()
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+
+    stage.dispatchEvent(makePointerEvent('pointerdown', { pointerId: 1, target: document.querySelector('[data-id="a"]') }))
+    moveTo(stage, 110, 100)
+    moveTo(stage, 140, 100)
+    stage.dispatchEvent(makePointerEvent('pointerup', { pointerId: 1, clientX: 140, clientY: 100 }))
+
+    expect(app.move).toHaveBeenLastCalledWith('a', 40, 0)
+    expect(app.commitMove).toHaveBeenCalledWith('a', 40, 0)
+  })
+})
+
 describe('add-tool throttle', () => {
   test('a second placement inside the double-click window is ignored', () => {
     vi.useFakeTimers()

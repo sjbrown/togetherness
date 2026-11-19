@@ -36,7 +36,12 @@ export const ToolMode = {
   _tapPts:     [],      // client points of the current tap sequence
   _tapHits:    [],      // id under each tap of the sequence, null for empty table
   _lastAddAt:  0,       // when the last add-tool press was accepted
+  _pendingCycle: null,  // id whose selection mode steps once the double-click window passes
 };
+
+// A press that moves less than this (screen px) is still a click, for pan
+// and for dragging objects.
+const DRAG_THRESHOLD = 4;
 
 // Add-tool presses closer together than this are one double-click, not two
 // placements.
@@ -104,6 +109,7 @@ export function setTool(name, params = {}) {
     ToolMode._lastTap  = 0;
     ToolMode._tapPts   = [];
     ToolMode._tapHits  = [];
+    ToolMode._pendingCycle = null;
   }
   ToolMode.tool = name;
   ToolMode.params = { ...params };
@@ -243,6 +249,7 @@ function onPointerDown(e) {
       ToolMode._tapTimer = null;
       ToolMode._tapCount = 0;
       ToolMode._lastTap  = 0;
+      ToolMode._pendingCycle = null;
       ToolMode._gesture  = 'attention';
       ToolMode._moveRef  = null;
       App.attentionEnter(p.x, p.y, e.clientX, e.clientY);
@@ -340,7 +347,7 @@ function onPointerDown(e) {
       // selection. A real drag leaves the mode untouched.
       const wasSoleSelected =
         App.getSelectedIds().length === 1 && App.getSelectedIds()[0] === hitId;
-      ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false, wasReclick: wasSoleSelected };
+      ToolMode._moveRef = { id: hitId, sx: e.clientX, sy: e.clientY, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false, wasReclick: wasSoleSelected };
       App.select(hitId);
       // select() may have bailed into a soft-lock request instead of
       // actually selecting hitId (held by another peer) — in that case
@@ -445,6 +452,7 @@ function onPointerMove(e) {
 
   if (ToolMode._gesture === 'move' && ToolMode._moveRef) {
     const ref  = ToolMode._moveRef;
+    if (!ref.moved && !pastDragThreshold(e, ref)) return;
     const p    = toCanvas(e.clientX, e.clientY);
     ref.moved  = true;
     App.move(ref.id, p.x - ref.dx, p.y - ref.dy);
@@ -477,6 +485,7 @@ function onPointerMove(e) {
 
   if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
+    if (!ref.moved && !pastDragThreshold(e, ref)) return;
     const ddx = (e.clientX - ref.sx) / _view.scale;
     const ddy = (e.clientY - ref.sy) / _view.scale;
     ref.moved = true;
@@ -487,7 +496,7 @@ function onPointerMove(e) {
   if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
     const ddx = e.clientX - ref.sx, ddy = e.clientY - ref.sy;
-    if (Math.abs(ddx) > 4 || Math.abs(ddy) > 4) {
+    if (Math.abs(ddx) > DRAG_THRESHOLD || Math.abs(ddy) > DRAG_THRESHOLD) {
       ref.moved   = true;
       _stageEl.classList.add('dragging');
       _view.x = ToolMode._startView.x + ddx;
@@ -562,10 +571,12 @@ function onPointerUp(e) {
       // ...and if this tap landed on an element that was ALREADY the sole
       // selection, it's a deliberate second click — toggle the next mode
       // in the cycle
-      // (the second press of a double-click is not a deliberate reclick)
+      // The step waits out the double-click window, so a double-click on a
+      // selected object doesn't also cycle it; the second press of one is
+      // never a reclick.
       const secondOfDouble = ToolMode._tapCount >= 1 && Date.now() - ToolMode._lastTap < 300;
       if (!isCancelled && ToolMode._moveRef.wasReclick && !secondOfDouble) {
-        App.nextSelectionMode(ToolMode._moveRef.id);
+        ToolMode._pendingCycle = ToolMode._moveRef.id;
       }
     }
   }
@@ -678,6 +689,9 @@ function onPointerUp(e) {
       // wait out the double-tap window before acting on the final count.
       clearTimeout(ToolMode._tapTimer);
       ToolMode._tapTimer = setTimeout(() => {
+        const cycleId = ToolMode._pendingCycle;
+        ToolMode._pendingCycle = null;
+        if (ToolMode._tapCount === 1 && cycleId) App.nextSelectionMode(cycleId);
         if (ToolMode._tapCount === 2 && ToolMode.tool === 'select') {
           const [first, second] = ToolMode._tapHits;
           if (first === second) {
@@ -693,12 +707,17 @@ function onPointerUp(e) {
       }, 300);
     } else {
       // A drag or multi-pointer gesture breaks any pending tap sequence.
+      ToolMode._pendingCycle = null;
       ToolMode._tapCount = 0;
       ToolMode._lastTap  = 0;
       clearTimeout(ToolMode._tapTimer);
       ToolMode._tapTimer = null;
     }
   }
+}
+
+function pastDragThreshold(e, ref) {
+  return Math.abs(e.clientX - ref.sx) > DRAG_THRESHOLD || Math.abs(e.clientY - ref.sy) > DRAG_THRESHOLD;
 }
 
 function finishDraft(e) {

@@ -625,10 +625,15 @@ describe('resize mode — reclick-to-toggle', () => {
     setTool('select', {})
     const el = makeHitEl('shape-a')
 
+    vi.useFakeTimers()
     const stage = document.getElementById('stage')
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
 
+    // The step waits out the double-click window.
+    expect(entered).toEqual([])
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
     expect(entered).toEqual(['shape-a'])
   })
 
@@ -982,10 +987,15 @@ describe('resize mode — corner-drag gesture', () => {
     setTool('select', {})
     const el = makeHitEl('tray-1')
 
+    vi.useFakeTimers()
     const stage = document.getElementById('stage')
     stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
     stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 100, clientY: 100 }))
 
+    // The step waits out the double-click window.
+    expect(entered).toEqual([])
+    vi.advanceTimersByTime(400)
+    vi.useRealTimers()
     expect(entered).toEqual(['tray-1'])
   })
 
