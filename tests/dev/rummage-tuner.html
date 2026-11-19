@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rummage Tuner</title>
+<style>
+  :root {
+    --bg: #f4f5f3; --panel: #ffffff; --text: #2c302d; --muted: #6f7570;
+    --border: #d9ddd8; --accent: #2f7d5b; --stage: #e9e6df;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #181a19; --panel: #222524; --text: #e2e5e2; --muted: #98a09a;
+            --border: #3a3f3c; --accent: #5fbf8f; --stage: #2e2c29; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+  #panel { width: 360px; flex: none; overflow-y: auto; background: var(--panel);
+           border-right: 1px solid var(--border); padding: 16px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 8px; }
+  h2 { font-size: 12px; margin: 16px 0 4px; text-transform: uppercase; color: var(--muted); }
+  .ctl { display: grid; grid-template-columns: 92px 1fr 48px; gap: 8px; align-items: center; margin: 4px 0; }
+  .ctl output { font-family: var(--mono); text-align: right; }
+  .ctl input[type=range] { width: 100%; }
+  .ctl input[type=color] { grid-column: 2 / 4; width: 100%; height: 24px; border: 1px solid var(--border); }
+  .row { display: flex; gap: 12px; align-items: center; margin: 6px 0; }
+  button { font: inherit; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+           background: var(--bg); color: var(--text); cursor: pointer; }
+  pre { font: 11px var(--mono); background: var(--bg); border: 1px solid var(--border);
+        border-radius: 4px; padding: 8px; overflow-x: auto; white-space: pre-wrap; margin-top: 4px; }
+  #stage { flex: 1; display: grid; grid-template-columns: 1fr 1fr; align-items: center;
+           justify-items: center; background: var(--stage); overflow: auto; }
+  #stage.light { background: #f3efe6; } #stage.dark { background: #2b2b2e; }
+  #stage figure { text-align: center; color: var(--muted); }
+  #stage svg { display: block; overflow: visible; }
+  @media (max-width: 760px) {
+    body { flex-direction: column-reverse; }
+    #panel { width: 100%; height: 55vh; border-right: 0; border-top: 1px solid var(--border); }
+    #stage { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>Rummage Tuner</h1>
+  <p class="subtitle">Two dashed strokes on one outline make the "stitched" rummage-mode border.</p>
+
+  <h2>Stroke A &mdash; stroke-dasharray</h2>
+  <div id="a"></div>
+  <h2>Stroke B &mdash; stroke-dasharray</h2>
+  <div id="b"></div>
+  <h2>Outline</h2>
+  <div id="o"></div>
+  <h2>Stage</h2>
+  <div class="row">
+    <label>Background
+      <select id="bg"><option value="">system</option><option value="light">light</option><option value="dark">dark</option></select>
+    </label>
+    <button id="reset">Reset</button>
+    <button id="copy">Copy CSS</button>
+  </div>
+  <h2>Output</h2>
+  <pre id="out"></pre>
+</div>
+
+<div id="stage">
+  <figure>
+    <svg id="tray" width="220" height="130" viewBox="0 0 220 130">
+      <rect x="3.6" y="11.4" width="213.4" height="106.7" rx="10" fill="#d7d7d7" stroke="#3b3b3b" stroke-width="3.2"/>
+      <g class="rummage" data-shape="rect" data-x="3.6" data-y="11.4" data-w="213.4" data-h="106.7" data-r="10"></g>
+    </svg>
+    <figcaption>tray_sum</figcaption>
+  </figure>
+  <figure>
+    <svg id="pile" width="120" height="170" viewBox="-10 -10 120 170">
+      <rect x="18" y="20" width="64" height="90" rx="5" fill="#fff" stroke="#000" stroke-width="1"/>
+      <rect x="22" y="24" width="64" height="90" rx="5" fill="#fff" stroke="#000" stroke-width="1"/>
+      <rect x="26" y="28" width="64" height="90" rx="5" fill="#fff" stroke="#000" stroke-width="1"/>
+      <g class="rummage" data-shape="rect" data-x="-6" data-y="-6" data-w="112" data-h="162" data-r="6"></g>
+    </svg>
+    <figcaption>card pile</figcaption>
+  </figure>
+</div>
+
+<script>
+// Each param: [key, label, min, max, step, default]. Defaults mirror the
+// values proposed for rummage mode.
+const GROUPS = {
+  a: [
+    ['a1', 'dash 1', 0, 20, 0.5, 1], ['a2', 'gap 1', 0, 20, 0.5, 2],
+    ['a3', 'dash 2', 0, 20, 0.5, 1], ['a4', 'gap 2', 0, 20, 0.5, 4],
+    ['aoff', 'offset', -20, 20, 0.5, 0],
+    ['aw', 'width', 0.5, 8, 0.1, 2], ['aop', 'opacity', 0, 1, 0.05, 1],
+    ['acol', 'color', 'color', 0, 0, '#000000'],
+  ],
+  b: [
+    ['b1', 'dash', 0, 20, 0.5, 2], ['b2', 'gap', 0, 20, 0.5, 6],
+    ['boff', 'offset', -20, 20, 0.5, -1],
+    ['bw', 'width', 0.5, 8, 0.1, 2], ['bop', 'opacity', 0, 1, 0.05, 1],
+    ['bcol', 'color', 'color', 0, 0, '#000000'],
+  ],
+  o: [
+    ['pad', 'outset', -10, 20, 0.5, 4], ['rad', 'extra radius', -10, 20, 0.5, 4],
+    ['cap', 'linecap', 'select', 0, 0, 'butt'],
+  ],
+};
+const defaults = {}, vals = {};
+const q = (s, r = document) => r.querySelector(s);
+
+for (const [gid, params] of Object.entries(GROUPS)) {
+  const host = q('#' + gid);
+  for (const [key, label, min, max, step, def] of params) {
+    defaults[key] = def; vals[key] = def;
+    const row = document.createElement('div'); row.className = 'ctl';
+    const lab = document.createElement('label'); lab.textContent = label; lab.htmlFor = key;
+    row.append(lab);
+    if (min === 'color') {
+      const i = Object.assign(document.createElement('input'), { type: 'color', id: key, value: def });
+      i.oninput = () => { vals[key] = i.value; draw(); };
+      row.append(i);
+    } else if (min === 'select') {
+      const s = Object.assign(document.createElement('select'), { id: key });
+      for (const v of ['butt', 'round', 'square']) s.add(new Option(v, v));
+      s.onchange = () => { vals[key] = s.value; draw(); };
+      s.style.gridColumn = '2 / 4'; row.append(s);
+    } else {
+      const i = Object.assign(document.createElement('input'), { type: 'range', id: key, min, max, step, value: def });
+      const out = document.createElement('output'); out.textContent = def; out.id = key + '_o';
+      i.oninput = () => { vals[key] = +i.value; out.textContent = i.value; draw(); };
+      row.append(i, out);
+    }
+    host.append(row);
+  }
+}
+
+const NS = 'http://www.w3.org/2000/svg';
+function draw() {
+  const v = vals;
+  const aDash = `${v.a1}, ${v.a2}, ${v.a3}, ${v.a4}`;
+  const bDash = `${v.b1}, ${v.b2}`;
+  for (const g of document.querySelectorAll('.rummage')) {
+    const x = +g.dataset.x - v.pad + 0, y = +g.dataset.y - v.pad;
+    const w = +g.dataset.w + v.pad * 2, h = +g.dataset.h + v.pad * 2;
+    const r = Math.max(0, +g.dataset.r + v.rad);
+    g.replaceChildren();
+    for (const [dash, off, width, op, col] of [
+      [aDash, v.aoff, v.aw, v.aop, v.acol],
+      [bDash, v.boff, v.bw, v.bop, v.bcol],
+    ]) {
+      const rect = document.createElementNS(NS, 'rect');
+      for (const [k, val] of Object.entries({ x, y, width: w, height: h, rx: r, ry: r, fill: 'none',
+        stroke: col, 'stroke-width': width, 'stroke-opacity': op, 'stroke-linecap': v.cap,
+        'stroke-dasharray': dash, 'stroke-dashoffset': off })) rect.setAttribute(k, val);
+      g.append(rect);
+    }
+  }
+  q('#out').textContent =
+`/* stroke A */
+stroke: ${v.acol}; stroke-width: ${v.aw}; stroke-opacity: ${v.aop};
+stroke-linecap: ${v.cap};
+stroke-dasharray: ${aDash}; stroke-dashoffset: ${v.aoff};
+
+/* stroke B */
+stroke: ${v.bcol}; stroke-width: ${v.bw}; stroke-opacity: ${v.bop};
+stroke-linecap: ${v.cap};
+stroke-dasharray: ${bDash}; stroke-dashoffset: ${v.boff};
+
+/* outline: outset ${v.pad}, extra radius ${v.rad} */`;
+}
+
+q('#bg').onchange = e => { q('#stage').className = e.target.value; };
+q('#reset').onclick = () => {
+  for (const [k, d] of Object.entries(defaults)) {
+    vals[k] = d; const i = q('#' + k); i.value = d;
+    const o = q('#' + k + '_o'); if (o) o.textContent = d;
+  }
+  draw();
+};
+q('#copy').onclick = () => navigator.clipboard?.writeText(q('#out').textContent);
+draw();
+</script>
+</body>
+</html>
