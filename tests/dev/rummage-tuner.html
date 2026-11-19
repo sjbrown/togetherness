@@ -31,6 +31,9 @@
   .row { display: flex; gap: 12px; align-items: center; margin: 6px 0; }
   button { font: inherit; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
            background: var(--bg); color: var(--text); cursor: pointer; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .swatches button { width: 44px; height: 24px; padding: 0; border-radius: 4px; }
+  .swatches button[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 2px; }
   pre { font: 11px var(--mono); background: var(--bg); border: 1px solid var(--border);
         border-radius: 4px; padding: 8px; overflow-x: auto; white-space: pre-wrap; margin-top: 4px; }
   #stage { flex: 1; display: grid; grid-template-columns: 1fr 1fr; align-items: center;
@@ -50,10 +53,11 @@
   <h1>Rummage Tuner</h1>
   <p class="subtitle">Two dashed strokes on one outline make the "stitched" rummage-mode border.</p>
 
-  <h2>Stroke A &mdash; stroke-dasharray</h2>
-  <div id="a"></div>
-  <h2>Stroke B &mdash; stroke-dasharray</h2>
-  <div id="b"></div>
+  <h2>The "H" pattern</h2>
+  <div id="h"></div>
+  <h2>Gradient</h2>
+  <div class="row"><select id="grad"></select></div>
+  <div id="swatches" class="swatches"></div>
   <h2>Outline</h2>
   <div id="o"></div>
   <h2>Stage</h2>
@@ -68,6 +72,7 @@
   <pre id="out"></pre>
 </div>
 
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="player-grad"></linearGradient></defs></svg>
 <div id="stage">
   <figure>
     <svg id="tray" width="220" height="130" viewBox="0 0 220 130">
@@ -91,25 +96,34 @@
 // Each param: [key, label, min, max, step, default]. Defaults mirror the
 // values proposed for rummage mode.
 const GROUPS = {
-  a: [
-    ['a1', 'dash 1', 0, 20, 0.5, 1], ['a2', 'gap 1', 0, 20, 0.5, 2],
-    ['a3', 'dash 2', 0, 20, 0.5, 1], ['a4', 'gap 2', 0, 20, 0.5, 4],
-    ['aoff', 'offset', -20, 20, 0.5, 0],
-    ['aw', 'width', 0.5, 8, 0.1, 2], ['aop', 'opacity', 0, 1, 0.05, 1],
-    ['acol', 'color', 'color', 0, 0, '#000000'],
-  ],
-  b: [
-    ['b1', 'dash', 0, 20, 0.5, 2], ['b2', 'gap', 0, 20, 0.5, 6],
-    ['boff', 'offset', -20, 20, 0.5, -1],
-    ['bw', 'width', 0.5, 8, 0.1, 2], ['bop', 'opacity', 0, 1, 0.05, 1],
-    ['bcol', 'color', 'color', 0, 0, '#000000'],
+  h: [
+    ['bar', 'bar width', 0.5, 8, 0.5, 1],
+    ['hgap', 'gap between Hs', 0, 20, 0.5, 4],
+    ['aw', 'bar height', 0.5, 8, 0.1, 4],
+    ['bw', 'crossbar thick', 0.5, 8, 0.1, 1.5],
+    ['op', 'opacity', 0, 1, 0.05, 1],
   ],
   o: [
     ['pad', 'outset', -10, 20, 0.5, 4], ['rad', 'extra radius', -10, 20, 0.5, 4],
     ['cap', 'linecap', 'select', 0, 0, 'butt'],
+    ['zoom', 'zoom', 1, 6, 0.5, 1],
   ],
 };
-const defaults = {}, vals = {};
+// Presets in entityGradient's shape: CSS angle (90 = left to right) and two stops.
+const GRADS = {
+  Ember:   { angle: 90,  c1: 'hsl(8, 90%, 45%)',   c2: 'hsl(40, 95%, 50%)' },
+  Lagoon:  { angle: 45,  c1: 'hsl(190, 85%, 35%)', c2: 'hsl(150, 80%, 45%)' },
+  Orchid:  { angle: 135, c1: 'hsl(285, 80%, 40%)', c2: 'hsl(330, 90%, 55%)' },
+  Dusk:    { angle: 90,  c1: 'hsl(240, 85%, 40%)', c2: 'hsl(300, 75%, 50%)' },
+  Moss:    { angle: 135, c1: 'hsl(95, 70%, 30%)',  c2: 'hsl(60, 85%, 45%)' },
+  Slate:   { angle: 45,  c1: 'hsl(215, 30%, 25%)', c2: 'hsl(200, 40%, 55%)' },
+};
+// The same endpoints entityGradient's gradientVector() gives.
+function gradVector(angle) {
+  const rad = (angle - 90) * Math.PI / 180;
+  return { x1: .5 - Math.cos(rad) / 2, y1: .5 - Math.sin(rad) / 2, x2: .5 + Math.cos(rad) / 2, y2: .5 + Math.sin(rad) / 2 };
+}
+const defaults = { grad: 'Ember' }, vals = { grad: 'Ember' };
 const q = (s, r = document) => r.querySelector(s);
 
 for (const [gid, params] of Object.entries(GROUPS)) {
@@ -139,44 +153,68 @@ for (const [gid, params] of Object.entries(GROUPS)) {
 }
 
 const NS = 'http://www.w3.org/2000/svg';
+const OPEN = 2; // fixed span between an H's two bars
+function applyGradient() {
+  const g = GRADS[vals.grad], lg = q('#player-grad');
+  for (const [k, v] of Object.entries(gradVector(g.angle))) lg.setAttribute(k, v);
+  lg.replaceChildren(...[[0, g.c1], [1, g.c2]].map(([o, c]) => {
+    const st = document.createElementNS(NS, 'stop');
+    st.setAttribute('offset', o); st.setAttribute('stop-color', c); return st;
+  }));
+  for (const b of document.querySelectorAll('#swatches button'))
+    b.setAttribute('aria-pressed', String(b.dataset.name === vals.grad));
+  q('#grad').value = vals.grad;
+}
 function draw() {
   const v = vals;
-  const aDash = `${v.a1}, ${v.a2}, ${v.a3}, ${v.a4}`;
-  const bDash = `${v.b1}, ${v.b2}`;
+  // Bars are stroke A's dashes, the crossbar is stroke B's dash between them.
+  const aDash = `${v.bar}, ${OPEN}, ${v.bar}, ${v.hgap}`;
+  const bDash = `${OPEN}, ${2 * v.bar + v.hgap}`;
+  const bOff = -v.bar;
+  applyGradient();
+  for (const f of document.querySelectorAll('#stage figure')) f.style.zoom = v.zoom;
   for (const g of document.querySelectorAll('.rummage')) {
-    const x = +g.dataset.x - v.pad + 0, y = +g.dataset.y - v.pad;
+    const x = +g.dataset.x - v.pad, y = +g.dataset.y - v.pad;
     const w = +g.dataset.w + v.pad * 2, h = +g.dataset.h + v.pad * 2;
     const r = Math.max(0, +g.dataset.r + v.rad);
     g.replaceChildren();
-    for (const [dash, off, width, op, col] of [
-      [aDash, v.aoff, v.aw, v.aop, v.acol],
-      [bDash, v.boff, v.bw, v.bop, v.bcol],
-    ]) {
+    for (const [dash, off, width] of [[aDash, 0, v.aw], [bDash, bOff, v.bw]]) {
       const rect = document.createElementNS(NS, 'rect');
       for (const [k, val] of Object.entries({ x, y, width: w, height: h, rx: r, ry: r, fill: 'none',
-        stroke: col, 'stroke-width': width, 'stroke-opacity': op, 'stroke-linecap': v.cap,
+        stroke: 'url(#player-grad)', 'stroke-width': width, 'stroke-opacity': v.op, 'stroke-linecap': v.cap,
         'stroke-dasharray': dash, 'stroke-dashoffset': off })) rect.setAttribute(k, val);
       g.append(rect);
     }
   }
+  const gr = GRADS[v.grad];
   q('#out').textContent =
-`/* stroke A */
-stroke: ${v.acol}; stroke-width: ${v.aw}; stroke-opacity: ${v.aop};
-stroke-linecap: ${v.cap};
-stroke-dasharray: ${aDash}; stroke-dashoffset: ${v.aoff};
+`/* H pattern: bar ${v.bar}, gap between Hs ${v.hgap} */
+/* stroke A (bars) */
+stroke-width: ${v.aw}; stroke-opacity: ${v.op}; stroke-linecap: ${v.cap};
+stroke-dasharray: ${aDash}; stroke-dashoffset: 0;
 
-/* stroke B */
-stroke: ${v.bcol}; stroke-width: ${v.bw}; stroke-opacity: ${v.bop};
-stroke-linecap: ${v.cap};
-stroke-dasharray: ${bDash}; stroke-dashoffset: ${v.boff};
+/* stroke B (crossbar) */
+stroke-width: ${v.bw}; stroke-opacity: ${v.op}; stroke-linecap: ${v.cap};
+stroke-dasharray: ${bDash}; stroke-dashoffset: ${bOff};
 
+/* gradient: ${v.grad} ${gr.angle}deg ${gr.c1} -> ${gr.c2} */
 /* outline: outset ${v.pad}, extra radius ${v.rad} */`;
 }
+
+for (const [name, g] of Object.entries(GRADS)) {
+  q('#grad').add(new Option(name, name));
+  const b = Object.assign(document.createElement('button'), { type: 'button', title: name });
+  b.dataset.name = name;
+  b.style.background = `linear-gradient(${g.angle}deg, ${g.c1}, ${g.c2})`;
+  b.onclick = () => { vals.grad = name; draw(); };
+  q('#swatches').append(b);
+}
+q('#grad').onchange = e => { vals.grad = e.target.value; draw(); };
 
 q('#bg').onchange = e => { q('#stage').className = e.target.value; };
 q('#reset').onclick = () => {
   for (const [k, d] of Object.entries(defaults)) {
-    vals[k] = d; const i = q('#' + k); i.value = d;
+    vals[k] = d; const i = q('#' + k); if (i) i.value = d;
     const o = q('#' + k + '_o'); if (o) o.textContent = d;
   }
   draw();
