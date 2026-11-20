@@ -32,7 +32,9 @@
  *   'sel-action'   — local selection ring + the action affordance square
  *                    (kebab/asterisk glyph, bowstring handle's resting state)
  *   'sel-rummage'  — a stitched border of "H" shapes in the player's gradient,
- *                    in place of the ring: two dashed strokes over one outline
+ *                    in place of the ring: two dashed strokes over one outline,
+ *                    with everything outside it dimmed. The dim is a
+ *                    [data-handle="rummage-exit"] target for canvas.js.
  *
  * SelectionModeShared entries are all mode 'remote': a dashed border and
  * the peer's name label.
@@ -104,6 +106,18 @@ const RUMMAGE_PAD     = 5;
 const RUMMAGE_RADIUS  = 10;
 const RUMMAGE_UPRIGHT_HEIGHT = 6.5;
 const RUMMAGE_BAR_THICKNESS  = 3;
+const RUMMAGE_DIM_OPACITY    = 0.2;
+const RUMMAGE_DIM_REACH      = 1e6;
+
+// Everything except the rounded-rect hole `r` (an outline's x/y/width/
+// height/rx), as one even-odd path: a canvas-sized square with the hole cut out.
+function rummageDimPath(r) {
+  const R = RUMMAGE_DIM_REACH, { x, y, width: w, height: h, rx } = r;
+  return `M ${-R} ${-R} H ${R} V ${R} H ${-R} Z ` +
+    `M ${x + rx} ${y} h ${w - 2 * rx} a ${rx} ${rx} 0 0 1 ${rx} ${rx} v ${h - 2 * rx} ` +
+    `a ${rx} ${rx} 0 0 1 ${-rx} ${rx} h ${-(w - 2 * rx)} a ${rx} ${rx} 0 0 1 ${-rx} ${-rx} ` +
+    `v ${-(h - 2 * rx)} a ${rx} ${rx} 0 0 1 ${rx} ${-rx} Z`;
+}
 
 
 /**
@@ -1031,6 +1045,14 @@ function renderLocalRummage(geo, entry, scale, parent) {
     'stroke-linecap': 'butt',
   };
   const g = el('g', { class: 'rummageRing' });
+  g.appendChild(el('path', {
+    class:          'rummageDim',
+    d:              rummageDimPath(outline),
+    fill:           '#000',
+    'fill-opacity': RUMMAGE_DIM_OPACITY,
+    'fill-rule':    'evenodd',
+    'data-handle':  'rummage-exit',
+  }));
   g.appendChild(el('rect', {
     ...outline,
     class:              'rummageUprights',

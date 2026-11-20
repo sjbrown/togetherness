@@ -142,6 +142,8 @@ html, body {
 }
 .remote-sel     { pointer-events: none; }
 .handle    { pointer-events: auto; }
+.rummageRing { pointer-events: none; }
+.rummageDim  { pointer-events: auto; }
 .handleHit { pointer-events: auto; }
 /* Corner handles get their cursor inline, per render — a handle is drawn
    turned with its shape, so the direction it drags along turns too and no
@@ -387,6 +389,12 @@ html, body {
   }
   #pill.collapsed::after { opacity: 1; }
 }
+
+.rummage-btn {
+  height: 46px; padding: 0 20px; border: none; border-radius: 23px; background: transparent;
+  color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 500;
+}
+.rummage-btn:disabled { cursor: default; opacity: .7; }
 
 .toy-menu-row {
   background: var(--surface);

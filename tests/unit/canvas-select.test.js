@@ -73,6 +73,7 @@ function makeApp(overrides = {}) {
     commitMultiMove:    () => {},
     cancelMultiMove:    () => {},
     getResizeModeId:    () => null,
+    getRummageModeId:   () => null,
     // Bowstring handle (layer_delight.js) — canvas.js offers every select-tool
     // pointerdown to it before ordinary hit-testing. Declining by default
     // keeps these tests exercising the normal select/move/resize paths.
@@ -1260,5 +1261,76 @@ describe('the pointer path handed to cancelMove', () => {
     stage().dispatchEvent(makePointerEvent('pointerup', { clientX: 100, clientY: 100 }))
     expect(app.cancelMove).toHaveBeenCalledTimes(1)
     expect(app.cancelMove.mock.calls[0][0] ?? null).toBeNull()
+  })
+})
+
+describe('rummage mode', () => {
+  const dim = () => addHandle({ 'data-handle': 'rummage-exit' })
+  function setup(overrides = {}) {
+    const calls = { cycled: [], selected: [], dragged: [], moved: [] }
+    const app = makeApp({
+      getActiveLayer: () => 'toys',
+      getRummageModeId: () => 'tray-1',
+      getSelectedIds: () => ['tray-1'],
+      rummageOverContents: () => false,
+      nextSelectionMode: (id) => calls.cycled.push(id),
+      select: (id) => calls.selected.push(id),
+      startDrag: (id) => calls.dragged.push(id),
+      commitMove: (...a) => calls.moved.push(a),
+      ...overrides,
+    })
+    init(app, document.getElementById('canvas'))
+    setTool('select', {})
+    return { calls, stage: document.getElementById('stage') }
+  }
+  const tapOn = (stage, target, at = 100) => {
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: at, clientY: at, target }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: at, clientY: at }))
+  }
+
+  test('a tap on the dim outside the border leaves rummage mode', () => {
+    const { calls, stage } = setup()
+    tapOn(stage, dim())
+    expect(calls.cycled).toEqual(['tray-1'])
+    expect(calls.selected).toEqual([])
+  })
+
+  test('dragging on the dim pans instead and does not leave the mode', () => {
+    const { calls, stage } = setup()
+    const target = dim()
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 140, clientY: 140 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 140, clientY: 140 }))
+    expect(calls.cycled).toEqual([])
+  })
+
+  test('a tap that falls through to the container itself leaves rummage mode', () => {
+    const { calls, stage } = setup()
+    tapOn(stage, makeHitEl('tray-1', 'toys'))
+    expect(calls.cycled).toEqual(['tray-1'])
+  })
+
+  test('a tap on a toy inside the container does not leave the mode', () => {
+    const { calls, stage } = setup({ rummageOverContents: () => true })
+    tapOn(stage, makeHitEl('tray-1', 'toys'))
+    expect(calls.cycled).toEqual([])
+  })
+
+  test('a tap inside the border that lands on some other toy does nothing', () => {
+    const { calls, stage } = setup()
+    tapOn(stage, makeHitEl('other', 'toys'))
+    expect(calls.cycled).toEqual([])
+    expect(calls.selected).toEqual([])
+  })
+
+  test('the container cannot be dragged', () => {
+    const { calls, stage } = setup()
+    const el = makeHitEl('tray-1', 'toys')
+    stage.dispatchEvent(makePointerEvent('pointerdown', { clientX: 100, clientY: 100, target: el }))
+    stage.dispatchEvent(makePointerEvent('pointermove', { clientX: 160, clientY: 160 }))
+    stage.dispatchEvent(makePointerEvent('pointerup',   { clientX: 160, clientY: 160 }))
+    expect(calls.dragged).toEqual([])
+    expect(calls.moved).toEqual([])
+    expect(calls.cycled).toEqual([])
   })
 })

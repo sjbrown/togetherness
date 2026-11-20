@@ -70,6 +70,7 @@ function makeApp(overrides = {}) {
     commitMultiMove:    () => {},
     cancelMultiMove:    () => {},
     getResizeModeId:    () => null,
+    getRummageModeId:   () => null,
     fireGroupAction:    () => false,
     startBowstring:     () => false,
     moveBowstring:      () => {},

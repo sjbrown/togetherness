@@ -14,7 +14,7 @@ import * as awarenessProtocol from 'y-protocols/awareness'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('../../src/ui.js', () => ({
-  init: vi.fn(), onSelectionChanged: vi.fn(), onToolChanged: vi.fn(), refreshFromDoc: vi.fn(),
+  init: vi.fn(), onSelectionChanged: vi.fn(), onModeChanged: vi.fn(), onToolChanged: vi.fn(), refreshFromDoc: vi.fn(),
   setIdentity: vi.fn(), showPopover: vi.fn(), toast: vi.fn(), updatePeersPanel: vi.fn(),
   restorePanelState: vi.fn(), restoreLayerState: vi.fn(), saveLayerState: vi.fn(),
 }))

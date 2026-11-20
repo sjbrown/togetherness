@@ -192,6 +192,7 @@ function _toLocalPoint(id, px, py, rot = _rotationOf(id)) {
 function _renderSelectionMode() {
   const soleId = SelectionLocal.soleHeldId();
   Overlay.setSelectionMode(soleId, soleId ? SelectionLocal.activeMode().mode : null);
+  UI.onModeChanged();
 }
 
 // Soft-lock tick — periodically evaluates computeTickActions() and applies
@@ -1504,6 +1505,20 @@ const App = {
     const { domEl, layer } = _layerFor(id);
     const mode = layer?.nextSelectMode?.(domEl, SelectionLocal.activeMode()?.mode ?? null) ?? null;
     SelectionLocal.apply(Selection.enterMode(SelectionLocal.state(), id, mode));
+  },
+
+  // The id of the sole selection while it is in rummage mode, else null.
+  getRummageModeId: () => (SelectionLocal.activeMode()?.mode === 'sel-rummage') ? SelectionLocal.activeMode().id : null,
+
+  // Whether the client point lies over one of id's contained toys. Contained
+  // toys take no pointer events, so a press on one reports the container.
+  rummageOverContents: (id, clientX, clientY) => {
+    const toys = _svgEl?.querySelector(`[data-id="${id}"]`)?.querySelectorAll('.tt_contents .toy') ?? [];
+    for (const toy of toys) {
+      const r = toy.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) return true;
+    }
+    return false;
   },
 
   // True only once id has been cycled into a mode with actual drag

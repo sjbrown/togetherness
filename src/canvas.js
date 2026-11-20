@@ -254,6 +254,26 @@ function onPointerDown(e) {
     // still checks that the selection is in the mode the handle belongs
     // to. A bowstring gesture (layer_delight.js) takes over the pointer
     // completely; no move/select gesture starts for it.
+    // Rummage mode takes every press ahead of ordinary hit-testing, so the
+    // sole selection can't be moved. A press on the dim outside the border
+    // pans, or on release without a pan leaves the mode; a press that lands
+    // on the container itself, and not on a toy it contains, leaves it on
+    // release. Any other press inside the border does nothing.
+    const rummageId = App.getRummageModeId();
+    if (rummageId) {
+      const ref = { id: rummageId, sx: e.clientX, sy: e.clientY, moved: false };
+      if (handle === 'rummage-exit') {
+        ToolMode._gesture = 'pan-or-deselect';
+        ToolMode._moveRef = { ...ref, rummageExit: rummageId };
+        ToolMode._startView = { ..._view };
+      } else {
+        const exits = hitId === rummageId && !App.rummageOverContents(rummageId, e.clientX, e.clientY);
+        ToolMode._gesture = exits ? 'rummage-tap' : 'rummage-inert';
+        ToolMode._moveRef = ref;
+      }
+      return;
+    }
+
     if (handle === 'group-action' && App.fireGroupAction()) return;
 
     if (handle === 'bowstring' && App.startBowstring(e)) {
@@ -580,7 +600,15 @@ function onPointerUp(e) {
   if (ToolMode._gesture === 'draw' && ToolMode._draft) {
     finishDraft(e);
   } else if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef && !ToolMode._moveRef.moved) {
-    App.select(null);
+    if (ToolMode._moveRef.rummageExit) {
+      if (!isCancelled) App.nextSelectionMode(ToolMode._moveRef.rummageExit);
+    } else {
+      App.select(null);
+    }
+  } else if (ToolMode._gesture === 'rummage-tap' && ToolMode._moveRef) {
+    const ref = ToolMode._moveRef;
+    const slid = dist({ x: ref.sx, y: ref.sy }, { x: e.clientX, y: e.clientY }) > 4;
+    if (!isCancelled && !slid) App.nextSelectionMode(ref.id);
   } else if (ToolMode._gesture === 'shift-tap' && ToolMode._moveRef) {
     if (!ToolMode._moveRef.moved) {
       App.toggleSelection(ToolMode._moveRef.id);

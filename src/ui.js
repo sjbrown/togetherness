@@ -214,7 +214,7 @@ export function closeMenu() {
 /**
  * pillHTML(data) -- PURE. Dispatches to one of three pure sub-renderers
  * based on selection state; see each for its own data contract.
- *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool,
+ *   data = { selectionActive, multiSelectionActive, selectedCount, activeTool, rummaging,
  *            tools:ToolDef[], mruTools, layer, maxOthers, ltype, id, toyMenuActions }
  *   ltype is the sole selection's layer type ('drawing'|'toys'|'boun_pos'|null),
  *   id is its elId, and toyMenuActions is its App.getToyMenuActions() result —
@@ -224,6 +224,7 @@ export function closeMenu() {
  */
 export function pillHTML(data) {
   if (data.multiSelectionActive) return multiSelectPillHTML(data);
+  if (data.selectionActive && data.rummaging) return rummagePillHTML();
   if (data.selectionActive)      return singleSelectPillHTML(data);
   return noSelectionPillHTML(data);
 }
@@ -234,6 +235,14 @@ export function pillHTML(data) {
 function multiSelectPillHTML(data) {
   const n = data.selectedCount;
   return icoBtn(ICON_ACTIONS.trash, `Delete ${n}`, "UI.deleteSelected()", 'danger');
+}
+
+/**
+ * rummagePillHTML() -- PURE. The whole pill while the sole selection is in
+ * rummage mode: one inert label.
+ */
+function rummagePillHTML() {
+  return '<button class="rummage-btn" disabled>Rummage</button>';
 }
 
 /**
@@ -360,8 +369,10 @@ export function renderPill() {
   const pill = $('#pill');
   if (!pill) return;
   const ltype = UIData.selectionActive ? (App.getSelectedLtype?.() ?? null) : null;
-  pill.classList.toggle('toy-menu', ltype === 'toys');
+  const rummaging = UIData.selectionActive && (App.getRummageModeId?.() ?? null) !== null;
+  pill.classList.toggle('toy-menu', ltype === 'toys' && !rummaging);
   pill.innerHTML = pillHTML({
+    rummaging,
     selectionActive:      UIData.selectionActive,
     multiSelectionActive: UIData.multiSelectionActive,
     selectedCount:        UIData.selectedCount,
@@ -411,6 +422,10 @@ export function onToolChanged(toolName) {
     const def = App.getTool(toolName);
     toast(`${def?.label ?? toolName} tool`, 'info');
   }
+}
+// A mode change on the same selection (see App's _renderSelectionMode).
+export function onModeChanged() {
+  renderPill();
 }
 export function onSelectionChanged(selectedIds) {
   const ids    = selectedIds instanceof Set ? selectedIds : new Set(selectedIds ?? []);

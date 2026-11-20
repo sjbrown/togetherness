@@ -32,7 +32,7 @@ const TOY_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 
 vi.mock('../../src/ui.js', () => ({
   init:               vi.fn(),
-  onSelectionChanged: vi.fn(),
+  onSelectionChanged: vi.fn(), onModeChanged: vi.fn(),
   onToolChanged:      vi.fn(),
   refreshFromDoc:     vi.fn(),
   setIdentity:        vi.fn(),

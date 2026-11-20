@@ -592,6 +592,17 @@ describe("'sel-rummage' stitched border", () => {
     expect(document.querySelectorAll('#selection_local .selRing, #selection_local .handle')).toHaveLength(0)
   })
 
+  test('everything outside the border is dimmed at 0.2, and the dim is the exit target', () => {
+    enter('sel-rummage')
+    const dim = ring().querySelector('.rummageDim')
+    expect(dim.getAttribute('fill-opacity')).toBe('0.2')
+    expect(dim.getAttribute('fill-rule')).toBe('evenodd')
+    expect(dim.getAttribute('data-handle')).toBe('rummage-exit')
+    // The hole is the border's own outline.
+    expect(dim.getAttribute('d')).toContain(`M ${BBOX.x - 5 + 10} ${BBOX.y - 5}`)
+    expect(ring().firstElementChild).toBe(dim)
+  })
+
   test('lengths scale with the view so the stitching stays the same size on screen', () => {
     boot({ scale: 2 })
     enter('sel-rummage')

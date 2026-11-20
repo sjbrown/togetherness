@@ -1137,3 +1137,28 @@ describe('drag boxes', () => {
     expect(document.getElementById('draw-preview').style.display).toBe('block')
   })
 })
+
+describe('pillHTML — rummage mode', () => {
+  test('a sole selection in rummage mode gets one disabled "Rummage" button and no menu', () => {
+    const html = pillHTML({
+      selectionActive: true, rummaging: true, activeTool: 'select', tools: MOCK_TOOLS,
+      ltype: 'toys', id: 't1', toyMenuActions: [{ label: 'Roll All', namespace: 'tray', key: 'Roll All' }],
+    })
+    const div = document.createElement('div')
+    div.innerHTML = html
+    const btns = div.querySelectorAll('button')
+    expect(btns).toHaveLength(1)
+    expect(btns[0].disabled).toBe(true)
+    expect(btns[0].textContent).toBe('Rummage')
+    expect(div.querySelector('.toy-menu-item')).toBeNull()
+  })
+
+  test('outside rummage mode the toy menu is unchanged', () => {
+    const html = pillHTML({
+      selectionActive: true, rummaging: false, activeTool: 'select', tools: MOCK_TOOLS,
+      ltype: 'toys', id: 't1', toyMenuActions: [],
+    })
+    expect(html).toContain('toy-menu-item')
+    expect(html).not.toContain('Rummage')
+  })
+})
