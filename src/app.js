@@ -108,6 +108,15 @@ function _layerFor(id) {
   return { domEl, layer: _Layers[moduleForElement(domEl)] };
 }
 
+// What to call a layer object in a message: a toy's type ('chip', 'tray
+// sum'), a boundary or position set, else its shape ('rect', 'circle').
+function _objectNoun(domEl) {
+  const word = domEl.getAttribute('data-toy-type')
+    ?? domEl.getAttribute('data-bounpos-type')
+    ?? domEl.tagName.toLowerCase();
+  return word.replace(/[_-]/g, ' ');
+}
+
 function _defaultModeFor(id) {
   const { domEl, layer } = _layerFor(id);
   return layer?.nextSelectMode?.(domEl, null) ?? null;
@@ -1658,7 +1667,7 @@ const App = {
     const geo = App.getBBox(id);
     if (!geo) return;
     Canvas.centerOn(geo.x + geo.width / 2, geo.y + geo.height / 2);
-    UI.toast('Double click - center view on toy', 'info');
+    UI.toast(`Double click - center view on ${_objectNoun(domEl)}`, 'info');
   },
 
   /**
