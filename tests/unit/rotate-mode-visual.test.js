@@ -600,7 +600,18 @@ describe("'sel-rummage' stitched border", () => {
     expect(dim.getAttribute('data-handle')).toBe('rummage-exit')
     // The hole is the border's own outline.
     expect(dim.getAttribute('d')).toContain(`M ${BBOX.x - 5 + 10} ${BBOX.y - 5}`)
-    expect(ring().firstElementChild).toBe(dim)
+    expect(dim.compareDocumentPosition(ring().querySelector('.rummageUprights')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  test('the dim carries a fine diagonal-line pattern that takes no pointer events', () => {
+    enter('sel-rummage')
+    const hatch = ring().querySelector('.rummageHatch')
+    expect(hatch.getAttribute('fill')).toBe('url(#rummage-hatch)')
+    expect(hatch.getAttribute('d')).toBe(ring().querySelector('.rummageDim').getAttribute('d'))
+    const pattern = ring().querySelector('pattern#rummage-hatch')
+    expect(pattern.getAttribute('patternTransform')).toBe('rotate(45)')
+    expect(pattern.getAttribute('width')).toBe('6')
+    expect(pattern.querySelector('line').getAttribute('stroke-width')).toBe('1')
   })
 
   test('lengths scale with the view so the stitching stays the same size on screen', () => {

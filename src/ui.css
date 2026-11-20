@@ -144,6 +144,7 @@ html, body {
 .handle    { pointer-events: auto; }
 .rummageRing { pointer-events: none; }
 .rummageDim  { pointer-events: auto; }
+.rummageHatch { pointer-events: none; }
 .handleHit { pointer-events: auto; }
 /* Corner handles get their cursor inline, per render — a handle is drawn
    turned with its shape, so the direction it drags along turns too and no

@@ -108,6 +108,10 @@ const RUMMAGE_UPRIGHT_HEIGHT = 6.5;
 const RUMMAGE_BAR_THICKNESS  = 3;
 const RUMMAGE_DIM_OPACITY    = 0.2;
 const RUMMAGE_DIM_REACH      = 1e6;
+const RUMMAGE_HATCH_SPACING  = 6;    // screen px between lines
+const RUMMAGE_HATCH_WIDTH    = 1;
+const RUMMAGE_HATCH_OPACITY  = 0.15;
+const RUMMAGE_HATCH_ID       = 'rummage-hatch';
 
 // Everything except the rounded-rect hole `r` (an outline's x/y/width/
 // height/rx), as one even-odd path: a canvas-sized square with the hole cut out.
@@ -1027,6 +1031,24 @@ function renderLocalSelection(geo, entry, scale, parent) {
 
 }
 
+// The diagonal-line tile laid over the dim, sized in screen px like the rest
+// of the border.
+function rummageHatchDefs(scale) {
+  const size = RUMMAGE_HATCH_SPACING / scale;
+  const pattern = el('pattern', {
+    id: RUMMAGE_HATCH_ID, width: size, height: size,
+    patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)',
+  });
+  pattern.appendChild(el('line', {
+    x1: 0, y1: 0, x2: 0, y2: size,
+    stroke: 'var(--text)', 'stroke-opacity': RUMMAGE_HATCH_OPACITY,
+    'stroke-width': RUMMAGE_HATCH_WIDTH / scale,
+  }));
+  const defs = el('defs', {});
+  defs.appendChild(pattern);
+  return defs;
+}
+
 function renderLocalRummage(geo, entry, scale, parent) {
   const { x, y, width, height } = geo;
   const stroke = _localGradUrl() ?? entry.color ?? 'var(--info)';
@@ -1052,6 +1074,13 @@ function renderLocalRummage(geo, entry, scale, parent) {
     'fill-opacity': RUMMAGE_DIM_OPACITY,
     'fill-rule':    'evenodd',
     'data-handle':  'rummage-exit',
+  }));
+  g.insertBefore(rummageHatchDefs(scale), g.firstChild);
+  g.appendChild(el('path', {
+    class:  'rummageHatch',
+    d:      rummageDimPath(outline),
+    fill:   `url(#${RUMMAGE_HATCH_ID})`,
+    'fill-rule': 'evenodd',
   }));
   g.appendChild(el('rect', {
     ...outline,
