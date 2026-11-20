@@ -1794,7 +1794,8 @@ export function getRadialItems(svgEl) {
 
 /**
  * The first applicable menu action declaring 'dblclick' in otherEvents, as
- * { namespace, key }, or null.
+ * { namespace, key, label }, or null; label resolves uiLabel like
+ * getMenuActions does.
  */
 export function getDoubleClickAction(svgEl) {
   const toyType = svgEl?.getAttribute?.('data-toy-type')
@@ -1803,7 +1804,9 @@ export function getDoubleClickAction(svgEl) {
     for (const [key, entry] of Object.entries(ns.menu)) {
       if (!entry.otherEvents?.includes('dblclick')) continue
       if (typeof entry.applicable === 'function' && !entry.applicable(svgEl)) continue
-      return { namespace: name, key }
+      const label = typeof entry.uiLabel === 'function' ? entry.uiLabel(svgEl)
+                  : (entry.uiLabel ?? key)
+      return { namespace: name, key, label }
     }
   }
   return null

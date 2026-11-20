@@ -1651,6 +1651,7 @@ const App = {
     if (action) {
       App.invokeToyMenuAction(id, action.namespace, action.key);
       App.addLog(`double-click → ${action.key}`, 'local');
+      UI.toast(`Double click - ${action.label ?? action.key}`, 'info');
       return;
     }
     if (App.openRadialMenu(id)) return;

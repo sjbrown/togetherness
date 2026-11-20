@@ -41,7 +41,13 @@ async function place() {
 describe('getDoubleClickAction', () => {
   test('is the first applicable entry declaring dblclick', async () => {
     const { toyEl } = await place()
-    expect(getDoubleClickAction(toyEl)).toEqual({ namespace: 'dblNs', key: 'Roll' })
+    expect(getDoubleClickAction(toyEl)).toEqual({ namespace: 'dblNs', key: 'Roll', label: 'Roll' })
+  })
+
+  test('label is the uiLabel when there is one', async () => {
+    const { toyEl } = await place()
+    globalThis.dblNs.menu.Roll.uiLabel = (elem) => 'Roll them'
+    expect(getDoubleClickAction(toyEl).label).toBe('Roll them')
   })
 
   test('is null for something that is not a toy', () => {
@@ -51,6 +57,6 @@ describe('getDoubleClickAction', () => {
   test('the toys LayerAPI exposes it as doubleClickAction', async () => {
     const { ydoc, layerEl, toyEl } = await place()
     const api = makeLayerAPI(ydoc, () => layerEl, { id: 'u' }, 'tbl')
-    expect(api.doubleClickAction(toyEl)).toEqual({ namespace: 'dblNs', key: 'Roll' })
+    expect(api.doubleClickAction(toyEl)).toEqual({ namespace: 'dblNs', key: 'Roll', label: 'Roll' })
   })
 })

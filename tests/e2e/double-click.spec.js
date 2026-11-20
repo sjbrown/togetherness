@@ -78,3 +78,15 @@ test('double-click on a toy with no action and no radial centres the view and to
 
   await browser.close();
 });
+
+test('double-click on a toy with a dblclick action runs it and toasts its label', async () => {
+  const browser = await launch();
+  const { page, x, y } = await pageWithToy(browser, 'd6', 200, 200);
+
+  await page.mouse.dblclick(x, y);
+  await expect(page.locator('#toasts')).toContainText(/Double click - \S/, { timeout: 3000 });
+  await expect(page.locator('#toasts')).not.toContainText('center view');
+  await expect(page.locator('#delight-layer .radial-menu')).toHaveCount(0);
+
+  await browser.close();
+});
