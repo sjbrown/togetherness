@@ -18,10 +18,10 @@
  */
 
 import { icon } from './icons.js';
+import { gradientVector } from './entity_gradient.js';
 import * as Debug from './debug_panel.js';
 import * as Trace from './trace.js';
 import { networkStatusBarHTML } from './external_services_status.js';
-import { buildToyPreviewSvg, toolInitArgs } from './layer_toys.js';
 import './ui_component/color-picker.js';
 import './ui_component/range_ticked.js';
 
@@ -1048,8 +1048,7 @@ function gatherToolsData() {
     defaultBackgrounds:  App.getDefaultBackgrounds(),
     toyClasses:          App.getToyClasses(),
     toolDef:             App.getTool(activeTool),
-    toyPreviewMarkup:    App.getToolPreviewMarkup(activeTool),
-    userColor:           App.user?.color,
+    toolPreview:         App.toolPreview(activeTool),
   };
 }
 function gatherPeersData() {
@@ -1117,18 +1116,19 @@ export function applyBackgroundPreset(url, width, height) {
   App.setBackground({ url, width, height });
 }
 
-// Full-size toy rendered with the tool's current colour, as inline SVG.
-// The box is always emitted so the panel doesn't reflow; it's empty for
-// non-toy tools and until the toy's SVG has been fetched (the fetch
-// re-renders the panel).
+// What the tool would place, with its current options, as inline SVG
+// filling the box. The box is always emitted so the panel doesn't reflow;
+// it's empty for tools with no preview and until the toy's SVG has been
+// fetched (the fetch re-renders the panel).
 function toyPreviewHTML(data) {
-  let svg = '';
-  if (data.toolDef?.toyType && data.toyPreviewMarkup) {
-    const params = data.activeToolParams ?? {};
-    svg = buildToyPreviewSvg('tool-preview', data.toyPreviewMarkup, data.toolDef.toyType,
-      toolInitArgs(data.toolDef, params, data.userColor)).outerHTML;
+  const svg = data.toolPreview?.firstElementChild;
+  if (svg) {
+    svg.setAttribute('x', '0');
+    svg.setAttribute('y', '0');
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
   }
-  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg}</div>`;
+  return `<div class="tool-preview" aria-label="${data.activeTool} preview">${svg?.outerHTML ?? ''}</div>`;
 }
 
 // Swaps the preview in place after a tool option changes; the panel body
@@ -1272,6 +1272,27 @@ function avatarSVG(p, { size = 32, tip = false } = {}) {
     <circle cx="16" cy="16" r="16" fill="${fill}"></circle>
     <text x="16" y="21" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">${initial}</text>
   </svg>`;
+}
+// Tab icon: the player's avatar as a self-contained SVG (the page's
+// <linearGradient id="grad-..."> defs aren't visible from a data URI).
+export function setFavicon(user) {
+  const g = user.gradient;
+  let fill = user.color;
+  let defs = '';
+  if (g?.c1 && g?.c2) {
+    const v = gradientVector(g.angle);
+    defs = `<defs><linearGradient id="g" x1="${v.x1}" y1="${v.y1}" x2="${v.x2}" y2="${v.y2}"><stop offset="0" stop-color="${g.c1}"/><stop offset="1" stop-color="${g.c2}"/></linearGradient></defs>`;
+    fill = 'url(#g)';
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">${defs}<circle cx="16" cy="16" r="16" fill="${fill}"/><text x="16" y="22" text-anchor="middle" font-size="18" font-weight="700" font-family="sans-serif" fill="#fff">${escapeHtml(user.name[0].toUpperCase())}</text></svg>`;
+  let link = document.querySelector('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.type = 'image/svg+xml';
+  link.href = 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 function meRowHTML(user) {
   return `<div class="peer-row me-row">${avatarSVG(user)}<div><div style="font-size:14px">${user.name}</div><div style="font-size:12px;color:var(--text-3)">${user.id}</div></div><a class="me-edit-btn" href="home.html" title="Edit profile" aria-label="Edit profile">${icon('edit', { size: 16 })}</a></div>`;

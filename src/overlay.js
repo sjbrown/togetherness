@@ -68,7 +68,7 @@
  */
 
 import * as SelectionShared from './selection_shared.js';
-import { colorMatrixValues, buildToyPreviewSvg, toolInitArgs } from './layer_toys.js';
+import { colorMatrixValues, toolInitArgs } from './layer_toys.js';
 import { previewResize as previewBounPosResize } from './layer_boun_pos.js';
 import {
   previewResize     as previewDrawingResize,
@@ -1327,24 +1327,37 @@ function _addCursorPreviewTemplate(toolName) {
   return template;
 }
 
-// Toy artwork tinted with the tool's selected colour, wrapped like the
-// untinted template (same size and viewBox).
-function _tintedPreviewTemplate(tool, markup, initArgs) {
-  const src = buildToyPreviewSvg('add-cursor', markup, App.getTool(tool).toyType, initArgs);
-  src.setAttribute('width',  ADD_CURSOR_CLONE_SIZE);
-  src.setAttribute('height', ADD_CURSOR_CLONE_SIZE);
-  src.setAttribute('class',  'addCursorClone');
-  return src;
+// What the local player's tool would place, with its current options
+// (App.toolPreview), scaled to fit ADD_CURSOR_CLONE_SIZE and centred where
+// the untinted template's box would be. Null for a tool with no preview.
+function _localPreviewClone(tool) {
+  const preview = App.toolPreview(tool);
+  const svg = preview?.firstElementChild;
+  const size = Math.max(parseFloat(svg?.getAttribute('width')) || 0, parseFloat(svg?.getAttribute('height')) || 0);
+  if (!size) return null;
+  const wrap = el('g', {
+    class:     'addCursorClone',
+    opacity:   ADD_CURSOR_CLONE_OPACITY,
+    transform: `translate(${ADD_CURSOR_ARM + ADD_CURSOR_GAP + ADD_CURSOR_CLONE_SIZE / 2} 0) scale(${ADD_CURSOR_CLONE_SIZE / size})`,
+  });
+  wrap.appendChild(preview);
+  return wrap;
 }
 
 // Builds one add-cursor group: a crosshair at the local origin, plus (if a
-// preview is available) the clone svg positioned to its right. Position on
-// the canvas is left to the caller (a transform on the returned group).
-function _buildAddCursorGroup(tool, color, initArgs) {
+// preview is available) the clone positioned to its right: the local
+// player's own preview when local, else the tool's untinted template.
+// Position on the canvas is left to the caller (a transform on the
+// returned group).
+function _buildAddCursorGroup(tool, color, local = false) {
   const groupEl = el('g', { class: 'add-cursor' });
   drawCrosshairGlyph(0, 0, ADD_CURSOR_ARM, groupEl, color);
-  const markup = initArgs ? App.getToolPreviewMarkup(tool) : null;
-  const template = markup ? _tintedPreviewTemplate(tool, markup, initArgs) : _addCursorPreviewTemplate(tool);
+  const localClone = local ? _localPreviewClone(tool) : null;
+  if (localClone) {
+    groupEl.appendChild(localClone);
+    return groupEl;
+  }
+  const template = _addCursorPreviewTemplate(tool);
   if (template) {
     const cloneEl = template.cloneNode(true);
     cloneEl.style.color = color; // tints any currentColor-stroked icon paths
@@ -1370,7 +1383,7 @@ export function updateLocalAddCursor(x, y, tool) {
   const key = JSON.stringify(initArgs);
   if (!_localAddCursor || _localAddCursor.tool !== tool || _localAddCursor.key !== key) {
     _localAddCursor?.groupEl.remove();
-    const groupEl = _buildAddCursorGroup(tool, App.user.color, initArgs);
+    const groupEl = _buildAddCursorGroup(tool, App.user.color, true);
     _localAddCursor = { tool, key, groupEl };
     _selectionLocalEl.appendChild(groupEl);
   }

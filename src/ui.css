@@ -811,6 +811,17 @@ svg.tt-icon-letter {
  * #delight-layer on pointerdown and is a separate DOM tree entirely. */
 .bowstring { pointer-events: auto; cursor: grab; }
 .groupAction { pointer-events: auto; cursor: pointer; }
+/* On a touchscreen the square's grab area grows to 44px. The transparent
+ * stroke is measured in screen px (non-scaling-stroke), so it holds at any
+ * zoom, and extends half its width past each edge of the 22px drawn square. */
+@media (any-pointer: coarse) {
+  .bowstring .actionSquare, .groupAction .actionSquare {
+    stroke: transparent;
+    stroke-width: 22px;
+    vector-effect: non-scaling-stroke;
+    pointer-events: all;
+  }
+}
 #delight-layer { pointer-events: none; }
 
 /* Press-scale lives on its own transform layer, separate from the
@@ -857,6 +868,43 @@ svg.tt-icon-letter {
 @keyframes spark-burst {
   0%   { transform: translate(0px, 0px); opacity: 1; }
   100% { transform: translate(var(--tx), var(--ty)); opacity: 0; }
+}
+
+/* Dust puff (delight_puff.js). Travel, growth and the rise ease out; the
+ * rise is its own animation (on transform, adding to the translate) so it
+ * can take a different time. The fade is linear after a quick fade-in. */
+.delight-puff {
+  pointer-events: none;
+  animation:
+    delight-puff-move var(--puff-ms, 500ms) cubic-bezier(.2,.7,.3,1) forwards,
+    delight-puff-rise var(--rise-ms, var(--puff-ms, 500ms)) cubic-bezier(.2,.7,.3,1) forwards,
+    delight-puff-fade var(--puff-ms, 500ms) linear forwards;
+}
+@keyframes delight-puff-move {
+  0%   { translate: 0px 0px; r: var(--r0); }
+  100% { translate: var(--tx) var(--ty); r: var(--r1); }
+}
+@keyframes delight-puff-rise {
+  0%   { transform: translateY(0px); }
+  100% { transform: translateY(var(--rise)); }
+}
+@keyframes delight-puff-fade {
+  0%    { opacity: 0; }
+  12.5% { opacity: var(--peak); }
+  100%  { opacity: 0; }
+}
+
+/* ── Clack (delight_clack.js / #delight-layer) ─────────────────────────────
+ * Each line scales toward its transform-origin, the toy's centre, set inline
+ * by delight_clack.js, and fades over the last stretch. */
+.delight-clack {
+  pointer-events: none;
+  animation: delight-clack var(--clack-ms, 300ms) cubic-bezier(.5,0,.9,.6) forwards;
+}
+@keyframes delight-clack {
+  0%   { transform: scale(1);   opacity: 1; }
+  70%  { opacity: 1; }
+  100% { transform: scale(.15); opacity: 0; }
 }
 
 /* ── Radial menu (ui_radial.js / #delight-layer) ─────────────────────────────

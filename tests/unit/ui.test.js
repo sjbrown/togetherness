@@ -580,7 +580,7 @@ describe('onToolChanged — re-rendered Tools panel keeps its color picker wired
       getBackground:          () => ({}),
       getDefaultBackgrounds:  () => [],
       getToyClasses:          () => [],
-      getToolPreviewMarkup:   () => null,
+      toolPreview:            () => null,
       setToolParam,
     })
     UIData.panelOpen = 'tools'

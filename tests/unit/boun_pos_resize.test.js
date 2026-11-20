@@ -36,6 +36,7 @@ vi.mock('../../src/ui.js', () => ({
   onToolChanged:      vi.fn(),
   refreshFromDoc:     vi.fn(),
   setIdentity:        vi.fn(),
+  setFavicon:         vi.fn(),
   showPopover:        vi.fn(),
   toast:              vi.fn(),
   updatePeersPanel:   vi.fn(),
