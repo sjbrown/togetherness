@@ -248,7 +248,7 @@ function arcPath(cx, cy, r, a0, a1, reverse) {
  * the local player's gradient as { grad: 'url(#…)', stop: color }.
  */
 export function open(hostEl, { spokes, origin, scale, paint }) {
-  const group = el('g', { class: 'radial radial-menu' });
+  const group = el('g', { class: 'radial radial-menu', 'data-origin-x': origin.x, 'data-origin-y': origin.y });
   if (paint?.grad) group.style.setProperty('--radial-grad', paint.grad);
   if (paint?.stop) group.style.setProperty('--radial-stop', paint.stop);
   hostEl.insertBefore(group, hostEl.firstChild);
@@ -262,6 +262,14 @@ export function show(state) {
   if (state.shown) return;
   state.shown = true;
   state.group.classList.add('show');
+  _onVisibility?.(true);
+}
+
+// Told when a menu becomes visible and when a visible one closes, so the
+// chrome can stand aside for it.
+let _onVisibility = null;
+export function setVisibilityListener(fn) {
+  _onVisibility = fn;
 }
 
 /** Update the hovered pick (null for none); redraws only when it changed. */
@@ -276,6 +284,7 @@ export function close(state) {
   if (!state.shown) { state.group.remove(); return; }
   state.group.classList.remove('show');
   setTimeout(() => state.group.remove(), FADE_MS);
+  _onVisibility?.(false);
 }
 
 // ── Standing menu ─────────────────────────────────────────────────────────
@@ -296,7 +305,7 @@ export function openStanding(hostEl, { spokes, origin, scale, paint, onPick }) {
   _standing = { state, onPick };
 }
 
-function closeStanding() {
+export function closeStanding() {
   if (!_standing) return;
   close(_standing.state);
   _standing = null;

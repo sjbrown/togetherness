@@ -81,6 +81,7 @@ export const UIData = {
   panelOpen:            null,
   histSelected:         null, // op id of the expanded History row
   menuOpen:             false,
+  radialOpen:           false,
   toolOptsOpen:         false,
   projectName: 'Togetherness Table',
   user:        { name: 'anon-????' },
@@ -100,9 +101,20 @@ export function init(appBus) {
     if (!inMenu && UIData.menuOpen) closeMenu();
     const inOpts = $('#toolOpts')?.contains(e.target) || $('#pill')?.contains(e.target);
     if (!inOpts && UIData.toolOptsOpen) hideToolOpts();
+    // A standing radial menu gives way to the menu and the panel.
+    if (UIData.radialOpen && e.target.closest?.('#menuBtn, #menuItems, #panel')) App.closeRadialMenu();
   }, { capture: true });
   renderPill();
   updateInfoBar();
+}
+
+// -- Radial menu ---------------------------------------------------------------
+// While a radial menu is showing the pill is hidden, which also keeps a
+// placement tool from being picked up under it.
+export function onRadialMenu(open) {
+  UIData.radialOpen = open;
+  $('#pill')?.classList.toggle('radial-open', open);
+  if (open) hideToolOpts();
 }
 
 // -- Drag boxes ----------------------------------------------------------------

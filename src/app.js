@@ -402,6 +402,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // Delight (bowstring handle and sparks)
   Delight.init(App, _svgEl);
+  Radial.setVisibilityListener((open) => UI.onRadialMenu(open));
 
   // Attention mode (triple-click pointing), on its own top layer
   Attention.init({
@@ -1491,9 +1492,10 @@ const App = {
   standingRadialActive: ()     => Radial.standingActive(),
   standingRadialMove:   (x, y) => Radial.moveStanding({ x, y }),
   standingRadialPress:  (x, y) => Radial.pressStanding({ x, y }),
+  closeRadialMenu:      ()     => Radial.closeStanding(),
 
   /**
-   * Open id's radial menu around its centre, and fire whichever spoke the
+   * Open id's radial menu around its action square, and fire whichever spoke the
    * next press lands on. False when it has none.
    */
   openRadialMenu: (id) => {
@@ -1502,7 +1504,7 @@ const App = {
     if (!menu) return false;
     Radial.openStanding(_svgEl.querySelector('#delight-layer'), {
       spokes: menu.spokes,
-      origin: { x: geo.x + geo.width / 2, y: geo.y + geo.height / 2 },
+      origin: Delight.bowstringOrigin(geo, _rotationOf(id)),
       scale:  App.getViewScale(),
       paint:  menu.paint,
       onPick: (pick) => App.fireBowstring(id, { namespace: pick.spoke.namespace, key: pick.spoke.key, params: pick.params }),
@@ -1525,7 +1527,9 @@ const App = {
     }
     if (App.openRadialMenu(id)) return;
     const geo = App.getBBox(id);
-    if (geo) Canvas.centerOn(geo.x + geo.width / 2, geo.y + geo.height / 2);
+    if (!geo) return;
+    Canvas.centerOn(geo.x + geo.width / 2, geo.y + geo.height / 2);
+    UI.toast('Double click - center view on toy', 'info');
   },
 
   /**
@@ -1842,7 +1846,7 @@ const App = {
     // claims here -- select()/toggleSelection() already own that decision
     // (e.g. a redundant setTool('select') while a multi-selection is being
     // built via shift-click must not wipe it out).
-    if (name !== 'select') SelectionLocal.clearClaims();
+    if (name !== 'select') { SelectionLocal.clearClaims(); Radial.closeStanding(); }
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);

@@ -397,6 +397,18 @@ describe('add-tool throttle', () => {
     expect(app.commitDrawing).toHaveBeenCalledTimes(2)
   })
 
+  test('switching tools lifts it, so a different tool places at once', () => {
+    const stage = document.getElementById('stage')
+    const app = makeApp({ commitDrawing: vi.fn(), commitToy: vi.fn(), updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('rect', {})
+    tap(stage, { pointerId: 1 })
+    setTool('d6', {})
+    tap(stage, { pointerId: 2 })
+    expect(app.commitDrawing).toHaveBeenCalledTimes(1)
+    expect(app.commitToy).toHaveBeenCalledTimes(1)
+  })
+
   test('a double-click with an add tool does not reset the view', () => {
     vi.useFakeTimers()
     const stage = document.getElementById('stage')

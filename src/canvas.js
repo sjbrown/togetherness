@@ -110,6 +110,7 @@ export function setTool(name, params = {}) {
     ToolMode._tapPts   = [];
     ToolMode._tapHits  = [];
     ToolMode._pendingCycle = null;
+    ToolMode._lastAddAt = 0;
   }
   ToolMode.tool = name;
   ToolMode.params = { ...params };

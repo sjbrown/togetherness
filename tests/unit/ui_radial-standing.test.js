@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  buildSpokes, openStanding, standingActive, moveStanding, pressStanding, INNER_R, OUTER_R,
+  buildSpokes, openStanding, standingActive, moveStanding, pressStanding, closeStanding,
+  setVisibilityListener, INNER_R, OUTER_R,
 } from '../../src/ui_radial.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -52,5 +53,15 @@ describe('standing menu', () => {
     vi.advanceTimersByTime(500)
     vi.useRealTimers()
     expect(host.querySelectorAll('.radial-menu').length).toBe(1)
+  })
+
+  it('tells the visibility listener when it opens and closes', () => {
+    const seen = []
+    closeStanding()
+    setVisibilityListener((open) => seen.push(open))
+    openStanding(host, { spokes: [], origin: { x: 0, y: 0 }, scale: 1, onPick: () => {} })
+    closeStanding()
+    setVisibilityListener(null)
+    expect(seen).toEqual([true, false])
   })
 })
