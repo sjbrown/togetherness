@@ -248,7 +248,7 @@ function arcPath(cx, cy, r, a0, a1, reverse) {
  * the local player's gradient as { grad: 'url(#…)', stop: color }.
  */
 export function open(hostEl, { spokes, origin, scale, paint }) {
-  const group = el('g', { class: 'radial radial-menu' });
+  const group = el('g', { class: 'radial radial-menu', 'data-origin-x': origin.x, 'data-origin-y': origin.y });
   if (paint?.grad) group.style.setProperty('--radial-grad', paint.grad);
   if (paint?.stop) group.style.setProperty('--radial-stop', paint.stop);
   hostEl.insertBefore(group, hostEl.firstChild);
@@ -262,6 +262,14 @@ export function show(state) {
   if (state.shown) return;
   state.shown = true;
   state.group.classList.add('show');
+  _onVisibility?.(true);
+}
+
+// Told when a menu becomes visible and when a visible one closes, so the
+// chrome can stand aside for it.
+let _onVisibility = null;
+export function setVisibilityListener(fn) {
+  _onVisibility = fn;
 }
 
 /** Update the hovered pick (null for none); redraws only when it changed. */
@@ -276,6 +284,48 @@ export function close(state) {
   if (!state.shown) { state.group.remove(); return; }
   state.group.classList.remove('show');
   setTimeout(() => state.group.remove(), FADE_MS);
+  _onVisibility?.(false);
+}
+
+// ── Standing menu ─────────────────────────────────────────────────────────
+// A menu opened without a bowstring pull (a double-click). It stays until
+// the next press: a press on a spoke calls onPick with that pick, a press
+// anywhere else just closes it.
+
+let _standing = null;   // { state, onPick } or null
+
+export function standingActive() {
+  return _standing !== null;
+}
+
+export function openStanding(hostEl, { spokes, origin, scale, paint, onPick }) {
+  closeStanding();
+  const state = open(hostEl, { spokes, origin, scale, paint });
+  show(state);
+  _standing = { state, onPick };
+}
+
+export function closeStanding() {
+  if (!_standing) return;
+  close(_standing.state);
+  _standing = null;
+}
+
+function standingPick(canvasPoint) {
+  const { origin, scale, spokes } = _standing.state;
+  return pickAt(spokes, (canvasPoint.x - origin.x) * scale, (canvasPoint.y - origin.y) * scale);
+}
+
+export function moveStanding(canvasPoint) {
+  if (_standing) setPick(_standing.state, standingPick(canvasPoint));
+}
+
+export function pressStanding(canvasPoint) {
+  if (!_standing) return;
+  const { onPick } = _standing;
+  const pick = standingPick(canvasPoint);
+  closeStanding();
+  if (pick) onPick(pick);
 }
 
 function render(state) {

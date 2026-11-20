@@ -34,7 +34,23 @@ export const ToolMode = {
   _tapCount:   0,
   _tapTimer:   null,
   _tapPts:     [],      // client points of the current tap sequence
+  _tapHits:    [],      // id under each tap of the sequence, null for empty table
+  _lastAddAt:  0,       // when the last add-tool press was accepted
+  _lastAddPt:  null,    // where (client px) it was
+  _pendingCycle: null,  // id whose selection mode steps once the double-click window passes
 };
+
+// A press that moves less than this (screen px) is still a click, for pan
+// and for dragging objects.
+const DRAG_THRESHOLD = 4;
+
+// An add-tool press this soon after the last one, and this close to it, is
+// the second half of a double-click, not another placement.
+const ADD_THROTTLE_MS = 300;
+const ADD_THROTTLE_SLOP = 16;
+
+// The object under the press in progress, for the tap sequence to record.
+let _downHitId = null;
 
 // A triple-click is three presses in about the same place; three quick
 // clicks on different things are not.
@@ -94,6 +110,9 @@ export function setTool(name, params = {}) {
     ToolMode._tapCount = 0;
     ToolMode._lastTap  = 0;
     ToolMode._tapPts   = [];
+    ToolMode._tapHits  = [];
+    ToolMode._pendingCycle = null;
+    ToolMode._lastAddAt = 0;
   }
   ToolMode.tool = name;
   ToolMode.params = { ...params };
@@ -113,6 +132,14 @@ export function syncBackgroundTransform() { applyViewTransform(); }
 
 export function resetView() {
   _view = { x: 0, y: 0, scale: 1 };
+  applyViewTransform();
+}
+
+// Pans so canvas point (cx, cy) sits at the middle of the stage; zoom is kept.
+export function centerOn(cx, cy) {
+  const r = _stageEl.getBoundingClientRect();
+  _view.x = r.width  / 2 - cx * _view.scale;
+  _view.y = r.height / 2 - cy * _view.scale;
   applyViewTransform();
 }
 
@@ -198,6 +225,7 @@ function onPointerDown(e) {
   // Let ui.js know to close dropdowns — it listens on document capture
   ToolMode._pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   _stageEl.setPointerCapture(e.pointerId);
+  _downHitId = null;
 
   // Attention mode, select tool only: while it is on it takes every
   // single-pointer press; otherwise the third press of a tap sequence enters
@@ -205,6 +233,13 @@ function onPointerDown(e) {
   // counting as a tap, so a triple-click there starts a new one).
   if (ToolMode.tool === 'select' && ToolMode._pointers.size === 1) {
     const p = toCanvas(e.clientX, e.clientY);
+    // An open standing radial menu takes the press: it fires or closes.
+    if (App.standingRadialActive?.()) {
+      ToolMode._gesture = 'radial-press';
+      ToolMode._moveRef = null;
+      App.standingRadialPress(p.x, p.y);
+      return;
+    }
     if (App.attentionActive()) {
       ToolMode._gesture = 'attention';
       ToolMode._moveRef = null;
@@ -217,6 +252,7 @@ function onPointerDown(e) {
       ToolMode._tapTimer = null;
       ToolMode._tapCount = 0;
       ToolMode._lastTap  = 0;
+      ToolMode._pendingCycle = null;
       ToolMode._gesture  = 'attention';
       ToolMode._moveRef  = null;
       App.attentionEnter(p.x, p.y, e.clientX, e.clientY);
@@ -243,6 +279,7 @@ function onPointerDown(e) {
 
   const hitEl = hitForActiveLayer(e);
   const hitId = hitEl?.dataset?.id ?? null;
+  _downHitId = hitId;
   const handleEl = handleUnder(e);
   const handle = handleEl?.dataset.handle ?? null;
 
@@ -313,7 +350,7 @@ function onPointerDown(e) {
       // selection. A real drag leaves the mode untouched.
       const wasSoleSelected =
         App.getSelectedIds().length === 1 && App.getSelectedIds()[0] === hitId;
-      ToolMode._moveRef = { id: hitId, dx: p.x - anchor.x, dy: p.y - anchor.y, sx: e.clientX, sy: e.clientY, moved: false, wasReclick: wasSoleSelected };
+      ToolMode._moveRef = { id: hitId, sx: e.clientX, sy: e.clientY, dx: p.x - anchor.x, dy: p.y - anchor.y, moved: false, wasReclick: wasSoleSelected };
       App.select(hitId);
       // select() may have bailed into a soft-lock request instead of
       // actually selecting hitId (held by another peer) — in that case
@@ -337,6 +374,13 @@ function onPointerDown(e) {
     }
   } else {
     // Draw mode
+    if (Date.now() - ToolMode._lastAddAt < ADD_THROTTLE_MS &&
+        ToolMode._lastAddPt && dist(ToolMode._lastAddPt, { x: e.clientX, y: e.clientY }) <= ADD_THROTTLE_SLOP) {
+      ToolMode._gesture = 'throttled';
+      return;
+    }
+    ToolMode._lastAddAt = Date.now();
+    ToolMode._lastAddPt = { x: e.clientX, y: e.clientY };
     ToolMode._gesture = 'draw';
     const p = toCanvas(e.clientX, e.clientY);
     ToolMode._draft = { type: ToolMode.tool, ox: p.x, oy: p.y };
@@ -355,6 +399,12 @@ function onPointerMove(e) {
   if (ToolMode.tool !== 'select') {
     const p = toCanvas(e.clientX, e.clientY);
     App.updateAddCursor(p.x, p.y, ToolMode.tool);
+  }
+
+  if (ToolMode.tool === 'select' && App.standingRadialActive?.()) {
+    const p = toCanvas(e.clientX, e.clientY);
+    App.standingRadialMove(p.x, p.y);
+    return;
   }
 
   // In attention mode moves go to attention, hovering or not; a pinch still
@@ -409,6 +459,7 @@ function onPointerMove(e) {
 
   if (ToolMode._gesture === 'move' && ToolMode._moveRef) {
     const ref  = ToolMode._moveRef;
+    if (!ref.moved && !pastDragThreshold(e, ref)) return;
     const p    = toCanvas(e.clientX, e.clientY);
     ref.moved  = true;
     App.move(ref.id, p.x - ref.dx, p.y - ref.dy);
@@ -441,6 +492,7 @@ function onPointerMove(e) {
 
   if (ToolMode._gesture === 'multi-move' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
+    if (!ref.moved && !pastDragThreshold(e, ref)) return;
     const ddx = (e.clientX - ref.sx) / _view.scale;
     const ddy = (e.clientY - ref.sy) / _view.scale;
     ref.moved = true;
@@ -451,7 +503,7 @@ function onPointerMove(e) {
   if (ToolMode._gesture === 'pan-or-deselect' && ToolMode._moveRef) {
     const ref = ToolMode._moveRef;
     const ddx = e.clientX - ref.sx, ddy = e.clientY - ref.sy;
-    if (Math.abs(ddx) > 4 || Math.abs(ddy) > 4) {
+    if (Math.abs(ddx) > DRAG_THRESHOLD || Math.abs(ddy) > DRAG_THRESHOLD) {
       ref.moved   = true;
       _stageEl.classList.add('dragging');
       _view.x = ToolMode._startView.x + ddx;
@@ -492,8 +544,8 @@ function onPointerUp(e) {
 
   const isCancelled = e.type === 'pointercancel';
 
-  // An attention press never counts toward a tap sequence.
-  if (ToolMode._gesture === 'attention') {
+  // Attention and radial-menu presses never count toward a tap sequence.
+  if (ToolMode._gesture === 'attention' || ToolMode._gesture === 'radial-press') {
     ToolMode._gesture = null;
     ToolMode._moveRef = null;
     if (ToolMode._pointers.size === 0) {
@@ -526,8 +578,12 @@ function onPointerUp(e) {
       // ...and if this tap landed on an element that was ALREADY the sole
       // selection, it's a deliberate second click — toggle the next mode
       // in the cycle
-      if (!isCancelled && ToolMode._moveRef.wasReclick) {
-        App.nextSelectionMode(ToolMode._moveRef.id);
+      // The step waits out the double-click window, so a double-click on a
+      // selected object doesn't also cycle it; the second press of one is
+      // never a reclick.
+      const secondOfDouble = ToolMode._tapCount >= 1 && Date.now() - ToolMode._lastTap < 300;
+      if (!isCancelled && ToolMode._moveRef.wasReclick && !secondOfDouble) {
+        ToolMode._pendingCycle = ToolMode._moveRef.id;
       }
     }
   }
@@ -627,9 +683,11 @@ function onPointerUp(e) {
       if (now - ToolMode._lastTap < 300) {
         ToolMode._tapCount++;
         ToolMode._tapPts.push({ x: e.clientX, y: e.clientY });
+        ToolMode._tapHits.push(_downHitId);
       } else {
         ToolMode._tapCount = 1;
         ToolMode._tapPts = [{ x: e.clientX, y: e.clientY }];
+        ToolMode._tapHits = [_downHitId];
       }
       ToolMode._lastTap = now;
 
@@ -638,20 +696,35 @@ function onPointerUp(e) {
       // wait out the double-tap window before acting on the final count.
       clearTimeout(ToolMode._tapTimer);
       ToolMode._tapTimer = setTimeout(() => {
-        if (ToolMode._tapCount === 2) {
-          resetView();
-          App.onViewReset();
+        const cycleId = ToolMode._pendingCycle;
+        ToolMode._pendingCycle = null;
+        if (ToolMode._tapCount === 1 && cycleId) App.nextSelectionMode(cycleId);
+        if (ToolMode._tapCount === 2 && ToolMode.tool === 'select') {
+          const [first, second] = ToolMode._tapHits;
+          if (first === second) {
+            if (first) {
+              App.objectDoubleClick(first);
+            } else {
+              resetView();
+              App.onViewReset();
+            }
+          }
         }
         ToolMode._tapCount = 0;
       }, 300);
     } else {
       // A drag or multi-pointer gesture breaks any pending tap sequence.
+      ToolMode._pendingCycle = null;
       ToolMode._tapCount = 0;
       ToolMode._lastTap  = 0;
       clearTimeout(ToolMode._tapTimer);
       ToolMode._tapTimer = null;
     }
   }
+}
+
+function pastDragThreshold(e, ref) {
+  return Math.abs(e.clientX - ref.sx) > DRAG_THRESHOLD || Math.abs(e.clientY - ref.sy) > DRAG_THRESHOLD;
 }
 
 function finishDraft(e) {

@@ -108,6 +108,15 @@ function _layerFor(id) {
   return { domEl, layer: _Layers[moduleForElement(domEl)] };
 }
 
+// What to call a layer object in a message: a toy's type ('chip', 'tray
+// sum'), a boundary or position set, else its shape ('rect', 'circle').
+function _objectNoun(domEl) {
+  const word = domEl.getAttribute('data-toy-type')
+    ?? domEl.getAttribute('data-bounpos-type')
+    ?? domEl.tagName.toLowerCase();
+  return word.replace(/[_-]/g, ' ');
+}
+
 function _defaultModeFor(id) {
   const { domEl, layer } = _layerFor(id);
   return layer?.nextSelectMode?.(domEl, null) ?? null;
@@ -435,6 +444,7 @@ export function boot({ ydoc, awareness, provider, user, tableId, isCreator = fal
 
   // Delight (bowstring handle, sparks, and the delight effects)
   Delight.init(App, _svgEl);
+  Radial.setVisibilityListener((open) => UI.onRadialMenu(open));
 
   // Attention mode (triple-click pointing), on its own top layer
   Attention.init({
@@ -1616,6 +1626,50 @@ const App = {
   moveBowstring: (e, canvasPoint) => Delight.moveBowstring(e, canvasPoint),
   endBowstring:  (e)              => Delight.endBowstring(e),
 
+  standingRadialActive: ()     => Radial.standingActive(),
+  standingRadialMove:   (x, y) => Radial.moveStanding({ x, y }),
+  standingRadialPress:  (x, y) => Radial.pressStanding({ x, y }),
+  closeRadialMenu:      ()     => Radial.closeStanding(),
+
+  /**
+   * Open id's radial menu around its action square, and fire whichever spoke the
+   * next press lands on. False when it has none.
+   */
+  openRadialMenu: (id) => {
+    const geo = App.getBBox(id);
+    const menu = geo && App.getRadialMenu(id);
+    if (!menu) return false;
+    Radial.openStanding(_svgEl.querySelector('#delight-layer'), {
+      spokes: menu.spokes,
+      origin: Delight.bowstringOrigin(geo, _rotationOf(id)),
+      scale:  App.getViewScale(),
+      paint:  menu.paint,
+      onPick: (pick) => App.fireBowstring(id, { namespace: pick.spoke.namespace, key: pick.spoke.key, params: pick.params }),
+    });
+    return true;
+  },
+
+  /**
+   * A double-click on layer object id: its layer's double-click action if
+   * it offers one, else its radial menu, else centre the view on it.
+   */
+  objectDoubleClick: (id) => {
+    const { domEl, layer } = _layerFor(id);
+    if (!domEl) return;
+    const action = layer?.doubleClickAction?.(domEl);
+    if (action) {
+      App.invokeToyMenuAction(id, action.namespace, action.key);
+      App.addLog(`double-click → ${action.key}`, 'local');
+      UI.toast(`Double click - ${action.label ?? action.key}`, 'info');
+      return;
+    }
+    if (App.openRadialMenu(id)) return;
+    const geo = App.getBBox(id);
+    if (!geo) return;
+    Canvas.centerOn(geo.x + geo.width / 2, geo.y + geo.height / 2);
+    UI.toast(`Double click - center view on ${_objectNoun(domEl)}`, 'info');
+  },
+
   /**
    * Called by layer_delight.js when a bowstring resolves — on click, or on the
    * far end of a charged pull's snap-back. A release on a radial spoke
@@ -1943,7 +1997,7 @@ const App = {
     // claims here -- select()/toggleSelection() already own that decision
     // (e.g. a redundant setTool('select') while a multi-selection is being
     // built via shift-click must not wipe it out).
-    if (name !== 'select') SelectionLocal.clearClaims();
+    if (name !== 'select') { SelectionLocal.clearClaims(); Radial.closeStanding(); }
     _activeTool = name;
     Canvas.setTool(name, _toolParams[name] ?? {});
     UI.onToolChanged(name);
