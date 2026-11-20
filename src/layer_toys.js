@@ -1193,8 +1193,7 @@ export function selectModes(domEl) {
 }
 
 function selectModeCycle(domEl) {
-  // 'sel-rummage' stays excluded until it has a real gesture behind it.
-  return selectModes(domEl).filter(mode => mode !== 'sel-rummage')
+  return selectModes(domEl)
 }
 
 export function nextSelectMode(domEl, currentMode) {
