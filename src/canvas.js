@@ -36,6 +36,7 @@ export const ToolMode = {
   _tapPts:     [],      // client points of the current tap sequence
   _tapHits:    [],      // id under each tap of the sequence, null for empty table
   _lastAddAt:  0,       // when the last add-tool press was accepted
+  _lastAddPt:  null,    // where (client px) it was
   _pendingCycle: null,  // id whose selection mode steps once the double-click window passes
 };
 
@@ -43,9 +44,10 @@ export const ToolMode = {
 // and for dragging objects.
 const DRAG_THRESHOLD = 4;
 
-// Add-tool presses closer together than this are one double-click, not two
-// placements.
+// An add-tool press this soon after the last one, and this close to it, is
+// the second half of a double-click, not another placement.
 const ADD_THROTTLE_MS = 300;
+const ADD_THROTTLE_SLOP = 16;
 
 // The object under the press in progress, for the tap sequence to record.
 let _downHitId = null;
@@ -372,11 +374,13 @@ function onPointerDown(e) {
     }
   } else {
     // Draw mode
-    if (Date.now() - ToolMode._lastAddAt < ADD_THROTTLE_MS) {
+    if (Date.now() - ToolMode._lastAddAt < ADD_THROTTLE_MS &&
+        ToolMode._lastAddPt && dist(ToolMode._lastAddPt, { x: e.clientX, y: e.clientY }) <= ADD_THROTTLE_SLOP) {
       ToolMode._gesture = 'throttled';
       return;
     }
     ToolMode._lastAddAt = Date.now();
+    ToolMode._lastAddPt = { x: e.clientX, y: e.clientY };
     ToolMode._gesture = 'draw';
     const p = toCanvas(e.clientX, e.clientY);
     ToolMode._draft = { type: ToolMode.tool, ox: p.x, oy: p.y };

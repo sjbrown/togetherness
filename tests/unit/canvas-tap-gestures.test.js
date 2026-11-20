@@ -382,7 +382,7 @@ describe('object drag threshold', () => {
 })
 
 describe('add-tool throttle', () => {
-  test('a second placement inside the double-click window is ignored', () => {
+  test('a second placement in the same spot inside the double-click window is ignored', () => {
     vi.useFakeTimers()
     const stage = document.getElementById('stage')
     const app = makeApp({ commitDrawing: vi.fn(), updateAddCursor: () => {} })
@@ -397,6 +397,21 @@ describe('add-tool throttle', () => {
     tap(stage, { pointerId: 3 })
     vi.useRealTimers()
     expect(app.commitDrawing).toHaveBeenCalledTimes(2)
+  })
+
+  test('quick presses in different places each place', () => {
+    vi.useFakeTimers()
+    const stage = document.getElementById('stage')
+    const app = makeApp({ commitDrawing: vi.fn(), updateAddCursor: () => {} })
+    init(app, document.getElementById('canvas'))
+    setTool('rect', {})
+
+    tap(stage, { pointerId: 1, clientX: 100, clientY: 100 })
+    tap(stage, { pointerId: 2, clientX: 160, clientY: 100 })
+    tap(stage, { pointerId: 3, clientX: 220, clientY: 100 })
+    vi.useRealTimers()
+
+    expect(app.commitDrawing).toHaveBeenCalledTimes(3)
   })
 
   test('switching tools lifts it, so a different tool places at once', () => {
