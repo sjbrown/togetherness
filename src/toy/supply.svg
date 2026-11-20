@@ -7,7 +7,7 @@
    height="225"
    viewBox="0 0 100 150"
    id="supply"
-   class="supply tt-mode-resize tt-mode-rummage"
+   class="supply tt-mode-resize"
    version="1.1"
    >
   <defs

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rummage Tuner</title>
+<style>
+  :root {
+    --bg: #f4f5f3; --panel: #ffffff; --text: #2c302d; --muted: #6f7570;
+    --border: #d9ddd8; --accent: #2f7d5b; --stage: #e9e6df;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #181a19; --panel: #222524; --text: #e2e5e2; --muted: #98a09a;
+            --border: #3a3f3c; --accent: #5fbf8f; --stage: #2e2c29; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --bg: #181a19; --panel: #222524; --text: #e2e5e2; --muted: #98a09a;
+            --border: #3a3f3c; --accent: #5fbf8f; --stage: #2e2c29; color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+  #panel { width: 360px; flex: none; overflow-y: auto; background: var(--panel);
+           border-right: 1px solid var(--border); padding: 16px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .subtitle { color: var(--muted); margin-bottom: 8px; }
+  h2 { font-size: 12px; margin: 16px 0 4px; text-transform: uppercase; color: var(--muted); }
+  .ctl { display: grid; grid-template-columns: 92px 1fr 48px; gap: 8px; align-items: center; margin: 4px 0; }
+  .ctl output { font-family: var(--mono); text-align: right; }
+  .ctl input[type=range] { width: 100%; }
+  .ctl input[type=color] { grid-column: 2 / 4; width: 100%; height: 24px; border: 1px solid var(--border); }
+  .row { display: flex; gap: 12px; align-items: center; margin: 6px 0; }
+  button { font: inherit; padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+           background: var(--bg); color: var(--text); cursor: pointer; }
+  .swatches { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .swatches button { width: 44px; height: 24px; padding: 0; border-radius: 4px; }
+  .swatches button[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 2px; }
+  pre { font: 11px var(--mono); background: var(--bg); border: 1px solid var(--border);
+        border-radius: 4px; padding: 8px; overflow-x: auto; white-space: pre-wrap; margin-top: 4px; }
+  #stage { flex: 1; display: grid; grid-template-columns: 1fr 1fr; align-items: center;
+           justify-items: center; background: var(--stage); overflow: auto; }
+  #stage.light { background: #f3efe6; } #stage.dark { background: #2b2b2e; }
+  #stage figure { text-align: center; color: var(--muted); }
+  #stage svg { display: block; overflow: visible; }
+  @media (max-width: 760px) {
+    body { flex-direction: column-reverse; }
+    #panel { width: 100%; height: 55vh; border-right: 0; border-top: 1px solid var(--border); }
+    #stage { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>Rummage Tuner</h1>
+  <p class="subtitle">Two dashed strokes on one outline make the "stitched" rummage-mode border.</p>
+
+  <h2>The "H" pattern</h2>
+  <div id="h"></div>
+  <h2>Gradient</h2>
+  <div class="row"><select id="grad"></select></div>
+  <div id="swatches" class="swatches"></div>
+  <h2>Outline</h2>
+  <div id="o"></div>
+  <h2>Stage</h2>
+  <div class="row">
+    <label>Background
+      <select id="bg"><option value="">system</option><option value="light">light</option><option value="dark">dark</option></select>
+    </label>
+    <button id="reset">Reset</button>
+    <button id="copy">Copy CSS</button>
+  </div>
+  <h2>Output</h2>
+  <pre id="out"></pre>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="player-grad"></linearGradient></defs></svg>
+<div id="stage">
+  <figure>
+    <svg id="tray" width="220" height="130" viewBox="0 0 220 130">
+      <rect x="3.6" y="11.4" width="213.4" height="106.7" rx="10" fill="#d7d7d7" stroke="#3b3b3b" stroke-width="3.2"/>
+      <g class="rummage" data-shape="rect" data-x="3.6" data-y="11.4" data-w="213.4" data-h="106.7" data-r="10"></g>
+    </svg>
+    <figcaption>tray_sum</figcaption>
+  </figure>
+  <figure>
+    <svg id="pile" width="120" height="170" viewBox="-10 -10 120 170">
+      <rect x="18" y="20" width="64" height="90" rx="5" fill="#fff" stroke="#000" stroke-width="1"/>
+      <rect x="22" y="24" width="64" height="90" rx="5" fill="#fff" stroke="#000" stroke-width="1"/>
+      <rect x="26" y="28" width="64" height="90" rx="5" fill="#fff" stroke="#000" stroke-width="1"/>
+      <g class="rummage" data-shape="rect" data-x="-6" data-y="-6" data-w="112" data-h="162" data-r="6"></g>
+    </svg>
+    <figcaption>card pile</figcaption>
+  </figure>
+</div>
+
+<script>
+// Each param: [key, label, min, max, step, default]. Defaults mirror the
+// values proposed for rummage mode.
+const GROUPS = {
+  h: [
+    ['upw', 'upright width', 0.5, 8, 0.5, 1],
+    ['barw', 'bar width', 0.5, 12, 0.5, 2],
+    ['hgap', 'gap between Hs', 0, 20, 0.5, 4],
+    ['aw', 'upright height', 0.5, 8, 0.1, 4],
+    ['bw', 'bar thickness', 0.5, 8, 0.1, 1.5],
+    ['op', 'opacity', 0, 1, 0.05, 1],
+  ],
+  o: [
+    ['pad', 'outset', -10, 20, 0.5, 4], ['rad', 'extra radius', -10, 20, 0.5, 4],
+    ['cap', 'linecap', 'select', 0, 0, 'butt'],
+    ['zoom', 'zoom', 1, 6, 0.5, 1],
+  ],
+};
+// Presets in entityGradient's shape: CSS angle (90 = left to right) and two stops.
+const GRADS = {
+  Ember:   { angle: 90,  c1: 'hsl(8, 90%, 45%)',   c2: 'hsl(40, 95%, 50%)' },
+  Lagoon:  { angle: 45,  c1: 'hsl(190, 85%, 35%)', c2: 'hsl(150, 80%, 45%)' },
+  Orchid:  { angle: 135, c1: 'hsl(285, 80%, 40%)', c2: 'hsl(330, 90%, 55%)' },
+  Dusk:    { angle: 90,  c1: 'hsl(240, 85%, 40%)', c2: 'hsl(300, 75%, 50%)' },
+  Moss:    { angle: 135, c1: 'hsl(95, 70%, 30%)',  c2: 'hsl(60, 85%, 45%)' },
+  Slate:   { angle: 45,  c1: 'hsl(215, 30%, 25%)', c2: 'hsl(200, 40%, 55%)' },
+};
+// The same endpoints entityGradient's gradientVector() gives.
+function gradVector(angle) {
+  const rad = (angle - 90) * Math.PI / 180;
+  return { x1: .5 - Math.cos(rad) / 2, y1: .5 - Math.sin(rad) / 2, x2: .5 + Math.cos(rad) / 2, y2: .5 + Math.sin(rad) / 2 };
+}
+const defaults = { grad: 'Ember' }, vals = { grad: 'Ember' };
+const q = (s, r = document) => r.querySelector(s);
+
+for (const [gid, params] of Object.entries(GROUPS)) {
+  const host = q('#' + gid);
+  for (const [key, label, min, max, step, def] of params) {
+    defaults[key] = def; vals[key] = def;
+    const row = document.createElement('div'); row.className = 'ctl';
+    const lab = document.createElement('label'); lab.textContent = label; lab.htmlFor = key;
+    row.append(lab);
+    if (min === 'color') {
+      const i = Object.assign(document.createElement('input'), { type: 'color', id: key, value: def });
+      i.oninput = () => { vals[key] = i.value; draw(); };
+      row.append(i);
+    } else if (min === 'select') {
+      const s = Object.assign(document.createElement('select'), { id: key });
+      for (const v of ['butt', 'round', 'square']) s.add(new Option(v, v));
+      s.onchange = () => { vals[key] = s.value; draw(); };
+      s.style.gridColumn = '2 / 4'; row.append(s);
+    } else {
+      const i = Object.assign(document.createElement('input'), { type: 'range', id: key, min, max, step, value: def });
+      const out = document.createElement('output'); out.textContent = def; out.id = key + '_o';
+      i.oninput = () => { vals[key] = +i.value; out.textContent = i.value; draw(); };
+      row.append(i, out);
+    }
+    host.append(row);
+  }
+}
+
+const NS = 'http://www.w3.org/2000/svg';
+function applyGradient() {
+  const g = GRADS[vals.grad], lg = q('#player-grad');
+  for (const [k, v] of Object.entries(gradVector(g.angle))) lg.setAttribute(k, v);
+  lg.replaceChildren(...[[0, g.c1], [1, g.c2]].map(([o, c]) => {
+    const st = document.createElementNS(NS, 'stop');
+    st.setAttribute('offset', o); st.setAttribute('stop-color', c); return st;
+  }));
+  for (const b of document.querySelectorAll('#swatches button'))
+    b.setAttribute('aria-pressed', String(b.dataset.name === vals.grad));
+  q('#grad').value = vals.grad;
+}
+function draw() {
+  const v = vals;
+  // Uprights are stroke A's dashes; the bar is stroke B's dash between them.
+  const aDash = `${v.upw}, ${v.barw}, ${v.upw}, ${v.hgap}`;
+  const bDash = `${v.barw}, ${2 * v.upw + v.hgap}`;
+  const bOff = -v.upw;
+  applyGradient();
+  for (const f of document.querySelectorAll('#stage figure')) f.style.zoom = v.zoom;
+  for (const g of document.querySelectorAll('.rummage')) {
+    const x = +g.dataset.x - v.pad, y = +g.dataset.y - v.pad;
+    const w = +g.dataset.w + v.pad * 2, h = +g.dataset.h + v.pad * 2;
+    const r = Math.max(0, +g.dataset.r + v.rad);
+    g.replaceChildren();
+    for (const [dash, off, width] of [[aDash, 0, v.aw], [bDash, bOff, v.bw]]) {
+      const rect = document.createElementNS(NS, 'rect');
+      for (const [k, val] of Object.entries({ x, y, width: w, height: h, rx: r, ry: r, fill: 'none',
+        stroke: 'url(#player-grad)', 'stroke-width': width, 'stroke-opacity': v.op, 'stroke-linecap': v.cap,
+        'stroke-dasharray': dash, 'stroke-dashoffset': off })) rect.setAttribute(k, val);
+      g.append(rect);
+    }
+  }
+  const gr = GRADS[v.grad];
+  q('#out').textContent =
+`/* H pattern: upright ${v.upw}, bar ${v.barw}, gap between Hs ${v.hgap} */
+/* stroke A (uprights) */
+stroke-width: ${v.aw}; stroke-opacity: ${v.op}; stroke-linecap: ${v.cap};
+stroke-dasharray: ${aDash}; stroke-dashoffset: 0;
+
+/* stroke B (bar) */
+stroke-width: ${v.bw}; stroke-opacity: ${v.op}; stroke-linecap: ${v.cap};
+stroke-dasharray: ${bDash}; stroke-dashoffset: ${bOff};
+
+/* gradient: ${v.grad} ${gr.angle}deg ${gr.c1} -> ${gr.c2} */
+/* outline: outset ${v.pad}, extra radius ${v.rad} */`;
+}
+
+for (const [name, g] of Object.entries(GRADS)) {
+  q('#grad').add(new Option(name, name));
+  const b = Object.assign(document.createElement('button'), { type: 'button', title: name });
+  b.dataset.name = name;
+  b.style.background = `linear-gradient(${g.angle}deg, ${g.c1}, ${g.c2})`;
+  b.onclick = () => { vals.grad = name; draw(); };
+  q('#swatches').append(b);
+}
+q('#grad').onchange = e => { vals.grad = e.target.value; draw(); };
+
+q('#bg').onchange = e => { q('#stage').className = e.target.value; };
+q('#reset').onclick = () => {
+  for (const [k, d] of Object.entries(defaults)) {
+    vals[k] = d; const i = q('#' + k); if (i) i.value = d;
+    const o = q('#' + k + '_o'); if (o) o.textContent = d;
+  }
+  draw();
+};
+q('#copy').onclick = () => navigator.clipboard?.writeText(q('#out').textContent);
+draw();
+</script>
+</body>
+</html>

@@ -458,14 +458,18 @@ describe('selectModes / nextSelectMode', () => {
     expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-action')
   })
 
-  // Rummage has no gesture/rendering behind it yet -- a toy declaring
-  // both capabilities must still only cycle sel-action <-> sel-resize,
-  // not surface rummage.
-  test('nextSelectMode skips rummage even when the toy declares both capabilities', () => {
+  test('nextSelectMode cycles through rummage for a toy that declares it', () => {
     const domEl = makeToyDom(['tt-mode-resize', 'tt-mode-rummage'])
     expect(nextSelectMode(domEl, null)).toBe('sel-action')
     expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-resize')
-    expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-action')
+    expect(nextSelectMode(domEl, 'sel-resize')).toBe('sel-rummage')
+    expect(nextSelectMode(domEl, 'sel-rummage')).toBe('sel-action')
+  })
+
+  test('a toy with only the rummage capability cycles sel-action <-> sel-rummage', () => {
+    const domEl = makeToyDom(['tt-mode-rummage'])
+    expect(nextSelectMode(domEl, 'sel-action')).toBe('sel-rummage')
+    expect(nextSelectMode(domEl, 'sel-rummage')).toBe('sel-action')
   })
 })
 

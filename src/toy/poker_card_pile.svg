@@ -6,7 +6,7 @@
    viewBox="-10 -10 120 170"
    version="1.1"
    id="poker_card_pile"
-   class="poker_card_pile"
+   class="poker_card_pile tt-mode-rummage"
    >
   <defs id="defs_poker_card_pile">
     <filter class="tt_color_filter"
